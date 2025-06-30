@@ -1,6 +1,6 @@
 {
   "name": "@cyanheads/pubchem-mcp-server",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A Model Context Protocol (MCP) server providing comprehensive LLM tools for the PubChem PUG REST API.",
   "main": "dist/index.js",
   "files": [

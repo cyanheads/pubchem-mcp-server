@@ -2,7 +2,7 @@
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-^5.8.3-blue.svg)](https://www.typescriptlang.org/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP%20SDK-^1.13.2-green.svg)](https://modelcontextprotocol.io/)
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.0.1-blue.svg)](./CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Status](https://img.shields.io/badge/Status-Beta-orange.svg)](https://github.com/cyanheads/pubchem-mcp-server/issues)
 [![GitHub](https://img.shields.io/github/stars/cyanheads/pubchem-mcp-server?style=social)](https://github.com/cyanheads/pubchem-mcp-server)
@@ -19,25 +19,23 @@ This server equips your AI with specialized tools to interact with PubChem:
 
 | Tool Name                                                                                       | Description                                                                     | Key Features                                                                                                                           |
 | :---------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------- |
-| [`pubchem_search_compound_by_identifier`](./src/mcp-server/tools/searchCompoundByIdentifier/)   | Searches for PubChem Compound IDs (CIDs) using a common chemical identifier.    | - Search by `name`, `smiles`, or `inchikey`.<br/>- The primary entry point for most compound-based workflows.                          |
+| [`pubchem_search_compound_by_identifier`](./src/mcp-server/tools/searchCompoundByIdentifier/)   | Searches for PubChem Compound IDs (CIDs) using a list of chemical identifiers.  | - Search by `name`, `smiles`, or `inchikey`.<br/>- Accepts multiple identifiers in a single call for bulk lookups.                     |
 | [`pubchem_fetch_compound_properties`](./src/mcp-server/tools/fetchCompoundProperties/)          | Fetches a list of specified physicochemical properties for one or more CIDs.    | - Retrieve properties like `MolecularWeight`, `XLogP`, `IUPACName`, etc.<br/>- Essential for gathering detailed chemical data in bulk. |
-| [`pubchem_get_compound_image`](./src/mcp-server/tools/getCompoundImageUrl/)                     | Fetches a 2D image of a compound's structure for a given CID.                   | - Returns the raw image data as a binary blob.<br/>- Supports `small` (100x100) and `large` (300x300) image sizes.                     |
+| [`pubchem_get_compound_image`](./src/mcp-server/tools/getCompoundImage/)                        | Fetches a 2D image of a compound's structure for a given CID.                   | - Returns the raw image data as a binary blob.<br/>- Supports `small` (100x100) and `large` (300x300) image sizes.                     |
 | [`pubchem_search_compounds_by_structure`](./src/mcp-server/tools/searchCompoundsByStructure/)   | Performs a structural search using a SMILES string or a CID as the query.       | - Supports `substructure`, `superstructure`, and `identity` search types.<br/>- Essential for finding structurally related compounds.  |
 | [`pubchem_search_compounds_by_similarity`](./src/mcp-server/tools/searchCompoundsBySimilarity/) | Finds compounds with a similar 2D structure to a query compound.                | - Based on a Tanimoto similarity score.<br/>- Search by `smiles` or `cid`.<br/>- Configurable `threshold` and `maxRecords`.            |
 | [`pubchem_search_compounds_by_formula`](./src/mcp-server/tools/searchCompoundsByFormula/)       | Finds PubChem Compound IDs (CIDs) that match a given molecular formula.         | - Supports exact matches and formulas with additional elements.<br/>- Configurable `maxRecords`.                                       |
-| [`pubchem_fetch_substance_details`](./src/mcp-server/tools/fetchSubstanceDetails/)              | Retrieves details for a given PubChem Substance ID (SID).                       | - Fetches synonyms, source, dates, and related CIDs.                                                                                   |
-| [`pubchem_fetch_assay_summary`](./src/mcp-server/tools/fetchAssaySummary/)                      | Fetches a detailed summary for a specific PubChem BioAssay ID (AID).            | - Includes name, description, source, and statistics.                                                                                  |
+| [`pubchem_fetch_substance_details`](./src/mcp-server/tools/fetchSubstanceDetails/)              | Retrieves details for a given PubChem Substance ID (SID).                       | - Fetches synonyms, source, dates, related CIDs, and full compound data in one call.                                                   |
+| [`pubchem_fetch_assay_summary`](./src/mcp-server/tools/fetchAssaySummary/)                      | Fetches detailed summaries for a list of up to 5 PubChem BioAssay IDs (AIDs).   | - Includes name, description, source, and statistics.<br/>- Supports bulk fetching for multiple AIDs.                                  |
 | [`pubchem_search_assays_by_target`](./src/mcp-server/tools/searchAssaysByTarget/)               | Finds PubChem BioAssay IDs (AIDs) associated with a specific biological target. | - Search by `genesymbol` or `proteinname`.                                                                                             |
-| [`pubchem_fetch_compound_xrefs`](./src/mcp-server/tools/fetchCompoundXrefs/)                    | Fetches external cross-references (XRefs) for a given CID.                      | - Retrieve `RegistryID`, `PubMedID`, `PatentID`, etc.<br/>- Supports pagination for large result sets.                                 |
+| [`pubchem_fetch_compound_xrefs`](./src/mcp-server/tools/fetchCompoundXrefs/)                    | Fetches external cross-references (XRefs) for a given CID.                      | - Retrieve `RegistryID`, `PubMedID`, `PatentID`, etc.<br/>- Robustly handles large datasets with pagination.                           |
 
 ---
 
 ## Table of Contents
 
 | [Overview](#overview) | [Features](#features) | [Installation](#installation) |
-
 | [Configuration](#configuration) | [Project Structure](#project-structure) |
-
 | [Tools](#tools) | [Development](#development) | [License](#license) |
 
 ## Overview
@@ -177,18 +175,18 @@ For a detailed file tree, run `npm run tree` or see [docs/tree.md](docs/tree.md)
 
 The PubChem MCP Server provides a comprehensive suite of tools for chemical information retrieval, callable via the Model Context Protocol.
 
-| Tool Name                                | Description                                                            | Key Arguments                                     |
-| :--------------------------------------- | :--------------------------------------------------------------------- | :------------------------------------------------ |
-| `pubchem_search_compound_by_identifier`  | Searches for CIDs using an identifier (name, SMILES, InChIKey).        | `identifierType`, `identifier`                    |
-| `pubchem_fetch_compound_properties`      | Fetches physicochemical properties for one or more CIDs.               | `cids`, `properties`                              |
-| `pubchem_get_compound_image`             | Fetches a 2D structural image for a given CID.                         | `cid`, `size?`                                    |
-| `pubchem_search_compounds_by_structure`  | Performs a structural search (substructure, superstructure, identity). | `searchType`, `query`, `queryType`, `maxRecords?` |
-| `pubchem_search_compounds_by_similarity` | Finds compounds with a similar 2D structure to a query.                | `query`, `queryType`, `threshold?`, `maxRecords?` |
-| `pubchem_search_compounds_by_formula`    | Finds CIDs that match a given molecular formula.                       | `formula`, `allowOtherElements?`, `maxRecords?`   |
-| `pubchem_fetch_substance_details`        | Retrieves details for a given Substance ID (SID).                      | `sid`                                             |
-| `pubchem_fetch_assay_summary`            | Fetches a summary for a specific BioAssay ID (AID).                    | `aid`                                             |
-| `pubchem_search_assays_by_target`        | Finds BioAssay IDs (AIDs) associated with a biological target.         | `targetType`, `targetQuery`                       |
-| `pubchem_fetch_compound_xrefs`           | Fetches external cross-references for a given CID.                     | `cid`, `xrefTypes`, `page?`, `pageSize?`          |
+| Tool Name                                | Description                                                             | Key Arguments                                     |
+| :--------------------------------------- | :---------------------------------------------------------------------- | :------------------------------------------------ |
+| `pubchem_search_compound_by_identifier`  | Searches for CIDs using a list of identifiers (name, SMILES, InChIKey). | `identifierType`, `identifiers`                   |
+| `pubchem_fetch_compound_properties`      | Fetches physicochemical properties for one or more CIDs.                | `cids`, `properties`                              |
+| `pubchem_get_compound_image`             | Fetches a 2D structural image for a given CID.                          | `cid`, `size?`                                    |
+| `pubchem_search_compounds_by_structure`  | Performs a structural search (substructure, superstructure, identity).  | `searchType`, `query`, `queryType`, `maxRecords?` |
+| `pubchem_search_compounds_by_similarity` | Finds compounds with a similar 2D structure to a query.                 | `query`, `queryType`, `threshold?`, `maxRecords?` |
+| `pubchem_search_compounds_by_formula`    | Finds CIDs that match a given molecular formula.                        | `formula`, `allowOtherElements?`, `maxRecords?`   |
+| `pubchem_fetch_substance_details`        | Retrieves details for a given Substance ID (SID).                       | `sid`                                             |
+| `pubchem_fetch_assay_summary`            | Fetches summaries for a list of up to 5 BioAssay IDs (AIDs).            | `aids`                                            |
+| `pubchem_search_assays_by_target`        | Finds BioAssay IDs (AIDs) associated with a biological target.          | `targetType`, `targetQuery`                       |
+| `pubchem_fetch_compound_xrefs`           | Fetches external cross-references for a given CID.                      | `cid`, `xrefTypes`, `page?`, `pageSize?`          |
 
 _Note: All tools support comprehensive error handling and return structured JSON responses._
 
