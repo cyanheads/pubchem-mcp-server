@@ -52,10 +52,10 @@ The core of extending this MCP server involves defining your custom logic and th
     - Import your logic and schemas.
     - Import the `McpServer` type from the SDK and the `ErrorHandler` utility.
     - Use `server.tool(name, description, zodSchemaShape, async handler => { ... })` to register your tool.
-        - `name`: A unique identifier for your tool (e.g., `pubchem_search_compound_by_identifier`).
-        - `description`: A clear, concise explanation of what the tool does. This is shown to the MCP host/LLM.
-        - `zodSchemaShape`: The Zod schema object defining the expected input arguments.
-        - `handler`: An asynchronous function that contains your tool's core logic. It **MUST** return a `CallToolResult` object: `{ content: [...], isError: boolean }`.
+      - `name`: A unique identifier for your tool (e.g., `pubchem_search_compound_by_identifier`).
+      - `description`: A clear, concise explanation of what the tool does. This is shown to the MCP host/LLM.
+      - `zodSchemaShape`: The Zod schema object defining the expected input arguments.
+      - `handler`: An asynchronous function that contains your tool's core logic. It **MUST** return a `CallToolResult` object: `{ content: [...], isError: boolean }`.
     - **Error Handling**: Wrap your handler logic in `ErrorHandler.tryCatch(...)` to ensure robust error management and consistent logging.
 
 4.  **Export & Integrate (`index.ts` and `server.ts`)**:
