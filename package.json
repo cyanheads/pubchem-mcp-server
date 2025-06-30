@@ -1,5 +1,5 @@
 {
-  "name": "pubchem-mcp-server",
+  "name": "@cyanheads/pubchem-mcp-server",
   "version": "1.0.0",
   "description": "A production-grade Model Context Protocol (MCP) server providing a comprehensive, robust, and AI-agent-friendly interface to the PubChem PUG REST API.",
   "main": "dist/index.js",
@@ -62,22 +62,23 @@
     "zod": "^3.25.67"
   },
   "keywords": [
-    "typescript",
     "mcp",
-    "model-context-protocol",
-    "agent",
-    "autonomous-agent",
-    "agent-framework",
     "mcp-server",
+    "model-context-protocol",
+    "ai-agent",
+    "llm",
     "pubchem",
     "chemistry",
+    "cheminformatics",
     "bioinformatics",
+    "drug-discovery",
     "scientific-computing",
     "api-wrapper",
+    "typescript",
     "hono",
     "zod"
   ],
-  "author": "cyanheads <casey@caseyjhand.com> (https://github.com/cyanheads/mcp-ts-template#readme)",
+  "author": "cyanheads <casey@caseyjhand.com> (https://github.com/cyanheads/pubchem-mcp-server#readme)",
   "license": "Apache-2.0",
   "funding": [
     {

@@ -1,8 +1,8 @@
-# mcp-ts-template: Developer Guide & Architectural Standards
+# pubchem-mcp-server: Developer Guide & Architectural Standards
 
-**Effective Date:** 2025-06-15
+**Effective Date:** 2025-06-29
 
-This document mandates the development practices, architectural patterns, and operational procedures for projects based on the `mcp-ts-template`. It is the authoritative guide for ensuring code quality, consistency, and maintainability. All development must adhere to these standards.
+This document mandates the development practices, architectural patterns, and operational procedures for the `pubchem-mcp-server`. It is the authoritative guide for ensuring code quality, consistency, and maintainability. All development must adhere to these standards.
 
 ## I. Core Architectural Principles
 
@@ -35,9 +35,9 @@ Each tool must reside in its own directory within `src/mcp-server/tools/` and fo
   - **`logic.ts`**: Contains the core business logic. It **must** define and export the tool's Zod input schema, all inferred TypeScript types (input and output), and the main logic function.
   - **`registration.ts`**: Registers the tool with the MCP server. It imports from `logic.ts` and implements the "Handler" role described in our core principles.
 
-### B. The Authoritative Pattern: `echoTool`
+### B. The Authoritative Pattern: `searchCompoundByIdentifier`
 
-The refactored `echoTool` serves as the canonical example for all tool development.
+The `pubchem_search_compound_by_identifier` tool serves as the canonical example for all tool development.
 
 **Step 1: Define Schema and Logic (`logic.ts`)**
 
@@ -45,47 +45,52 @@ The `logic.ts` file defines the "what" and "how" of the tool. It is self-contain
 
 ```typescript
 /**
- * @fileoverview Defines the core logic, schemas, and types for the `echo_message` tool.
- * @module src/mcp-server/tools/echoTool/logic
+ * @fileoverview Defines the core logic, schemas, and types for the `pubchem_search_compound_by_identifier` tool.
+ * @module src/mcp-server/tools/searchCompoundByIdentifier/logic
  */
 import { z } from "zod";
+import { pubChemApiClient } from "../../../services/pubchem/pubchemApiClient.js";
+import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
 import { logger, type RequestContext } from "../../../utils/index.js";
 
 // 1. Define and export the Zod schema
-export const EchoToolInputSchema = z.object({
-  message: z
+export const PubchemSearchCompoundByIdentifierInputSchema = z.object({
+  identifierType: z
+    .enum(["name", "smiles", "inchikey"])
+    .describe("The type of chemical identifier being provided."),
+  identifier: z
     .string()
-    .min(1, "Message cannot be empty.")
-    .max(1000, "Message cannot exceed 1000 characters.")
-    .describe("The message to echo back."),
-  // ... other fields with .describe()
+    .min(1, "Identifier cannot be empty.")
+    .describe("The identifier string."),
 });
 
 // 2. Define and export TypeScript types
-export type EchoToolInput = z.infer<typeof EchoToolInputSchema>;
-export interface EchoToolResponse {
-  originalMessage: string;
-  formattedMessage: string;
-  repeatedMessage: string;
-  // ... other fields
+export type PubchemSearchCompoundByIdentifierInput = z.infer<
+  typeof PubchemSearchCompoundByIdentifierInputSchema
+>;
+export interface PubchemSearchCompoundByIdentifierOutput {
+  cids: number[];
 }
 
 /**
  * 3. Implement and export the core logic
- * @param params - The validated input parameters for the echo tool.
- * @param context - The request context, used for logging and tracing the operation.
- * @returns A promise that resolves with an object containing the processed response data.
+ * @param params - The validated input parameters.
+ * @param context - The request context for logging and tracing.
+ * @returns A promise that resolves with the search results.
+ * @throws {McpError} If the API request fails or the identifier is not found.
  */
-export async function echoToolLogic(
-  params: EchoToolInput,
+export async function pubchemSearchCompoundByIdentifierLogic(
+  params: PubchemSearchCompoundByIdentifierInput,
   context: RequestContext
-): Promise<EchoToolResponse> {
-  logger.debug("Processing echo message logic...", { ...context });
-  // ... business logic ...
-  // On success, RETURN a structured output object
-  return {
-    /* ... success data ... */
-  };
+): Promise<PubchemSearchCompoundByIdentifierOutput> {
+  logger.debug("Processing pubchem_search_compound_by_identifier logic...", {
+    ...context,
+  });
+  const { identifierType, identifier } = params;
+  const path = `/compound/${identifierType}/${encodeURIComponent(identifier)}/cids/JSON`;
+  const response = await pubChemApiClient.get(path, context);
+  // ... error handling and data transformation ...
+  return { cids: response.IdentifierList.CID };
 }
 ```
 
@@ -95,8 +100,8 @@ The `registration.ts` file wires the logic into the MCP server and handles all o
 
 ```typescript
 /**
- * @fileoverview Handles the registration of the `echo_message` tool.
- * @module src/mcp-server/tools/echoTool/registration
+ * @fileoverview Handles the registration of the `pubchem_search_compound_by_identifier` tool.
+ * @module src/mcp-server/tools/searchCompoundByIdentifier/registration
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -105,58 +110,48 @@ import {
   logger,
   requestContextService,
 } from "../../../utils/index.js";
-// 1. Import everything from the logic file
-import { EchoToolInput, EchoToolInputSchema, echoToolLogic } from "./logic.js";
+import {
+  pubchemSearchCompoundByIdentifierLogic,
+  PubchemSearchCompoundByIdentifierInputSchema,
+  PubchemSearchCompoundByIdentifierInput,
+} from "./logic.js";
 
-/**
- * Registers the 'echo_message' tool with the provided MCP server instance.
- * @param server - The MCP server instance to register the tool with.
- */
-export const registerEchoTool = async (server: McpServer): Promise<void> => {
-  const toolName = "echo_message";
+export const registerPubchemSearchCompoundByIdentifierTool = async (
+  server: McpServer
+): Promise<void> => {
+  const toolName = "pubchem_search_compound_by_identifier";
   const toolDescription =
-    "Echoes a message back with optional formatting and repetition.";
+    "Searches for PubChem Compound IDs (CIDs) using a common chemical identifier.";
 
   server.tool(
     toolName,
     toolDescription,
-    EchoToolInputSchema.shape,
-    async (params: EchoToolInput, mcpContext: any): Promise<CallToolResult> => {
+    PubchemSearchCompoundByIdentifierInputSchema.shape,
+    async (
+      params: PubchemSearchCompoundByIdentifierInput,
+      mcpContext: any
+    ): Promise<CallToolResult> => {
       const handlerContext = requestContextService.createRequestContext({
         /* ... */
       });
-
       try {
-        // 2. Invoke the core logic
-        const result = await echoToolLogic(params, handlerContext);
-
-        // 3. Format the SUCCESS response
+        const result = await pubchemSearchCompoundByIdentifierLogic(
+          params,
+          handlerContext
+        );
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
           isError: false,
         };
       } catch (error) {
-        // 4. CATCH any error thrown by the logic
-        const handledError = ErrorHandler.handleError(error, {
+        const mcpError = ErrorHandler.handleError(error, {
           /* ... */
         });
-
-        // 5. Format the ERROR response
-        const mcpError =
-          handledError instanceof McpError
-            ? handledError
-            : new McpError(/* ... */);
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify({
-                error: {
-                  code: mcpError.code,
-                  message: mcpError.message,
-                  details: mcpError.details,
-                },
-              }),
+              text: JSON.stringify({ error: mcpError.toJSON() }),
             },
           ],
           isError: true,
@@ -167,35 +162,26 @@ export const registerEchoTool = async (server: McpServer): Promise<void> => {
 };
 ```
 
-## III. Resource Development Workflow
+## III. Integrating External Services
 
-The process for creating Resources is similar to Tools, focusing on data retrieval.
+For interacting with the PubChem API, the server uses a dedicated singleton client.
 
-- **File Structure**: Same as tools, but under `src/mcp-server/resources/`.
-- **Registration**: Use `server.resource(registrationName, template, metadata, handler)`. The handler receives URI parameters and must return a `{ contents: [{ uri, blob, mimeType }] }` object.
+- **`PubChemApiClient`**: Located at `src/services/pubchem/pubchemApiClient.ts`, this singleton class manages all interactions with the PubChem PUG REST API. It handles URL construction, rate limiting (5 requests/second), request execution, and centralized error handling.
+- **Usage**: Import the `pubChemApiClient` singleton instance into your tool's `logic.ts` file to make API calls.
 
-## IV. Integrating External Services
-
-For interacting with external APIs (databases, etc.), use singleton provider classes.
-
-- **Encapsulation**: Each service provider (e.g., `src/services/llm-providers/openRouterProvider.ts`) should manage its own client, configuration, and API logic.
-- **Singleton Pattern**: Use a singleton to share one instance across the application (e.g., `src/services/supabase/supabaseClient.ts`).
-- **Usage**: Import the singleton instance into your tool's `logic.ts` file to use it.
-
-## V. Code Quality and Documentation
+## IV. Code Quality and Documentation
 
 - **JSDoc**: Every file must start with a `@fileoverview` and `@module` block. All exported functions and types must have clear, concise JSDoc comments explaining their purpose.
 - **Clarity Over Brevity**: Write self-documenting code with meaningful variable and function names.
 - **Immutability**: Prefer functional approaches and immutable data structures where possible to avoid side effects.
 - **Formatting**: All code must be formatted using Prettier (`npm run format`) before committing.
 
-## VI. Security Mandates
+## V. Security Mandates
 
 - **Input Sanitization**: All inputs from external sources (tool arguments, API responses) must be treated as untrusted. Use the `sanitization` utilities where appropriate.
 - **Secrets Management**: All secrets (API keys, auth keys) **must** be loaded from environment variables via the `config` module. Never hardcode secrets.
 - **Authentication & Authorization**:
   - The server supports `jwt` (dev) and `oauth` (prod) modes via `MCP_AUTH_MODE`.
   - Protect tools by checking scopes. Use the `withRequiredScopes(["scope:read"])` utility inside your tool handler.
-- **Rate Limiting**: Protect against abuse by using the centralized `rateLimiter`.
 
 This guide is the single source of truth for development standards. All code reviews will be conducted against these principles.
