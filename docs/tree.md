@@ -1,9 +1,9 @@
-# mcp-ts-template - Directory Structure
+# pubchem-mcp-server - Directory Structure
 
-Generated on: 2025-06-24 10:57:42
+Generated on: 2025-06-30 01:21:05
 
 ```
-mcp-ts-template
+pubchem-mcp-server
 ├── .github
 │   ├── workflows
 │   │   └── publish.yml
@@ -22,29 +22,8 @@ mcp-ts-template
 │   ├── README.md
 │   └── tree.ts
 ├── src
-│   ├── agent
-│   │   ├── agent-core
-│   │   │   └── agent.ts
-│   │   └── cli
-│   │       ├── boot.ts
-│   │       └── main.ts
 │   ├── config
 │   │   └── index.ts
-│   ├── mcp-client
-│   │   ├── client-config
-│   │   │   ├── configLoader.ts
-│   │   │   ├── mcp-config.json.example
-│   │   │   └── README.md
-│   │   ├── core
-│   │   │   ├── clientConnectionLogic.ts
-│   │   │   └── clientManager.ts
-│   │   ├── transports
-│   │   │   ├── httpClientTransport.ts
-│   │   │   ├── index.ts
-│   │   │   ├── stdioClientTransport.ts
-│   │   │   └── transportFactory.ts
-│   │   ├── index.ts
-│   │   └── README.md
 │   ├── mcp-server
 │   │   ├── resources
 │   │   │   └── echoResource
@@ -81,18 +60,6 @@ mcp-ts-template
 │   │   │   └── stdioTransport.ts
 │   │   ├── README.md
 │   │   └── server.ts
-│   ├── services
-│   │   ├── duck-db
-│   │   │   ├── duckDBConnectionManager.ts
-│   │   │   ├── duckDBQueryExecutor.ts
-│   │   │   ├── duckDBService.ts
-│   │   │   └── types.ts
-│   │   ├── llm-providers
-│   │   │   └── openRouterProvider.ts
-│   │   └── supabase
-│   │       └── supabaseClient.ts
-│   ├── storage
-│   │   └── duckdbExample.ts
 │   ├── types-global
 │   │   └── errors.ts
 │   ├── utils

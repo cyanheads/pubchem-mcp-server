@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "mcp-ts-template": {
+    "pubchem-mcp-server": {
       "command": "npx",
-      "args": ["mcp-ts-template"],
+      "args": ["pubchem-mcp-server"],
       "env": {
         "MCP_LOG_LEVEL": "debug",
         "MCP_TRANSPORT_TYPE": "http",
