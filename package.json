@@ -1,0 +1,111 @@
+{
+  "name": "mcp-ts-template",
+  "version": "1.6.0",
+  "description": "Jumpstart Model Context Protocol (MCP) development with this production-ready TypeScript template. Build robust MCP servers and clients with built-in utilities, authentication, and service integrations. Agent framework utilizing MCP Client included.",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "mcp-ts-template": "dist/index.js"
+  },
+  "exports": "./dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cyanheads/mcp-ts-template.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cyanheads/mcp-ts-template/issues"
+  },
+  "homepage": "https://github.com/cyanheads/mcp-ts-template#readme",
+  "scripts": {
+    "build": "tsc && node --loader ts-node/esm scripts/make-executable.ts dist/index.js",
+    "start": "node dist/index.js",
+    "start:stdio": "MCP_LOG_LEVEL=debug MCP_TRANSPORT_TYPE=stdio node dist/index.js",
+    "start:http": "MCP_LOG_LEVEL=debug MCP_TRANSPORT_TYPE=http node dist/index.js",
+    "start:agent": "MCP_LOG_LEVEL=debug node dist/agent/cli/boot.js",
+    "rebuild": "ts-node --esm scripts/clean.ts && npm run build",
+    "docs:generate": "typedoc --tsconfig ./tsconfig.typedoc.json",
+    "depcheck": "npx depcheck",
+    "tree": "ts-node --esm scripts/tree.ts",
+    "fetch-spec": "ts-node --esm scripts/fetch-openapi-spec.ts",
+    "format": "prettier --write \"**/*.{ts,js,json,md,html,css}\"",
+    "inspector": "npx mcp-inspector --config mcp.json --server mcp-ts-template",
+    "db:duckdb-example": "MCP_LOG_LEVEL=debug tsc && node dist/storage/duckdbExample.js"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "^1.3.1-alpha.22",
+    "@hono/node-server": "^1.14.4",
+    "@modelcontextprotocol/sdk": "^1.13.1",
+    "@supabase/supabase-js": "^2.50.1",
+    "@types/node": "^24.0.3",
+    "@types/sanitize-html": "^2.16.0",
+    "@types/validator": "13.15.2",
+    "chrono-node": "^2.8.0",
+    "dotenv": "^16.5.0",
+    "hono": "^4.8.2",
+    "ignore": "^7.0.5",
+    "jose": "^6.0.11",
+    "openai": "^5.7.0",
+    "partial-json": "^0.1.7",
+    "sanitize-html": "^2.17.0",
+    "tiktoken": "^1.0.21",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
+    "validator": "13.15.15",
+    "winston": "^3.17.0",
+    "winston-transport": "^4.9.0",
+    "node-cron": "^4.1.1",
+    "zod": "^3.25.67"
+  },
+  "keywords": [
+    "typescript",
+    "template",
+    "mcp",
+    "model-context-protocol",
+    "agent",
+    "autonomous-agent",
+    "agent-framework",
+    "architecture",
+    "error-handling",
+    "llm",
+    "ai-integration",
+    "mcp-server",
+    "mcp-client",
+    "hono",
+    "stdio",
+    "http",
+    "authentication",
+    "oauth",
+    "jwt",
+    "openrouter",
+    "duckdb",
+    "zod"
+  ],
+  "author": "cyanheads <casey@caseyjhand.com> (https://github.com/cyanheads/mcp-ts-template#readme)",
+  "license": "Apache-2.0",
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/cyanheads"
+    },
+    {
+      "type": "buy_me_a_coffee",
+      "url": "https://www.buymeacoffee.com/cyanheads"
+    }
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node-cron": "^3.0.11",
+    "axios": "^1.10.0",
+    "depcheck": "^1.4.7",
+    "js-yaml": "^4.1.0",
+    "prettier": "^3.6.0",
+    "typedoc": "^0.28.5"
+  }
+}
