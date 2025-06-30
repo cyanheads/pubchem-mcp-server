@@ -80,6 +80,9 @@
   ],
   "author": "cyanheads <casey@caseyjhand.com> (https://github.com/cyanheads/pubchem-mcp-server#readme)",
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "funding": [
     {
       "type": "github",
