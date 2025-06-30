@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2025-06-30 04:54:14
+Generated on: 2025-06-30 06:03:38
 
 ```
 pubchem-mcp-server
@@ -12,7 +12,9 @@ pubchem-mcp-server
 │   ├── api-references
 │   │   └── typedoc-reference.md
 │   ├── best-practices.md
+│   ├── ideas.md
 │   ├── project-spec.md
+│   ├── pubchem-api.md
 │   └── tree.md
 ├── scripts
 │   ├── clean.ts
@@ -25,10 +27,6 @@ pubchem-mcp-server
 │   │   └── index.ts
 │   ├── mcp-server
 │   │   ├── tools
-│   │   │   ├── fetchAssaySummary
-│   │   │   │   ├── index.ts
-│   │   │   │   ├── logic.ts
-│   │   │   │   └── registration.ts
 │   │   │   ├── fetchCompoundProperties
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
@@ -42,6 +40,10 @@ pubchem-mcp-server
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
 │   │   │   ├── getCompoundImage
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
+│   │   │   ├── getSummary
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
