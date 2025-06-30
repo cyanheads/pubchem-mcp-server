@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2025-06-30 03:10:22
+Generated on: 2025-06-30 04:54:14
 
 ```
 pubchem-mcp-server
@@ -10,8 +10,6 @@ pubchem-mcp-server
 │   └── FUNDING.yml
 ├── docs
 │   ├── api-references
-│   │   ├── duckDB.md
-│   │   ├── jsdoc-standard-tags.md
 │   │   └── typedoc-reference.md
 │   ├── best-practices.md
 │   ├── project-spec.md
@@ -43,7 +41,7 @@ pubchem-mcp-server
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
-│   │   │   ├── getCompoundImageUrl
+│   │   │   ├── getCompoundImage
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts

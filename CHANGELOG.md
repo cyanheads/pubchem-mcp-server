@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2025-06-30
+
+### Changed
+
+- **Tool Refactoring**: Overhauled the entire PubChem tool suite to improve robustness, align with best practices, and enhance input/output schemas.
+  - **Standardized Error Handling**: Refactored all tool registration files (`registration.ts`) to use a centralized `ErrorHandler.formatError` method, removing redundant `try...catch` blocks and ensuring consistent error responses.
+  - **Bulk Operations**:
+    - `pubchem_search_compound_by_identifier` now accepts an array of `identifiers` and returns a map of identifiers to their corresponding CIDs.
+    - `pubchem_fetch_assay_summary` now accepts an array of up to 5 `aids` and returns an array of summaries.
+  - **Enhanced `fetchSubstanceDetails`**: The tool now retrieves more comprehensive data in a single API call, including `xrefs` and full `compound` structures, and provides a richer output object.
+  - **Robust `fetchCompoundXrefs`**: The logic was completely rewritten to fetch each cross-reference type individually, preventing API timeouts on large requests. The output is now cleanly grouped by type.
+  - **Typed API Client**: The `pubChemApiClient`'s `get` method is now generic (`get<T>`), improving type safety for all API calls.
+- **Tool Rename**: Renamed the `getCompoundImageUrl` tool to `getCompoundImage` and relocated its directory for better consistency (`src/mcp-server/tools/getCompoundImage/`).
+- **Schema Improvements**: Updated Zod schemas across multiple tools for stricter validation and more descriptive outputs.
+
+### Fixed
+
+- **Corrected `fetchCompoundXrefs` Pagination**: Changed the default `pageSize` from 1000 to a more reasonable 50.
+
+### Removed
+
+- **Outdated Documentation**: Deleted obsolete documentation files (`docs/api-references/duckDB.md`, `docs/api-references/jsdoc-standard-tags.md`).
+
 ## [1.0.0] - 2025-06-30
 
 ### New Project
