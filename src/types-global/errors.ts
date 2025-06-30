@@ -25,6 +25,10 @@ export enum BaseErrorCode {
   CONFLICT = "CONFLICT",
   /** The request failed due to invalid input parameters or data. */
   VALIDATION_ERROR = "VALIDATION_ERROR",
+  /** The request was made with an invalid input. */
+  INVALID_INPUT = "INVALID_INPUT",
+  /** The request was made with a method that is not allowed for the resource. */
+  METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED",
   /** An error occurred while parsing input data (e.g., date string, JSON). */
   PARSING_ERROR = "PARSING_ERROR",
   /** The request was rejected because the client has exceeded rate limits. */
@@ -33,6 +37,10 @@ export enum BaseErrorCode {
   TIMEOUT = "TIMEOUT",
   /** The service is temporarily unavailable, possibly due to maintenance or overload. */
   SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE",
+  /** The server, while acting as a gateway or proxy, did not receive a timely response from the upstream server. */
+  GATEWAY_TIMEOUT = "GATEWAY_TIMEOUT",
+  /** A generic error occurred when interacting with an external service. */
+  EXTERNAL_SERVICE_ERROR = "EXTERNAL_SERVICE_ERROR",
   /** An unexpected error occurred on the server side. */
   INTERNAL_ERROR = "INTERNAL_ERROR",
   /** An error occurred, but the specific cause is unknown or cannot be categorized. */

@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2025-06-30 01:21:05
+Generated on: 2025-06-30 03:10:22
 
 ```
 pubchem-mcp-server
@@ -14,6 +14,7 @@ pubchem-mcp-server
 │   │   ├── jsdoc-standard-tags.md
 │   │   └── typedoc-reference.md
 │   ├── best-practices.md
+│   ├── project-spec.md
 │   └── tree.md
 ├── scripts
 │   ├── clean.ts
@@ -25,21 +26,44 @@ pubchem-mcp-server
 │   ├── config
 │   │   └── index.ts
 │   ├── mcp-server
-│   │   ├── resources
-│   │   │   └── echoResource
-│   │   │       ├── echoResourceLogic.ts
-│   │   │       ├── index.ts
-│   │   │       └── registration.ts
 │   │   ├── tools
-│   │   │   ├── catFactFetcher
+│   │   │   ├── fetchAssaySummary
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
-│   │   │   ├── echoTool
+│   │   │   ├── fetchCompoundProperties
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
-│   │   │   └── imageTest
+│   │   │   ├── fetchCompoundXrefs
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
+│   │   │   ├── fetchSubstanceDetails
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
+│   │   │   ├── getCompoundImageUrl
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
+│   │   │   ├── searchAssaysByTarget
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
+│   │   │   ├── searchCompoundByIdentifier
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
+│   │   │   ├── searchCompoundsByFormula
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
+│   │   │   ├── searchCompoundsBySimilarity
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
+│   │   │   └── searchCompoundsByStructure
 │   │   │       ├── index.ts
 │   │   │       ├── logic.ts
 │   │   │       └── registration.ts
@@ -60,6 +84,9 @@ pubchem-mcp-server
 │   │   │   └── stdioTransport.ts
 │   │   ├── README.md
 │   │   └── server.ts
+│   ├── services
+│   │   └── pubchem
+│   │       └── pubchemApiClient.ts
 │   ├── types-global
 │   │   └── errors.ts
 │   ├── utils

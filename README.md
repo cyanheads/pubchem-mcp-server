@@ -57,11 +57,11 @@ You can run the MCP server to make its tools available to any connected MCP agen
 
 The server is configured via environment variables. See `.env.example` for a full list of available options. No API key is required for the PubChem API.
 
-| Variable             | Description                                                      | Default     |
-| :------------------- | :--------------------------------------------------------------- | :---------- |
-| `MCP_TRANSPORT_TYPE` | Server transport: `stdio` or `http`.                             | `stdio`     |
-| `MCP_HTTP_PORT`      | Port for the HTTP server (if `MCP_TRANSPORT_TYPE=http`).         | `3010`      |
-| `MCP_LOG_LEVEL`      | Minimum logging level (e.g., `debug`, `info`, `warn`, `error`).  | `info`      |
+| Variable             | Description                                                     | Default |
+| :------------------- | :-------------------------------------------------------------- | :------ |
+| `MCP_TRANSPORT_TYPE` | Server transport: `stdio` or `http`.                            | `stdio` |
+| `MCP_HTTP_PORT`      | Port for the HTTP server (if `MCP_TRANSPORT_TYPE=http`).        | `3010`  |
+| `MCP_LOG_LEVEL`      | Minimum logging level (e.g., `debug`, `info`, `warn`, `error`). | `info`  |
 
 ## 🛠️ Tool Suite
 

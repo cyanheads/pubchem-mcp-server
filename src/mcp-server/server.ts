@@ -19,10 +19,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { config, environment } from "../config/index.js";
 import { ErrorHandler, logger, requestContextService } from "../utils/index.js";
 import { BaseErrorCode } from "../types-global/errors.js";
-import { registerEchoResource } from "./resources/echoResource/index.js";
-import { registerCatFactFetcherTool } from "./tools/catFactFetcher/index.js";
-import { registerEchoTool } from "./tools/echoTool/index.js";
-import { registerFetchImageTestTool } from "./tools/imageTest/index.js";
+import { registerPubchemSearchCompoundByIdentifierTool } from "./tools/searchCompoundByIdentifier/index.js";
+import { registerPubchemFetchCompoundPropertiesTool } from "./tools/fetchCompoundProperties/index.js";
+import { registerPubchemGetCompoundImageTool } from "./tools/getCompoundImageUrl/index.js";
+import { registerPubchemSearchCompoundsByStructureTool } from "./tools/searchCompoundsByStructure/index.js";
+import { registerPubchemSearchCompoundsBySimilarityTool } from "./tools/searchCompoundsBySimilarity/index.js";
+import { registerPubchemSearchCompoundsByFormulaTool } from "./tools/searchCompoundsByFormula/index.js";
+import { registerPubchemFetchSubstanceDetailsTool } from "./tools/fetchSubstanceDetails/index.js";
+import { registerPubchemFetchAssaySummaryTool } from "./tools/fetchAssaySummary/index.js";
+import { registerPubchemSearchAssaysByTargetTool } from "./tools/searchAssaysByTarget/index.js";
+import { registerPubchemFetchCompoundXrefsTool } from "./tools/fetchCompoundXrefs/index.js";
 import { startHttpTransport } from "./transports/httpTransport.js";
 import { connectStdioTransport } from "./transports/stdioTransport.js";
 
@@ -59,10 +65,16 @@ async function createMcpServerInstance(): Promise<McpServer> {
   await ErrorHandler.tryCatch(
     async () => {
       logger.debug("Registering resources and tools...", context);
-      await registerEchoResource(server);
-      await registerEchoTool(server);
-      await registerCatFactFetcherTool(server);
-      await registerFetchImageTestTool(server);
+      await registerPubchemSearchCompoundByIdentifierTool(server);
+      await registerPubchemFetchCompoundPropertiesTool(server);
+      await registerPubchemGetCompoundImageTool(server);
+      await registerPubchemSearchCompoundsByStructureTool(server);
+      await registerPubchemSearchCompoundsBySimilarityTool(server);
+      await registerPubchemSearchCompoundsByFormulaTool(server);
+      await registerPubchemFetchSubstanceDetailsTool(server);
+      await registerPubchemFetchAssaySummaryTool(server);
+      await registerPubchemSearchAssaysByTargetTool(server);
+      await registerPubchemFetchCompoundXrefsTool(server);
       logger.info("Resources and tools registered successfully", context);
     },
     {
