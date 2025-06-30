@@ -1,7 +1,7 @@
 {
   "name": "@cyanheads/pubchem-mcp-server",
   "version": "1.0.0",
-  "description": "A production-grade Model Context Protocol (MCP) server providing a comprehensive, robust, and AI-agent-friendly interface to the PubChem PUG REST API.",
+  "description": "A Model Context Protocol (MCP) server providing comprehensive LLM tools for the PubChem PUG REST API.",
   "main": "dist/index.js",
   "files": [
     "dist"

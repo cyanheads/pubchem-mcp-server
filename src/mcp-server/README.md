@@ -23,8 +23,8 @@ import { withRequiredScopes } from "../../transports/auth/index.js";
 
 // Inside a tool handler...
 async (params: ToolInput): Promise<CallToolResult> => {
-  // This will throw a FORBIDDEN error if the token lacks the 'facts:read' scope.
-  withRequiredScopes(["facts:read"]);
+  // This will throw a FORBIDDEN error if the token lacks the 'pubchem:read' scope.
+  withRequiredScopes(["pubchem:read"]);
 
   // ... rest of the tool logic
 };
@@ -32,51 +32,39 @@ async (params: ToolInput): Promise<CallToolResult> => {
 
 ---
 
-## Adding Your Own Tools & Resources
+## Adding Your Own Tools
 
 The core of extending this MCP server involves defining your custom logic and then registering it with the main server instance. This process is streamlined by the MCP SDK's helper functions.
 
 ### 🛠️ General Workflow
 
 1.  **Create Directories**:
-    Organize your new features by creating dedicated directories:
-    - For Tools: `src/mcp-server/tools/yourToolName/`
-    - For Resources: `src/mcp-server/resources/yourResourceName/`
+    Organize your new features by creating dedicated directories for each tool:
+    - `src/mcp-server/tools/yourToolName/`
 
 2.  **Implement Logic (`logic.ts`)**:
     Within your new directory, create a `logic.ts` file. This is where you'll define:
     - **Input/Output Schemas**: Use Zod to define clear and validated schemas for the inputs your tool will accept and the outputs it will produce. This is crucial for type safety and for the MCP host to understand how to interact with your tool.
-    - **Core Processing Function**: Write the main function that performs the action of your tool or retrieves the data for your resource. This function will receive validated arguments (for tools) or parameters (for resources).
+    - **Core Processing Function**: Write the main function that performs the action of your tool. This function will receive validated arguments and should interact with external services (like the PubChem API) via the dedicated API client.
 
 3.  **Register with the Server (`registration.ts`)**:
     Create a `registration.ts` file in your new directory. This file will:
     - Import your logic and schemas.
     - Import the `McpServer` type from the SDK and the `ErrorHandler` utility.
-    - **Use High-Level SDK Abstractions (Strongly Recommended)**:
-      - **For Tools**: Use `server.tool(name, description, zodSchemaShape, async handler => { ... })`.
-        - `name`: A unique identifier for your tool (e.g., `get_weather_forecast`).
+    - Use `server.tool(name, description, zodSchemaShape, async handler => { ... })` to register your tool.
+        - `name`: A unique identifier for your tool (e.g., `pubchem_search_compound_by_identifier`).
         - `description`: A clear, concise explanation of what the tool does. This is shown to the MCP host/LLM.
-        - `zodSchemaShape`: The Zod schema object defining the expected input arguments for your tool. The SDK uses this to generate the JSON Schema for the MCP host and to validate incoming arguments.
-        - `handler`: An asynchronous function that contains your tool's core logic. It receives the validated arguments. It **MUST** return a `CallToolResult` object: `{ content: [...], isError: boolean }`.
-        - **Annotations**: Remember to add relevant annotations (e.g., `readOnlyHint`, `destructiveHint`, `confirmationRequired`) as untrusted hints within the tool's metadata if applicable. These help the LLM understand the implications of using the tool.
-      - **For Resources**: Use `server.resource(registrationName, template, metadata, async handler => { ... })`.
-        - `registrationName`: A unique name for this resource registration.
-        - `template`: A `ResourceTemplate` object defining the URI pattern and any parameters.
-        - `metadata`: Additional metadata for the resource.
-        - `handler`: An asynchronous function that fetches/generates the resource content. It receives the URI and parsed parameters. It **MUST** return an object like `{ contents: [{ uri, blob, mimeType }] }`, where `blob` is the Base64 encoded content.
-        - If your resource supports subscriptions (`subscribe: true` in capabilities), you **MUST** also handle the `resources/unsubscribe` request appropriately.
-    - **Error Handling**: Wrap your handler logic and the registration call itself in `ErrorHandler.tryCatch(...)` to ensure robust error management and consistent logging.
+        - `zodSchemaShape`: The Zod schema object defining the expected input arguments.
+        - `handler`: An asynchronous function that contains your tool's core logic. It **MUST** return a `CallToolResult` object: `{ content: [...], isError: boolean }`.
+    - **Error Handling**: Wrap your handler logic in `ErrorHandler.tryCatch(...)` to ensure robust error management and consistent logging.
 
 4.  **Export & Integrate (`index.ts` and `server.ts`)**:
     - Create an `index.ts` file in your new directory that exports your registration function.
-    - Import and call your registration function within the `createMcpServerInstance` function in `src/mcp-server/server.ts`. This makes your new tool/resource part of the server when it initializes.
+    - Import and call your registration function within the `createMcpServerInstance` function in `src/mcp-server/server.ts`. This makes your new tool part of the server when it initializes.
 
-### ✨ Example References
+### ✨ Example Reference
 
-- **EchoTool**: See `src/mcp-server/tools/echoTool/` for a basic example of a synchronous tool.
-- **EchoResource**: See `src/mcp-server/resources/echoResource/` for a basic resource example.
-- **CatFactFetcher Tool**: For an example of a tool that performs asynchronous operations (like an external API call), refer to `src/mcp-server/tools/catFactFetcher/`. This demonstrates `async/await` usage, Promise management, and integration of external data sources within a tool's handler.
-- **ImageTest Tool**: See `src/mcp-server/tools/imageTest/` for an example of a tool that returns an image blob.
+- **PubChem Tools**: See any of the directories under `src/mcp-server/tools/` for a complete example of the required structure and patterns. The `pubchem_search_compound_by_identifier` tool is a good starting point.
 
 ### 🚀 Server Initialization and Transports
 
@@ -84,14 +72,14 @@ The main server logic in `src/mcp-server/server.ts` orchestrates the creation of
 
 - **Stdio Transport (`src/mcp-server/transports/stdioTransport.ts`)**: This module provides a straightforward wrapper for the SDK's `StdioServerTransport`. It's used for direct communication when the server is launched as a child process by a host application.
 
-- **Streamable HTTP Transport (`src/mcp-server/transports/httpTransport.ts`)**: This module integrates the SDK's `StreamableHTTPServerTransport` with a **Hono** web server. It is responsible for setting up the HTTP interface, including routing and middleware for CORS, rate limiting, and authentication. The underlying complexities of session management and Server-Sent Events (SSE) for streaming are handled by the SDK's transport class.
+- **Streamable HTTP Transport (`src/mcp-server/transports/httpTransport.ts`)**: This module integrates the SDK's `StreamableHTTPServerTransport` with a **Hono** web server. It is responsible for setting up the HTTP interface, including routing and middleware for CORS, rate limiting, and authentication.
 
-When you register your tools and resources in `createMcpServerInstance`, they become available regardless of the chosen transport, as the core `McpServer` instance is transport-agnostic.
+When you register your tools in `createMcpServerInstance`, they become available regardless of the chosen transport, as the core `McpServer` instance is transport-agnostic.
 
 ### 💡 Best Practices
 
 - **Clear Schemas**: Define precise Zod schemas for your tool inputs. This is key for reliable interaction with the MCP host and LLM.
-- **Descriptive Naming**: Use clear names and descriptions for your tools and resources.
+- **Descriptive Naming**: Use clear names and descriptions for your tools.
 - **Idempotency**: Design tools to be idempotent where possible.
 - **Comprehensive Error Handling**: Utilize the `ErrorHandler` to catch and log errors effectively, providing useful feedback to the client.
 - **Security**: Sanitize any inputs, especially if they are used in file paths, database queries, or external API calls. Refer to `src/utils/security/sanitization.ts`.
@@ -99,21 +87,16 @@ When you register your tools and resources in `createMcpServerInstance`, they be
 
 ### 🔌 Integrating External Services
 
-In addition to creating self-contained Tools and Resources, you will often need to interact with external APIs or services (e.g., databases, third-party LLMs). The recommended pattern is to encapsulate the logic for each external service into its own provider class.
+This server uses a dedicated singleton client to interact with the PubChem API.
 
 **Key Principles:**
 
-1.  **Encapsulation**: Each service provider should be responsible for its own configuration, client initialization, and API interaction logic.
-2.  **Singleton Pattern**: For services that maintain a persistent connection or state (like a database client), use a singleton pattern to ensure a single instance is shared across the application.
-3.  **Clear Error Handling**: Service providers should implement the "Logic Throws, Handlers Catch" pattern internally. The core API-calling logic should throw structured `McpError`s, and the public-facing methods should wrap these calls in `ErrorHandler.tryCatch` blocks.
+1.  **Encapsulation**: The `PubChemApiClient` (`src/services/pubchem/pubchemApiClient.ts`) encapsulates all logic for interacting with the PubChem PUG REST API.
+2.  **Singleton Pattern**: The client is a singleton, ensuring a single, rate-limited connection is shared across the application.
+3.  **Clear Error Handling**: The client implements the "Logic Throws, Handlers Catch" pattern internally.
 
-**Example Service Providers:**
-
-- **OpenRouter Provider (`src/services/llm-providers/openRouterProvider.ts`)**: Demonstrates how to create a handler class that manages an API client, including state, rate limiting, and wrapping core logic that throws structured errors.
-- **Supabase Client (`src/services/supabase/supabaseClient.ts`)**: Shows a straightforward singleton initialization pattern for a database client. It throws an error if the client is accessed before it has been properly configured and initialized.
-
-When building a new Tool that needs to interact with an external service, you should import the service's singleton instance and call its methods from within your tool's `logic.ts` file.
+When building a new Tool that needs to interact with the PubChem API, you should import the `pubChemApiClient` singleton instance and call its methods from within your tool's `logic.ts` file.
 
 ---
 
-By following these patterns, you can effectively extend the MCP server with new capabilities while maintaining a robust and well-structured codebase. For more detailed patterns and advanced examples, refer to the [.clinerules](../../../.clinerules) developer cheatsheet.
+By following these patterns, you can effectively extend the MCP server with new capabilities while maintaining a robust and well-structured codebase. For more detailed patterns and advanced examples, refer to the [.clinerules](../../../.clinerules) developer guide.
