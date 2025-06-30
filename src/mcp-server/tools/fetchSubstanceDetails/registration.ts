@@ -28,7 +28,7 @@ export const registerPubchemFetchSubstanceDetailsTool = async (
 ): Promise<void> => {
   const toolName = "pubchem_fetch_substance_details";
   const toolDescription =
-    "Retrieves details for a given PubChem Substance ID (SID), including its synonyms, source, deposition/modification dates, and any associated standardized Compound IDs (CIDs).";
+    "Retrieves a comprehensive record for a PubChem Substance ID (SID), including its source, deposition/modification dates, synonyms, associated Compound IDs (CIDs), and full cross-reference (xref) and compound data structures if available.";
 
   server.tool(
     toolName,

@@ -117,31 +117,39 @@ export async function pubchemFetchCompoundPropertiesLogic(
   });
 
   const { cids, properties } = params;
-  const cidsString = cids.join(",");
   const propertiesString = properties.join(",");
 
-  const path = `/compound/cid/${cidsString}/property/${propertiesString}/JSON`;
-
-  const response = await pubChemApiClient.get<PubChemPropertiesResponse>(
-    path,
-    context,
-  );
-
-  logger.debug("Raw PubChem response for pubchem_fetch_compound_properties", {
-    ...context,
-    response,
+  const promises = cids.map(async (cid) => {
+    const path = `/compound/cid/${cid}/property/${propertiesString}/JSON`;
+    try {
+      const response = await pubChemApiClient.get<PubChemPropertiesResponse>(
+        path,
+        context,
+      );
+      return response?.PropertyTable?.Properties || [];
+    } catch (error) {
+      logger.warning(`Failed to fetch properties for CID ${cid}`, {
+        ...context,
+        cid,
+        error,
+      });
+      return []; // Return empty array for this CID on failure
+    }
   });
 
-  if (!response || !response.PropertyTable?.Properties) {
+  const results = await Promise.all(promises);
+  const allProperties = results.flat();
+
+  if (allProperties.length === 0) {
     throw new McpError(
       BaseErrorCode.NOT_FOUND,
-      "Received an unexpected response format from PubChem API. Ensure CIDs are valid.",
-      { ...context, cids, response },
+      "Could not fetch properties for any of the provided CIDs.",
+      { ...context, cids },
     );
   }
 
   const result: PubchemFetchCompoundPropertiesOutput = {
-    results: response.PropertyTable.Properties,
+    results: allProperties,
   };
 
   logger.info(

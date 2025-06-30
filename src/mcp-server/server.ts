@@ -26,7 +26,7 @@ import { registerPubchemSearchCompoundsByStructureTool } from "./tools/searchCom
 import { registerPubchemSearchCompoundsBySimilarityTool } from "./tools/searchCompoundsBySimilarity/index.js";
 import { registerPubchemSearchCompoundsByFormulaTool } from "./tools/searchCompoundsByFormula/index.js";
 import { registerPubchemFetchSubstanceDetailsTool } from "./tools/fetchSubstanceDetails/index.js";
-import { registerPubchemFetchAssaySummaryTool } from "./tools/fetchAssaySummary/index.js";
+import { registerPubchemGetSummaryTool } from "./tools/getSummary/index.js";
 import { registerPubchemSearchAssaysByTargetTool } from "./tools/searchAssaysByTarget/index.js";
 import { registerPubchemFetchCompoundXrefsTool } from "./tools/fetchCompoundXrefs/index.js";
 import { startHttpTransport } from "./transports/httpTransport.js";
@@ -72,7 +72,7 @@ async function createMcpServerInstance(): Promise<McpServer> {
       await registerPubchemSearchCompoundsBySimilarityTool(server);
       await registerPubchemSearchCompoundsByFormulaTool(server);
       await registerPubchemFetchSubstanceDetailsTool(server);
-      await registerPubchemFetchAssaySummaryTool(server);
+      await registerPubchemGetSummaryTool(server);
       await registerPubchemSearchAssaysByTargetTool(server);
       await registerPubchemFetchCompoundXrefsTool(server);
       logger.info("Resources and tools registered successfully", context);

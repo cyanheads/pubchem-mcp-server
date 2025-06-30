@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2025-06-30
+
+### Added
+
+- **New `getSummary` Tool**: Introduced a new, versatile `pubchem_get_summary` tool that consolidates and replaces the former `fetchAssaySummary` tool. This new tool can fetch summaries for multiple PubChem entity types, including `assay`, `gene`, `protein`, `pathway`, `taxonomy`, and `cell`, providing a single, unified interface for retrieving summary data.
+- **New Documentation**: Added `docs/pubchem-api.md`, a comprehensive document detailing the PUG REST API, and `docs/ideas.md`, which outlines potential future enhancements for the server based on the API specification.
+
+### Changed
+
+- **Tool Refactoring**: The `fetchAssaySummary` tool has been completely removed and its functionality is now part of the new `pubchem_get_summary` tool. The server registration in `src/mcp-server/server.ts` has been updated accordingly.
+- **Enhanced `fetchSubstanceDetails`**: The tool's description has been updated to more accurately reflect its comprehensive output, which includes full cross-reference and compound data structures.
+
+### Fixed
+
+- **Corrected `fetchCompoundProperties` Logic**: The tool's logic has been fixed to correctly handle requests for multiple CIDs. It now iterates through each CID and makes individual API calls, ensuring that a failure for one CID does not prevent the retrieval of data for others.
+
 ## [1.0.1] - 2025-06-30
 
 ### Changed
