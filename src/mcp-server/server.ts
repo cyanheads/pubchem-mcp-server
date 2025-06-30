@@ -21,7 +21,7 @@ import { ErrorHandler, logger, requestContextService } from "../utils/index.js";
 import { BaseErrorCode } from "../types-global/errors.js";
 import { registerPubchemSearchCompoundByIdentifierTool } from "./tools/searchCompoundByIdentifier/index.js";
 import { registerPubchemFetchCompoundPropertiesTool } from "./tools/fetchCompoundProperties/index.js";
-import { registerPubchemGetCompoundImageTool } from "./tools/getCompoundImageUrl/index.js";
+import { registerPubchemGetCompoundImageTool } from "./tools/getCompoundImage/index.js";
 import { registerPubchemSearchCompoundsByStructureTool } from "./tools/searchCompoundsByStructure/index.js";
 import { registerPubchemSearchCompoundsBySimilarityTool } from "./tools/searchCompoundsBySimilarity/index.js";
 import { registerPubchemSearchCompoundsByFormulaTool } from "./tools/searchCompoundsByFormula/index.js";

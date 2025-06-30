@@ -10,11 +10,13 @@ import { logger, type RequestContext } from "../../../utils/index.js";
 
 // 1. Define and export the Zod schema for input validation
 export const PubchemFetchAssaySummaryInputSchema = z.object({
-  aid: z
-    .number()
-    .int()
-    .positive()
-    .describe("The PubChem BioAssay ID (AID). Must be a positive integer."),
+  aids: z
+    .array(z.number().int().positive())
+    .min(1, "At least one Assay ID (AID) must be provided.")
+    .max(5, "A maximum of 5 Assay IDs (AIDs) can be provided.")
+    .describe(
+      "An array of PubChem BioAssay IDs (AIDs). Must contain 1 to 5 positive integers.",
+    ),
 });
 
 // 2. Define and export the TypeScript type for the input
@@ -22,8 +24,8 @@ export type PubchemFetchAssaySummaryInput = z.infer<
   typeof PubchemFetchAssaySummaryInputSchema
 >;
 
-// 3. Define and export the Zod schema for the tool's output
-export const PubchemFetchAssaySummaryOutputSchema = z.object({
+// 3. Define and export the Zod schema for a single assay summary object
+export const AssaySummarySchema = z.object({
   aid: z.number().int().describe("The unique PubChem BioAssay ID (AID)."),
   name: z.string().describe("The official name of the bioassay."),
   description: z
@@ -60,19 +62,36 @@ export const PubchemFetchAssaySummaryOutputSchema = z.object({
     ),
 });
 
-// 4. Define and export the TypeScript type for the output
-export type PubchemFetchAssaySummaryOutput = z.infer<
-  typeof PubchemFetchAssaySummaryOutputSchema
->;
+// 4. Define and export the TypeScript type for a single assay summary and the final tool output
+export type AssaySummary = z.infer<typeof AssaySummarySchema>;
+export type PubchemFetchAssaySummaryOutput = AssaySummary[];
+
+/**
+ * Defines a flexible structure for the JSON response from the PubChem API for an assay summary.
+ * This accommodates variations in the returned data.
+ * @private
+ */
+type PubChemAssaySummaryResponse = {
+  AssaySummaries?: {
+    AssaySummary?: {
+      AID?: number;
+      Name?: string;
+      Description?: string[] | string;
+      SourceName?: string;
+      SIDCountAll?: number;
+      CIDCountActive?: number;
+    }[];
+  };
+};
 
 /**
  * Core logic for the `pubchem_fetch_assay_summary` tool. It retrieves a summary
- * for a specified PubChem BioAssay ID (AID).
+ * for a specified list of PubChem BioAssay IDs (AIDs).
  *
- * @param {PubchemFetchAssaySummaryInput} params - The validated input parameters, containing the AID.
+ * @param {PubchemFetchAssaySummaryInput} params - The validated input parameters, containing the AIDs.
  * @param {RequestContext} context - The request context for logging, tracing, and error handling.
- * @returns {Promise<PubchemFetchAssaySummaryOutput>} A promise that resolves with the structured assay summary.
- * @throws {McpError} Throws a structured error if the API request fails, the AID is not found, or the response is malformed.
+ * @returns {Promise<PubchemFetchAssaySummaryOutput>} A promise that resolves with an array of structured assay summaries.
+ * @throws {McpError} Throws a structured error if the API request fails, any AID is not found, or the response is malformed.
  */
 export async function pubchemFetchAssaySummaryLogic(
   params: PubchemFetchAssaySummaryInput,
@@ -83,38 +102,58 @@ export async function pubchemFetchAssaySummaryLogic(
     params,
   });
 
-  const { aid } = params;
-  const path = `/assay/aid/${aid}/summary/JSON`;
+  const { aids } = params;
+  const path = `/assay/aid/${aids.join(",")}/summary/JSON`;
 
-  const response = await pubChemApiClient.get(path, context);
+  const response = await pubChemApiClient.get<PubChemAssaySummaryResponse>(
+    path,
+    context,
+  );
 
   logger.debug("Raw PubChem response for pubchem_fetch_assay_summary", {
     ...context,
-    aid,
+    aids,
     response,
   });
 
-  if (!response?.AssaySummaries?.AssaySummary?.[0]) {
+  const summaries = response?.AssaySummaries?.AssaySummary;
+
+  if (!summaries || summaries.length === 0) {
     throw new McpError(
-      BaseErrorCode.EXTERNAL_SERVICE_ERROR,
-      `No assay summary found for AID ${aid}, or the response from PubChem was malformed.`,
-      { ...context, aid, response },
+      BaseErrorCode.NOT_FOUND,
+      `No assay summaries found for AIDs [${aids.join(
+        ", ",
+      )}], or the response from PubChem was malformed.`,
+      { ...context, aids, response },
     );
   }
 
-  const summary = response.AssaySummaries.AssaySummary[0];
+  const results: PubchemFetchAssaySummaryOutput = summaries.map((summary) => {
+    // Safely extract description, handling both string and array formats.
+    let description = "No description provided.";
+    if (summary.Description) {
+      description = Array.isArray(summary.Description)
+        ? summary.Description.join("\n")
+        : summary.Description;
+    }
 
-  const result: PubchemFetchAssaySummaryOutput = {
-    aid: summary.AID,
-    name: summary.Name,
-    description: summary.Description.join("\n"),
-    sourceName: summary.SourceName,
-    numSids: summary.SIDCountAll,
-    numActive: summary.CIDCountActive,
-    targets: [], // The summary endpoint does not provide target details. This is expected.
-  };
+    return {
+      aid: summary.AID ?? 0,
+      name: summary.Name ?? "N/A",
+      description,
+      sourceName: summary.SourceName ?? "N/A",
+      numSids: summary.SIDCountAll ?? 0,
+      numActive: summary.CIDCountActive ?? 0,
+      targets: [], // The summary endpoint does not provide target details. This is expected.
+    };
+  });
 
-  logger.info(`Successfully fetched summary for AID ${aid}.`, context);
+  logger.info(
+    `Successfully fetched ${results.length} summaries for AIDs [${aids.join(
+      ", ",
+    )}].`,
+    context,
+  );
 
-  return result;
+  return results;
 }

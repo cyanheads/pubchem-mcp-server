@@ -62,6 +62,21 @@ export type PubchemSearchCompoundsBySimilarityOutput = z.infer<
 >;
 
 /**
+ * Defines the expected structure of the JSON response from the PubChem API for a similarity search.
+ * @private
+ */
+type PubChemSimilaritySearchResponse = {
+  IdentifierList?: {
+    CID: number[];
+  };
+  Fault?: {
+    Code: string;
+    Message: string;
+    Details: string[];
+  };
+};
+
+/**
  * Core logic for the `pubchem_search_compounds_by_similarity` tool. It finds compounds
  * with a 2D structure similar to a given query compound.
  *
@@ -93,7 +108,10 @@ export async function pubchemSearchCompoundsBySimilarityLogic(
     query,
   )}/cids/JSON?Threshold=${threshold}&MaxRecords=${maxRecords}`;
 
-  const response = await pubChemApiClient.get(path, context);
+  const response = await pubChemApiClient.get<PubChemSimilaritySearchResponse>(
+    path,
+    context,
+  );
 
   logger.debug(
     "Raw PubChem response for pubchem_search_compounds_by_similarity",
@@ -116,7 +134,8 @@ export async function pubchemSearchCompoundsBySimilarityLogic(
   }
 
   if (
-    !response?.IdentifierList?.CID ||
+    !response ||
+    !response.IdentifierList?.CID ||
     !Array.isArray(response.IdentifierList.CID)
   ) {
     logger.warning(

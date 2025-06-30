@@ -89,6 +89,16 @@ export type PubchemFetchCompoundPropertiesOutput = z.infer<
 >;
 
 /**
+ * Defines the expected structure of the JSON response from the PubChem API for compound properties.
+ * @private
+ */
+type PubChemPropertiesResponse = {
+  PropertyTable: {
+    Properties: z.infer<typeof CompoundPropertiesSchema>[];
+  };
+};
+
+/**
  * Core logic for the `pubchem_fetch_compound_properties` tool. It retrieves a list of
  * specified physicochemical properties for one or more PubChem Compound IDs (CIDs).
  *
@@ -112,16 +122,19 @@ export async function pubchemFetchCompoundPropertiesLogic(
 
   const path = `/compound/cid/${cidsString}/property/${propertiesString}/JSON`;
 
-  const response = await pubChemApiClient.get(path, context);
+  const response = await pubChemApiClient.get<PubChemPropertiesResponse>(
+    path,
+    context,
+  );
 
   logger.debug("Raw PubChem response for pubchem_fetch_compound_properties", {
     ...context,
     response,
   });
 
-  if (!response?.PropertyTable?.Properties) {
+  if (!response || !response.PropertyTable?.Properties) {
     throw new McpError(
-      BaseErrorCode.EXTERNAL_SERVICE_ERROR,
+      BaseErrorCode.NOT_FOUND,
       "Received an unexpected response format from PubChem API. Ensure CIDs are valid.",
       { ...context, cids, response },
     );

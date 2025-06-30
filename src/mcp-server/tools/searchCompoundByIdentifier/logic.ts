@@ -13,11 +13,11 @@ export const PubchemSearchCompoundByIdentifierInputSchema = z.object({
   identifierType: z
     .enum(["name", "smiles", "inchikey"])
     .describe("The type of chemical identifier being provided."),
-  identifier: z
-    .string()
-    .min(1, "Identifier cannot be empty.")
+  identifiers: z
+    .array(z.string().min(1, "Identifier cannot be empty."))
+    .min(1, "At least one identifier must be provided.")
     .describe(
-      "The identifier string. Examples: 'aspirin' for name, 'CC(=O)Oc1ccccc1C(=O)O' for SMILES, or a valid InChIKey.",
+      "An array of identifier strings. Examples: ['aspirin', 'ibuprofen'] for name.",
     ),
 });
 
@@ -28,10 +28,10 @@ export type PubchemSearchCompoundByIdentifierInput = z.infer<
 
 // 3. Define and export the Zod schema for the tool's output
 export const PubchemSearchCompoundByIdentifierOutputSchema = z.object({
-  cids: z
-    .array(z.number().int())
+  results: z
+    .record(z.array(z.number().int()))
     .describe(
-      "A list of matching PubChem Compound IDs (CIDs). This is often a single result but can be multiple for ambiguous names.",
+      "An object mapping each input identifier to an array of matching PubChem Compound IDs (CIDs).",
     ),
 });
 
@@ -39,6 +39,21 @@ export const PubchemSearchCompoundByIdentifierOutputSchema = z.object({
 export type PubchemSearchCompoundByIdentifierOutput = z.infer<
   typeof PubchemSearchCompoundByIdentifierOutputSchema
 >;
+
+/**
+ * Defines the expected structure of the JSON response from the PubChem API for an identifier search.
+ * @private
+ */
+type PubChemIdentifierSearchResponse = {
+  IdentifierList?: {
+    CID: number[];
+  };
+  Fault?: {
+    Code: string;
+    Message: string;
+    Details: string[];
+  };
+};
 
 /**
  * Core logic for the `pubchem_search_compound_by_identifier` tool.
@@ -58,53 +73,40 @@ export async function pubchemSearchCompoundByIdentifierLogic(
     params,
   });
 
-  const { identifierType, identifier } = params;
+  const { identifierType, identifiers } = params;
+  const results: Record<string, number[]> = {};
 
-  const path = `/compound/${identifierType}/${encodeURIComponent(
-    identifier,
-  )}/cids/JSON`;
+  const promises = identifiers.map(async (identifier) => {
+    const path = `/compound/${identifierType}/${encodeURIComponent(
+      identifier,
+    )}/cids/JSON`;
+    try {
+      const response =
+        await pubChemApiClient.get<PubChemIdentifierSearchResponse>(
+          path,
+          context,
+        );
 
-  const response = await pubChemApiClient.get(path, context);
+      if (response?.IdentifierList?.CID) {
+        results[identifier] = response.IdentifierList.CID;
+      } else {
+        results[identifier] = [];
+      }
+    } catch (error) {
+      logger.warning(
+        `API call failed for identifier '${identifier}'. It will be omitted from the results.`,
+        { ...context, error },
+      );
+      results[identifier] = [];
+    }
+  });
 
-  logger.debug(
-    "Raw PubChem response for pubchem_search_compound_by_identifier",
-    {
-      ...context,
-      response,
-    },
-  );
-
-  if (response?.Fault) {
-    logger.error("PubChem API returned a fault for identifier search.", {
-      ...context,
-      fault: response.Fault,
-    });
-    throw new McpError(
-      BaseErrorCode.EXTERNAL_SERVICE_ERROR,
-      `PubChem API Fault: ${response.Fault.Message}`,
-      { ...context, details: response.Fault.Details },
-    );
-  }
-
-  if (
-    !response?.IdentifierList?.CID ||
-    !Array.isArray(response.IdentifierList.CID)
-  ) {
-    logger.warning(
-      "No CIDs found for the identifier search, or the response format was unexpected. Returning empty list.",
-      { ...context, identifier, response },
-    );
-    return { cids: [] };
-  }
-
-  const result: PubchemSearchCompoundByIdentifierOutput = {
-    cids: response.IdentifierList.CID,
-  };
+  await Promise.all(promises);
 
   logger.info(
-    `Found ${result.cids.length} CIDs for identifier '${identifier}'.`,
+    `Completed search for ${identifiers.length} identifiers.`,
     context,
   );
 
-  return result;
+  return { results };
 }

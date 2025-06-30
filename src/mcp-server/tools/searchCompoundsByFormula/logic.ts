@@ -58,6 +58,21 @@ export type PubchemSearchCompoundsByFormulaOutput = z.infer<
 >;
 
 /**
+ * Defines the expected structure of the JSON response from the PubChem API for a formula search.
+ * @private
+ */
+type PubChemFormulaSearchResponse = {
+  IdentifierList?: {
+    CID: number[];
+  };
+  Fault?: {
+    Code: string;
+    Message: string;
+    Details: string[];
+  };
+};
+
+/**
  * Core logic for the `pubchem_search_compounds_by_formula` tool. It finds compounds
  * that match a given molecular formula.
  *
@@ -81,7 +96,10 @@ export async function pubchemSearchCompoundsByFormulaLogic(
     formula,
   )}/cids/JSON?AllowOtherElements=${allowOtherElements}&MaxRecords=${maxRecords}`;
 
-  const response = await pubChemApiClient.get(path, context);
+  const response = await pubChemApiClient.get<PubChemFormulaSearchResponse>(
+    path,
+    context,
+  );
 
   logger.debug("Raw PubChem response for pubchem_search_compounds_by_formula", {
     ...context,
@@ -101,7 +119,8 @@ export async function pubchemSearchCompoundsByFormulaLogic(
   }
 
   if (
-    !response?.IdentifierList?.CID ||
+    !response ||
+    !response.IdentifierList?.CID ||
     !Array.isArray(response.IdentifierList.CID)
   ) {
     logger.warning(

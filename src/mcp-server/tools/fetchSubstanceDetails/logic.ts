@@ -27,9 +27,15 @@ export type PubchemFetchSubstanceDetailsInput = z.infer<
 // 3. Define and export the Zod schema for the tool's output
 export const PubchemFetchSubstanceDetailsOutputSchema = z.object({
   sid: z.number().int().describe("The unique PubChem Substance ID (SID)."),
-  sourceName: z
-    .string()
-    .describe("The name of the depositor or original data source."),
+  source: z
+    .object({
+      name: z.string().describe("The name of the depositor or data source."),
+      sourceId: z
+        .string()
+        .optional()
+        .describe("The unique identifier for the substance within the source."),
+    })
+    .describe("The original source of the substance information."),
   depositionDate: z
     .string()
     .describe(
@@ -48,12 +54,48 @@ export const PubchemFetchSubstanceDetailsOutputSchema = z.object({
     .describe(
       "A list of standardized PubChem Compound IDs (CIDs) that are structurally related to this substance.",
     ),
+  xrefs: z
+    .array(z.record(z.string()))
+    .optional()
+    .describe(
+      "A list of external cross-references, such as registry IDs or database URLs.",
+    ),
+  compounds: z
+    .array(z.any())
+    .optional()
+    .describe(
+      "A list of associated compound structures, including atoms, bonds, and coordinates.",
+    ),
 });
 
 // 4. Define and export the TypeScript type for the output
 export type PubchemFetchSubstanceDetailsOutput = z.infer<
   typeof PubchemFetchSubstanceDetailsOutputSchema
 >;
+
+/**
+ * Defines a flexible structure for the JSON response from the PubChem API for substance details.
+ * This accommodates variations in the returned data, such as the presence of compound information.
+ * @private
+ */
+type PubChemSubstanceDetailsResponse = {
+  PC_Substances: {
+    sid: { id: number };
+    source: {
+      db: {
+        name: string;
+        source_id?: { str?: string };
+      };
+    };
+    dates?: {
+      deposition?: { date: number[] };
+      modification?: { date: number[] };
+    };
+    synonyms?: string[];
+    compound?: any[];
+    xref?: Record<string, string>[];
+  }[];
+};
 
 /**
  * Core logic for the `pubchem_fetch_substance_details` tool. It retrieves detailed
@@ -76,25 +118,23 @@ export async function pubchemFetchSubstanceDetailsLogic(
 
   const { sid } = params;
 
-  // Two API calls are needed: one for substance details, one for related CIDs.
+  // A single API call to get all available substance details.
   const detailsPath = `/substance/sid/${sid}/JSON`;
-  const cidsPath = `/substance/sid/${sid}/cids/JSON`;
+  const detailsResponse =
+    await pubChemApiClient.get<PubChemSubstanceDetailsResponse>(
+      detailsPath,
+      context,
+    );
 
-  const [detailsResponse, cidsResponse] = await Promise.all([
-    pubChemApiClient.get(detailsPath, context),
-    pubChemApiClient.get(cidsPath, context),
-  ]);
-
-  logger.debug("Raw PubChem responses for pubchem_fetch_substance_details", {
+  logger.debug("Raw PubChem response for pubchem_fetch_substance_details", {
     ...context,
     sid,
     detailsResponse,
-    cidsResponse,
   });
 
-  if (!detailsResponse?.PC_Substances?.[0]) {
+  if (!detailsResponse || !detailsResponse.PC_Substances?.[0]) {
     throw new McpError(
-      BaseErrorCode.EXTERNAL_SERVICE_ERROR,
+      BaseErrorCode.NOT_FOUND,
       `No substance details found for SID ${sid}, or the response from PubChem was malformed.`,
       { ...context, sid, response: detailsResponse },
     );
@@ -102,15 +142,24 @@ export async function pubchemFetchSubstanceDetailsLogic(
 
   const substance = detailsResponse.PC_Substances[0];
 
-  const relatedCids = cidsResponse?.IdentifierList?.CID || [];
+  // Extract related CIDs directly from the substance details if available.
+  const relatedCids =
+    substance.compound
+      ?.map((c) => c.id?.id?.cid)
+      .filter((cid): cid is number => typeof cid === "number") || [];
 
   const result: PubchemFetchSubstanceDetailsOutput = {
     sid: substance.sid.id,
-    sourceName: substance.source.db.name,
-    depositionDate: substance.dates?.deposition.date.join("/") || "N/A",
-    modificationDate: substance.dates?.modification.date.join("/") || "N/A",
+    source: {
+      name: substance.source.db.name,
+      sourceId: substance.source.db.source_id?.str,
+    },
+    depositionDate: substance.dates?.deposition?.date.join("/") || "N/A",
+    modificationDate: substance.dates?.modification?.date.join("/") || "N/A",
     synonyms: substance.synonyms || [],
     relatedCids,
+    xrefs: substance.xref,
+    compounds: substance.compound,
   };
 
   logger.info(`Successfully fetched details for SID ${sid}.`, context);

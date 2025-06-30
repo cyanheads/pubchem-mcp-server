@@ -41,6 +41,21 @@ export type PubchemSearchAssaysByTargetOutput = z.infer<
 >;
 
 /**
+ * Defines the expected structure of the JSON response from the PubChem API for an assay target search.
+ * @private
+ */
+type PubChemAssayTargetSearchResponse = {
+  IdentifierList?: {
+    AID: number[];
+  };
+  Fault?: {
+    Code: string;
+    Message: string;
+    Details: string[];
+  };
+};
+
+/**
  * Core logic for the `pubchem_search_assays_by_target` tool. It finds BioAssay IDs (AIDs)
  * associated with a specific biological target.
  *
@@ -64,7 +79,10 @@ export async function pubchemSearchAssaysByTargetLogic(
     targetQuery,
   )}/aids/JSON`;
 
-  const response = await pubChemApiClient.get(path, context);
+  const response = await pubChemApiClient.get<PubChemAssayTargetSearchResponse>(
+    path,
+    context,
+  );
 
   logger.debug("Raw PubChem response for pubchem_search_assays_by_target", {
     ...context,
@@ -84,7 +102,8 @@ export async function pubchemSearchAssaysByTargetLogic(
   }
 
   if (
-    !response?.IdentifierList?.AID ||
+    !response ||
+    !response.IdentifierList?.AID ||
     !Array.isArray(response.IdentifierList.AID)
   ) {
     logger.warning(

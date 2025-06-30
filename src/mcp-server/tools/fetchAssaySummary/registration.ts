@@ -5,7 +5,6 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
 import {
   ErrorHandler,
   logger,
@@ -28,7 +27,7 @@ export const registerPubchemFetchAssaySummaryTool = async (
 ): Promise<void> => {
   const toolName = "pubchem_fetch_assay_summary";
   const toolDescription =
-    "Fetches a detailed summary for a specific PubChem BioAssay ID (AID), including its name, description, source, and statistics. This is useful for obtaining metadata about a particular biological assay.";
+    "Fetches detailed summaries for a list of up to 5 PubChem BioAssay IDs (AIDs), including their names, descriptions, sources, and statistics. This is useful for obtaining metadata about multiple biological assays in a single request.";
 
   server.tool(
     toolName,
@@ -47,15 +46,41 @@ export const registerPubchemFetchAssaySummaryTool = async (
 
       try {
         logger.info(
-          `Initiating tool request for ${toolName} with AID: ${params.aid}`,
+          `Initiating tool request for ${toolName} with AIDs: ${params.aids.join(
+            ", ",
+          )}`,
           handlerContext,
         );
         const result = await pubchemFetchAssaySummaryLogic(
           params,
           handlerContext,
         );
+
+        // Custom stringify to make large arrays of numbers more compact
+        const placeholderPrefix = "##JSON_STRINGIFY_PLACEHOLDER##";
+        let placeholderIndex = 0;
+        const placeholders: string[] = [];
+
+        const replacer = (key: string, value: any) => {
+          if (
+            Array.isArray(value) &&
+            value.every((item) => typeof item === "number")
+          ) {
+            const placeholder = `${placeholderPrefix}${placeholderIndex++}`;
+            placeholders.push(JSON.stringify(value));
+            return placeholder;
+          }
+          return value;
+        };
+
+        let text = JSON.stringify(result, replacer, 2);
+
+        for (let i = 0; i < placeholders.length; i++) {
+          text = text.replace(`"${placeholderPrefix}${i}"`, placeholders[i]);
+        }
+
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text }],
           isError: false,
         };
       } catch (error) {
@@ -65,30 +90,14 @@ export const registerPubchemFetchAssaySummaryTool = async (
           input: params,
         });
 
-        const mcpError =
-          handledError instanceof McpError
-            ? handledError
-            : new McpError(
-                BaseErrorCode.INTERNAL_ERROR,
-                "An unexpected error occurred while fetching the assay summary.",
-                { originalErrorName: handledError.name },
-              );
-
-        logger.error(`Error in ${toolName} handler`, {
-          ...handlerContext,
-          error: mcpError,
-        });
+        // No need to log here, handleError already does it.
 
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                error: {
-                  code: mcpError.code,
-                  message: mcpError.message,
-                  details: mcpError.details,
-                },
+                error: ErrorHandler.formatError(handledError),
               }),
             },
           ],

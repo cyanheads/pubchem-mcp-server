@@ -5,7 +5,6 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
 import {
   ErrorHandler,
   logger,
@@ -55,8 +54,42 @@ export const registerPubchemFetchSubstanceDetailsTool = async (
           params,
           handlerContext,
         );
+
+        // Custom stringify to make large arrays of numbers more compact
+        const placeholderPrefix = "##JSON_STRINGIFY_PLACEHOLDER##";
+        let placeholderIndex = 0;
+        const placeholders: string[] = [];
+
+        const replacer = (key: string, value: any) => {
+          const compactArrayKeys = new Set([
+            "aid",
+            "element",
+            "aid1",
+            "aid2",
+            "order",
+            "x",
+            "y",
+          ]);
+          if (
+            compactArrayKeys.has(key) &&
+            Array.isArray(value) &&
+            value.every((item) => typeof item === "number")
+          ) {
+            const placeholder = `${placeholderPrefix}${placeholderIndex++}`;
+            placeholders.push(JSON.stringify(value));
+            return placeholder;
+          }
+          return value;
+        };
+
+        let text = JSON.stringify(result, replacer, 2);
+
+        for (let i = 0; i < placeholders.length; i++) {
+          text = text.replace(`"${placeholderPrefix}${i}"`, placeholders[i]);
+        }
+
         return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+          content: [{ type: "text", text }],
           isError: false,
         };
       } catch (error) {
@@ -66,30 +99,14 @@ export const registerPubchemFetchSubstanceDetailsTool = async (
           input: params,
         });
 
-        const mcpError =
-          handledError instanceof McpError
-            ? handledError
-            : new McpError(
-                BaseErrorCode.INTERNAL_ERROR,
-                "An unexpected error occurred while fetching substance details.",
-                { originalErrorName: handledError.name },
-              );
-
-        logger.error(`Error in ${toolName} handler`, {
-          ...handlerContext,
-          error: mcpError,
-        });
+        // No need to log here, handleError already does it.
 
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                error: {
-                  code: mcpError.code,
-                  message: mcpError.message,
-                  details: mcpError.details,
-                },
+                error: ErrorHandler.formatError(handledError),
               }),
             },
           ],

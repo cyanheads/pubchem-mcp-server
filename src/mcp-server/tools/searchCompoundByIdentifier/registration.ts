@@ -5,7 +5,6 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
 import {
   ErrorHandler,
   logger,
@@ -28,7 +27,7 @@ export const registerPubchemSearchCompoundByIdentifierTool = async (
 ): Promise<void> => {
   const toolName = "pubchem_search_compound_by_identifier";
   const toolDescription =
-    "Searches for PubChem Compound IDs (CIDs) using a common chemical identifier like a name (e.g., 'aspirin'), SMILES string, or InChIKey. This is the first step for most compound-related workflows.";
+    "Searches for PubChem Compound IDs (CIDs) using a list of common chemical identifiers like names (e.g., ['aspirin', 'ibuprofen']), SMILES strings, or InChIKeys. This is the first step for most compound-related workflows.";
 
   server.tool(
     toolName,
@@ -47,7 +46,9 @@ export const registerPubchemSearchCompoundByIdentifierTool = async (
 
       try {
         logger.info(
-          `Initiating tool request for ${toolName} for identifier: '${params.identifier}'`,
+          `Initiating tool request for ${toolName} for identifiers: '${params.identifiers.join(
+            ", ",
+          )}'`,
           handlerContext,
         );
         const result = await pubchemSearchCompoundByIdentifierLogic(
@@ -65,30 +66,14 @@ export const registerPubchemSearchCompoundByIdentifierTool = async (
           input: params,
         });
 
-        const mcpError =
-          handledError instanceof McpError
-            ? handledError
-            : new McpError(
-                BaseErrorCode.INTERNAL_ERROR,
-                "An unexpected error occurred while searching for the compound identifier.",
-                { originalErrorName: handledError.name },
-              );
-
-        logger.error(`Error in ${toolName} handler`, {
-          ...handlerContext,
-          error: mcpError,
-        });
+        // No need to log here, handleError already does it.
 
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                error: {
-                  code: mcpError.code,
-                  message: mcpError.message,
-                  details: mcpError.details,
-                },
+                error: ErrorHandler.formatError(handledError),
               }),
             },
           ],

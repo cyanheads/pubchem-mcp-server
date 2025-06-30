@@ -55,13 +55,16 @@ class PubChemApiClient {
    * @returns A promise that resolves with the JSON response from the API.
    * @throws {McpError} If the request fails, times out, or the API returns an error.
    */
-  public async get(path: string, context: RequestContext): Promise<any> {
+  public async get<T>(
+    path: string,
+    context: RequestContext,
+  ): Promise<T | null> {
     const response = await this.executeRequest(path, context);
     // Handle cases where the response is OK but there's no content
     if (response.status === 204) {
       return null;
     }
-    return response.json();
+    return response.json() as Promise<T>;
   }
 
   /**

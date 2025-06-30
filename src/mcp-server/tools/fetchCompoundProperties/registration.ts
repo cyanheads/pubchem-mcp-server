@@ -5,7 +5,6 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
 import {
   ErrorHandler,
   logger,
@@ -66,30 +65,14 @@ export const registerPubchemFetchCompoundPropertiesTool = async (
           input: params,
         });
 
-        const mcpError =
-          handledError instanceof McpError
-            ? handledError
-            : new McpError(
-                BaseErrorCode.INTERNAL_ERROR,
-                "An unexpected error occurred while fetching compound properties.",
-                { originalErrorName: handledError.name },
-              );
-
-        logger.error(`Error in ${toolName} handler`, {
-          ...handlerContext,
-          error: mcpError,
-        });
+        // No need to log here, handleError already does it.
 
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                error: {
-                  code: mcpError.code,
-                  message: mcpError.message,
-                  details: mcpError.details,
-                },
+                error: ErrorHandler.formatError(handledError),
               }),
             },
           ],

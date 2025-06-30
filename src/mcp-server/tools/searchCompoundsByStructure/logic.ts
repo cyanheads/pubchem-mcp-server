@@ -58,6 +58,21 @@ export type PubchemSearchCompoundsByStructureOutput = z.infer<
 >;
 
 /**
+ * Defines the expected structure of the JSON response from the PubChem API for a structure search.
+ * @private
+ */
+type PubChemStructureSearchResponse = {
+  IdentifierList?: {
+    CID: number[];
+  };
+  Fault?: {
+    Code: string;
+    Message: string;
+    Details: string[];
+  };
+};
+
+/**
  * Core logic for the `pubchem_search_compounds_by_structure` tool. It performs a structural
  * search (substructure, superstructure, or identity) based on a query structure.
  *
@@ -89,7 +104,10 @@ export async function pubchemSearchCompoundsByStructureLogic(
     query,
   )}/cids/JSON?MaxRecords=${maxRecords}`;
 
-  const response = await pubChemApiClient.get(path, context);
+  const response = await pubChemApiClient.get<PubChemStructureSearchResponse>(
+    path,
+    context,
+  );
 
   logger.debug(
     "Raw PubChem response for pubchem_search_compounds_by_structure",
@@ -112,7 +130,8 @@ export async function pubchemSearchCompoundsByStructureLogic(
   }
 
   if (
-    !response?.IdentifierList?.CID ||
+    !response ||
+    !response.IdentifierList?.CID ||
     !Array.isArray(response.IdentifierList.CID)
   ) {
     logger.warning(
