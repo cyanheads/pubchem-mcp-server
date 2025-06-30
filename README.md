@@ -35,7 +35,9 @@ This server equips your AI with specialized tools to interact with PubChem:
 ## Table of Contents
 
 | [Overview](#overview) | [Features](#features) | [Installation](#installation) |
+
 | [Configuration](#configuration) | [Project Structure](#project-structure) |
+
 | [Tools](#tools) | [Development](#development) | [License](#license) |
 
 ## Overview
