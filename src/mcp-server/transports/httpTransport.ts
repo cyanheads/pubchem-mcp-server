@@ -16,28 +16,43 @@
  * @module src/mcp-server/transports/httpTransport
  */
 
-import { HttpBindings, serve, ServerType } from "@hono/node-server";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-import { Context, Hono, Next } from "hono";
-import { cors } from "hono/cors";
-import http from "http";
-import { randomUUID } from "node:crypto";
-import { config } from "../../config/index.js";
-import { BaseErrorCode, McpError } from "../../types-global/errors.js";
+import { randomUUID } from 'node:crypto';
+
+import {
+  Context,
+  Hono,
+  Next,
+} from 'hono';
+import { cors } from 'hono/cors';
+import http from 'http';
+
+import {
+  HttpBindings,
+  serve,
+  ServerType,
+} from '@hono/node-server';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import {
+  StreamableHTTPServerTransport,
+} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+
+import { config } from '../../config/index.js';
+import {
+  BaseErrorCode,
+  McpError,
+} from '../../types-global/errors.js';
 import {
   logger,
   rateLimiter,
   RequestContext,
   requestContextService,
-} from "../../utils/index.js";
+} from '../../utils/index.js';
 import {
   jwtAuthMiddleware,
   oauthMiddleware,
-  type AuthInfo,
-} from "./auth/index.js";
-import { httpErrorHandler } from "./httpErrorHandler.js";
+} from './auth/index.js';
+import { httpErrorHandler } from './httpErrorHandler.js';
 
 const HTTP_PORT = config.mcpHttpPort;
 const HTTP_HOST = config.mcpHttpHost;
@@ -114,7 +129,7 @@ function startHttpServerWithRetry(
               address: serverAddress,
             });
             if (process.stdout.isTTY) {
-              console.log(`\n🚀 MCP Server running at: ${serverAddress}\n`);
+              console.error(`\n🚀 MCP Server running at: ${serverAddress}\n`);
             }
           },
         );

@@ -3,10 +3,19 @@
  * @module src/mcp-server/tools/fetchCompoundProperties/logic
  */
 
-import { z } from "zod";
-import { pubChemApiClient } from "../../../services/pubchem/pubchemApiClient.js";
-import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
-import { logger, type RequestContext } from "../../../utils/index.js";
+import { z } from 'zod';
+
+import {
+  pubChemApiClient,
+} from '../../../services/pubchem/pubchemApiClient.js';
+import {
+  BaseErrorCode,
+  McpError,
+} from '../../../types-global/errors.js';
+import {
+  logger,
+  type RequestContext,
+} from '../../../utils/index.js';
 
 // 1. Define and export the Zod enum for available compound properties
 export const PubchemCompoundPropertiesEnum = z.enum([
@@ -27,6 +36,7 @@ export const PubchemCompoundPropertiesEnum = z.enum([
   "RotatableBondCount",
   "HeavyAtomCount",
   "CovalentUnitCount",
+  "SMILES"
 ]);
 
 // 2. Define and export the Zod schema for input validation

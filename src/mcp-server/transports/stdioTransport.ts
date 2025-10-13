@@ -18,9 +18,16 @@
  * @module src/mcp-server/transports/stdioTransport
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { ErrorHandler, logger, RequestContext } from "../../utils/index.js";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import {
+  StdioServerTransport,
+} from '@modelcontextprotocol/sdk/server/stdio.js';
+
+import {
+  ErrorHandler,
+  logger,
+  RequestContext,
+} from '../../utils/index.js';
 
 /**
  * Connects a given `McpServer` instance to the Stdio transport.
@@ -68,7 +75,7 @@ export async function connectStdioTransport(
       operationContext,
     );
     if (process.stdout.isTTY) {
-      console.log(
+      console.error(
         `\n🚀 MCP Server running in STDIO mode.\n   (MCP Spec: 2025-03-26 Stdio Transport)\n`,
       );
     }

@@ -17,9 +17,9 @@
  * // ts-node --esm scripts/tree.ts ./documentation/structure.md --depth=3
  */
 
-import fs from "fs/promises";
-import ignore from "ignore"; // Import the 'ignore' library
-import path from "path";
+import fs from 'fs/promises';
+import ignore from 'ignore'; // Import the 'ignore' library
+import path from 'path';
 
 // Get the type of the instance returned by ignore()
 type Ignore = ReturnType<typeof ignore>;
@@ -284,7 +284,7 @@ const writeTreeToFile = async (): Promise<void> => {
       const finalContent = fileHeader + depthInfo + treeBlock + fileFooter;
 
       await fs.writeFile(resolvedOutputFile, finalContent);
-      console.log(
+      console.error(
         `Successfully generated and updated tree structure in: ${resolvedOutputFile}`,
       );
     }
