@@ -43,6 +43,16 @@
     "bioactivity"
   ],
   "license": "Apache-2.0",
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/cyanheads"
+    },
+    {
+      "type": "buy_me_a_coffee",
+      "url": "https://www.buymeacoffee.com/cyanheads"
+    }
+  ],
   "engines": {
     "node": ">=22.0.0",
     "bun": ">=1.2.0"
