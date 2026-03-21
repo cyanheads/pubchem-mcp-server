@@ -1,11 +1,12 @@
 <div align="center">
-  <h1>pubchem-mcp-server</h1>
-  <p><b>MCP server for the PubChem chemical database. Search compounds, fetch properties, safety data, bioactivity, cross-references, and entity summaries. Runs over stdio or HTTP.</b></p>
+  <h1>@cyanheads/pubchem-mcp-server</h1>
+  <p><b>MCP server for the PubChem chemical database. Search compounds, fetch properties, safety data, bioactivity, cross-references, and entity summaries. STDIO & Streamable HTTP</b></p>
+  <p><b>8 Tools</b></p>
 </div>
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.1.1-blue.svg?style=flat-square)](./CHANGELOG.md) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.27.1-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![TypeScript](https://img.shields.io/badge/TypeScript-^5.9.3-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.2.0-f472b6.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.1.3-blue.svg?style=flat-square)](./CHANGELOG.md) [![Framework](https://img.shields.io/badge/Built%20on-@cyanheads/mcp--ts--core-259?style=flat-square)](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.27.1-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![TypeScript](https://img.shields.io/badge/TypeScript-^5.9.3-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.2.0-f472b6.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -114,16 +115,19 @@ Add to your MCP client config (e.g., `claude_desktop_config.json`):
 ### Installation
 
 1. **Clone the repository:**
+
 ```sh
 git clone https://github.com/cyanheads/pubchem-mcp-server.git
 ```
 
-2. **Navigate into the directory:**
+1. **Navigate into the directory:**
+
 ```sh
 cd pubchem-mcp-server
 ```
 
-3. **Install dependencies:**
+1. **Install dependencies:**
+
 ```sh
 bun install
 ```
@@ -147,17 +151,20 @@ No API keys are required — PubChem's API is freely accessible.
 ### Local Development
 
 - **Build and run the production version:**
+
   ```sh
   bun run build
   bun run start:http   # or start:stdio
   ```
 
 - **Run in dev mode (auto-reload):**
+
   ```sh
   bun run dev:stdio    # or dev:http
   ```
 
 - **Run checks and tests:**
+
   ```sh
   bun run devcheck     # Lints, formats, type-checks
   bun run test         # Runs test suite
