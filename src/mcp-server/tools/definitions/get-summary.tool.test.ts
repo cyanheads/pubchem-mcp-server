@@ -91,27 +91,6 @@ describe('getSummary handler', () => {
     expect(result.summaries[1]!.found).toBe(false);
   });
 
-  it('extracts substance summary fields', async () => {
-    mockClient.getEntitySummary.mockResolvedValueOnce({
-      SID: 12345,
-      SourceName: 'ChEMBL',
-      DepositDate: '2020-01-15',
-      Synonym: ['Drug-A'],
-      CompoundIDList: [2244],
-    });
-    const ctx = createMockContext();
-    const input = getSummary.input.parse({
-      entityType: 'substance',
-      identifiers: [12345],
-    });
-    const result = await getSummary.handler(input, ctx);
-
-    const data = result.summaries[0]!.data!;
-    expect(data.sid).toBe(12345);
-    expect(data.source).toBe('ChEMBL');
-    expect(data.relatedCids).toEqual([2244]);
-  });
-
   it('extracts taxonomy summary fields', async () => {
     mockClient.getEntitySummary.mockResolvedValueOnce({
       TaxonomyID: 9606,

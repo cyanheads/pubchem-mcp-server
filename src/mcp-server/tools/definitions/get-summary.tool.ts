@@ -7,15 +7,7 @@
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 
-const entityTypeEnum = z.enum([
-  'assay',
-  'gene',
-  'protein',
-  'pathway',
-  'taxonomy',
-  'cell',
-  'substance',
-]);
+const entityTypeEnum = z.enum(['assay', 'gene', 'protein', 'taxonomy']);
 
 type EntityType = z.infer<typeof entityTypeEnum>;
 
@@ -23,8 +15,7 @@ export const getSummary = tool('pubchem_get_summary', {
   title: 'Get Entity Summary',
   description:
     'Get descriptive summaries for PubChem entities by ID. Supports assays (AID), genes (Gene ID), ' +
-    'proteins (UniProt accession), pathways (e.g. "Reactome:R-HSA-70171"), taxonomy (Tax ID), ' +
-    'cell lines (e.g. "CVCL_0030"), and substances (SID). Up to 10 per call.',
+    'proteins (UniProt accession), and taxonomy (Tax ID). Up to 10 per call.',
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
@@ -42,10 +33,7 @@ export const getSummary = tool('pubchem_get_summary', {
           '- assay: AID (number), e.g. [1000]\n' +
           '- gene: Gene ID (number), e.g. [1956]\n' +
           '- protein: UniProt accession (string), e.g. ["P00533"]\n' +
-          '- pathway: Prefixed accession (string), e.g. ["Reactome:R-HSA-70171"]\n' +
-          '- taxonomy: Tax ID (number), e.g. [9606]\n' +
-          '- cell: Cellosaurus accession (string), e.g. ["CVCL_0030"]\n' +
-          '- substance: SID (number), e.g. [12345]',
+          '- taxonomy: Tax ID (number), e.g. [9606]',
       ),
   }),
   output: z.object({
@@ -155,17 +143,6 @@ function extractSummary(
         taxonomy: raw.Taxonomy ?? raw.ScientificName,
         synonyms: raw.Synonym ?? raw.OtherNames,
       };
-    case 'pathway':
-      return {
-        pathwayAccession: raw.PathwayAccession ?? raw.Accession,
-        sourceName: raw.SourceName,
-        name: raw.Name,
-        type: raw.Type,
-        category: raw.Category,
-        description: raw.Description,
-        taxonomyId: raw.TaxID ?? raw.TaxonomyID,
-        taxonomy: raw.Taxonomy,
-      };
     case 'taxonomy':
       return {
         taxonomyId: raw.TaxonomyID ?? raw.TaxID,
@@ -173,25 +150,6 @@ function extractSummary(
         commonName: raw.CommonName,
         rank: raw.Rank,
         lineage: raw.Lineage ?? raw.ParentTaxList,
-      };
-    case 'cell':
-      return {
-        cellAccession: raw.CellAccession ?? raw.Accession,
-        name: raw.Name,
-        sex: raw.Sex,
-        category: raw.Category,
-        sourceTissue: raw.SourceTissue ?? raw.Tissue,
-        sourceOrganism: raw.SourceOrganism ?? raw.Organism,
-        synonyms: raw.Synonym ?? raw.OtherNames,
-      };
-    case 'substance':
-      return {
-        sid: raw.SID,
-        source: raw.SourceName,
-        depositionDate: raw.DepositDate ?? raw.CreateDate,
-        modificationDate: raw.ModifyDate,
-        synonyms: raw.Synonym,
-        relatedCids: raw.CompoundIDList ?? raw.StandardizedCID,
       };
     default:
       return raw;

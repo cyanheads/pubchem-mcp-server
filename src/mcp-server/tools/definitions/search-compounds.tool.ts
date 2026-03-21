@@ -58,8 +58,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .string()
       .optional()
       .describe(
-        'Required for formula search. Molecular formula in Hill notation (e.g. "C6H12O6"). ' +
-          'Supports parentheses (Ca(OH)2) and isotope notation.',
+        'Required for formula search. Molecular formula in Hill notation (e.g. "C6H12O6", "CaH2O2").',
       ),
     allowOtherElements: z
       .boolean()
