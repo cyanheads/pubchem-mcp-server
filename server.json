@@ -6,14 +6,14 @@
     "url": "https://github.com/cyanheads/pubchem-mcp-server",
     "source": "github"
   },
-  "version": "0.1.2",
+  "version": "0.1.3",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@cyanheads/pubchem-mcp-server",
       "runtimeHint": "bun",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "packageArguments": [
         { "type": "positional", "value": "run" },
         { "type": "positional", "value": "start:stdio" }
@@ -36,7 +36,7 @@
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@cyanheads/pubchem-mcp-server",
       "runtimeHint": "bun",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "packageArguments": [
         { "type": "positional", "value": "run" },
         { "type": "positional", "value": "start:http" }

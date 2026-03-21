@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3] — 2026-03-21
+
+### Changed
+
+- **README polish** — added framework badge, tool count, fixed list numbering and markdown formatting
+- **Dependency** — updated `@cyanheads/mcp-ts-core` from `^0.1.20` to `^0.1.21`
+
 ## [0.1.2] — 2026-03-21
 
 ### Added
