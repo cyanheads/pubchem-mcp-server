@@ -5,7 +5,7 @@
 
 import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getCompoundXrefs } from './get-compound-xrefs.tool.js';
+import { getCompoundXrefs } from '@/mcp-server/tools/definitions/get-compound-xrefs.tool.js';
 
 const mockClient = {
   getXrefs: vi.fn(),

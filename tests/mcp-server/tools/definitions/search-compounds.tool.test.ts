@@ -5,7 +5,7 @@
 
 import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { searchCompounds } from './search-compounds.tool.js';
+import { searchCompounds } from '@/mcp-server/tools/definitions/search-compounds.tool.js';
 
 const mockClient = {
   searchByName: vi.fn(),

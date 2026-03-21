@@ -5,7 +5,7 @@
 
 import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getCompoundImage } from './get-compound-image.tool.js';
+import { getCompoundImage } from '@/mcp-server/tools/definitions/get-compound-image.tool.js';
 
 const mockClient = {
   getImage: vi.fn(),

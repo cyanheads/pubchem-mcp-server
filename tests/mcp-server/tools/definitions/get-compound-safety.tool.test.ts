@@ -5,7 +5,7 @@
 
 import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getCompoundSafety } from './get-compound-safety.tool.js';
+import { getCompoundSafety } from '@/mcp-server/tools/definitions/get-compound-safety.tool.js';
 
 const mockClient = {
   getSafetyData: vi.fn(),

@@ -5,8 +5,8 @@
 
 import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getBioactivity } from '@/mcp-server/tools/definitions/get-bioactivity.tool.js';
 import type { BioactivityRow } from '@/services/pubchem/types.js';
-import { getBioactivity } from './get-bioactivity.tool.js';
 
 const mockClient = {
   getAssaySummary: vi.fn(),
