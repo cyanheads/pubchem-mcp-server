@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.1] — 2026-03-21
+
+### Changed
+
+- **Package rename** — published as `@cyanheads/pubchem-mcp-server` (scoped npm package)
+- **Bioactivity target fields** — replaced `targetGeneSymbol`/`targetName` with `targetAccession` (UniProt/GenBank) and `targetGeneId` (NCBI Gene ID) to match actual PubChem API columns
+- **Activity value parsing** — uses prefix-based column matching for headers with embedded units (e.g. "Activity Value [uM]") instead of relying on a separate unit column
+- **Summary tool** — removed `pathway`, `cell`, and `substance` entity types; now supports `assay`, `gene`, `protein`, `taxonomy`
+- **Formula search description** — simplified, removed unsupported parentheses/isotope notation claims
+- **Dependency** — updated `@cyanheads/mcp-ts-core` from `^0.1.16` to `^0.1.18`
+
+### Fixed
+
+- **Async search polling** — added `ListKeyResponse` handling and `pollListKey()` for long-running PubChem searches (formula, similarity) that return a `Waiting` response instead of immediate results
+- **Property name normalization** — maps PubChem's returned field names back to the names consumers requested (e.g. `SMILES` → `CanonicalSMILES`)
+- **GHS safety deduplication** — pictograms, hazard statements, and precautionary statements are now deduplicated across depositors
+- **Assay target type mapping** — `proteinaccession` is now correctly mapped to `accession` for the PubChem API path
+
 ## [0.1.0] — 2026-03-21
 
 Initial release using `@cyanheads/mcp-ts-core`. Previously built on mcp-ts-template, the new @cyanheads/mcp-ts-core framework provides plumbing.
@@ -14,7 +32,7 @@ Initial release using `@cyanheads/mcp-ts-core`. Previously built on mcp-ts-templ
   - `pubchem_get_compound_xrefs` — external database cross-references (PubMed, patents, genes, proteins, taxonomy)
   - `pubchem_get_bioactivity` — assay results, targets, and activity values (IC50, EC50, Ki)
   - `pubchem_search_assays` — find bioassays by biological target
-  - `pubchem_get_summary` — summaries for assays, genes, proteins, pathways, taxonomy, cell lines, substances
+  - `pubchem_get_summary` — summaries for assays, genes, proteins, and taxonomy
 - **PubChem API client** with sliding-window rate limiter (5 req/s), retry with exponential backoff, and structured response parsing for both PUG REST and PUG View APIs
 - **Test suite** with Vitest — colocated `*.tool.test.ts` for every tool definition
 - **Build tooling** — Biome for linting/formatting, custom build/devcheck/tree scripts

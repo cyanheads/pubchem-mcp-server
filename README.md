@@ -5,7 +5,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.1.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.27.1-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![TypeScript](https://img.shields.io/badge/TypeScript-^5.9.3-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.2.0-f472b6.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.1.1-blue.svg?style=flat-square)](./CHANGELOG.md) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.27.1-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![TypeScript](https://img.shields.io/badge/TypeScript-^5.9.3-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.2.0-f472b6.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -24,7 +24,7 @@ Eight tools for querying PubChem's chemical information database:
 | `pubchem_get_compound_xrefs` | Get external database cross-references (PubMed, patents, genes, proteins, etc.). |
 | `pubchem_get_bioactivity` | Get a compound's bioactivity profile: assay results, targets, and activity values. |
 | `pubchem_search_assays` | Find bioassays by biological target (gene symbol, protein, Gene ID, UniProt accession). |
-| `pubchem_get_summary` | Get summaries for PubChem entities: assays, genes, proteins, pathways, taxonomy, cell lines, substances. |
+| `pubchem_get_summary` | Get summaries for PubChem entities: assays, genes, proteins, taxonomy. |
 
 ### `pubchem_search_compounds`
 
@@ -53,7 +53,7 @@ Get detailed compound information by CID.
 
 Get a compound's bioactivity profile from PubChem BioAssay.
 
-- Returns assay outcomes (Active/Inactive/Inconclusive), target info (gene symbols, protein names), and quantitative values (IC50, EC50, Ki)
+- Returns assay outcomes (Active/Inactive/Inconclusive), target info (protein accessions, NCBI Gene IDs), and quantitative values (IC50, EC50, Ki)
 - Filter by outcome to focus on active results
 - Caps at 100 results per request (well-studied compounds may have thousands)
 
@@ -61,9 +61,9 @@ Get a compound's bioactivity profile from PubChem BioAssay.
 
 ### `pubchem_get_summary`
 
-Get descriptive summaries for seven PubChem entity types.
+Get descriptive summaries for four PubChem entity types.
 
-- Assays (AID), genes (Gene ID), proteins (UniProt accession), pathways (Reactome/KEGG accession), taxonomy (Tax ID), cell lines (Cellosaurus accession), substances (SID)
+- Assays (AID), genes (Gene ID), proteins (UniProt accession), taxonomy (Tax ID)
 - Up to 10 entities per call
 - Type-specific field extraction for clean, structured output
 
@@ -96,7 +96,7 @@ Add to your MCP client config (e.g., `claude_desktop_config.json`):
     "pubchem": {
       "type": "stdio",
       "command": "bunx",
-      "args": ["pubchem-mcp-server@latest"],
+      "args": ["@cyanheads/pubchem-mcp-server@latest"],
       "env": {
         "MCP_TRANSPORT_TYPE": "stdio"
       }
