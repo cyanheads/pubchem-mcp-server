@@ -1,6 +1,27 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## [0.1.0] — 2026-03-21
+
+Initial release using `@cyanheads/mcp-ts-core`. Previously built on mcp-ts-template, the new @cyanheads/mcp-ts-core framework provides plumbing.
+
+### Added
+
+- **8 tools** for querying PubChem's chemical information database:
+  - `pubchem_search_compounds` — search by name, SMILES, InChIKey, formula, substructure, superstructure, or 2D similarity
+  - `pubchem_get_compound_details` — physicochemical properties, descriptions, and synonyms (batch up to 100 CIDs)
+  - `pubchem_get_compound_image` — 2D structure diagram (PNG)
+  - `pubchem_get_compound_safety` — GHS hazard classification and safety data
+  - `pubchem_get_compound_xrefs` — external database cross-references (PubMed, patents, genes, proteins, taxonomy)
+  - `pubchem_get_bioactivity` — assay results, targets, and activity values (IC50, EC50, Ki)
+  - `pubchem_search_assays` — find bioassays by biological target
+  - `pubchem_get_summary` — summaries for assays, genes, proteins, pathways, taxonomy, cell lines, substances
+- **PubChem API client** with sliding-window rate limiter (5 req/s), retry with exponential backoff, and structured response parsing for both PUG REST and PUG View APIs
+- **Test suite** with Vitest — colocated `*.tool.test.ts` for every tool definition
+- **Build tooling** — Biome for linting/formatting, custom build/devcheck/tree scripts
+- **Skills directory** — framework-provided agent skills for tool scaffolding, testing, and maintenance
+- **server.json** metadata for MCP registry discovery
+- Dockerfile for containerized HTTP deployment
+- Dual transport support: stdio and HTTP
 
 ## [1.0.2] - 2025-06-30
 
