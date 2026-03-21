@@ -9,6 +9,7 @@ import type {
   AssaySummaryTableResponse,
   BioactivityRow,
   CidListResponse,
+  CompoundClassification,
   GHSClassification,
   ListKeyResponse,
   PropertyTableResponse,
@@ -65,10 +66,12 @@ class RateLimiter {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** PubChem returns different field names than the request parameter names for some properties */
+/** PubChem returns different field names than the request parameter names for some properties.
+ * Request IsomericSMILES → response key "SMILES" (includes stereochemistry).
+ * Request CanonicalSMILES → response key "ConnectivitySMILES" (connectivity only). */
 const PROPERTY_NAME_MAP: Record<string, string> = {
-  SMILES: 'CanonicalSMILES',
-  ConnectivitySMILES: 'IsomericSMILES',
+  SMILES: 'IsomericSMILES',
+  ConnectivitySMILES: 'CanonicalSMILES',
 };
 
 function normalizePropertyNames<T extends Record<string, unknown>>(row: T): T {
@@ -80,14 +83,21 @@ function normalizePropertyNames<T extends Record<string, unknown>>(row: T): T {
 }
 
 function parseFaultMessage(text: string): string | undefined {
+  // JSON fault response (most endpoints)
   try {
     const data = JSON.parse(text) as { Fault?: { Code?: string; Message?: string } };
     if (data.Fault?.Message) {
       return `${data.Fault.Code ?? 'Error'}: ${data.Fault.Message}`;
     }
   } catch {
-    /* not JSON */
+    /* not JSON — try plain-text format below */
   }
+
+  // Plain-text fault response (image endpoint): "Status: 400\nCode: X\nMessage: Y"
+  const code = text.match(/^Code:\s*(.+)$/m)?.[1];
+  const message = text.match(/^Message:\s*(.+)$/m)?.[1];
+  if (code && message) return `${code}: ${message}`;
+
   return;
 }
 
@@ -495,6 +505,82 @@ export class PubChemClient {
     }
   }
 
+  async getClassification(cid: number): Promise<CompoundClassification | null> {
+    try {
+      const data = await this.fetchJson<PugViewResponse>(
+        `${this.viewBase}/data/compound/${cid}/JSON?heading=Pharmacology+and+Biochemistry`,
+      );
+
+      const sections = data.Record.Section;
+      if (!sections) return null;
+
+      const result: CompoundClassification = {
+        atcCodes: [],
+        fdaClasses: [],
+        fdaMechanisms: [],
+        meshClasses: [],
+      };
+
+      // FDA Pharmacological Classification
+      const fdaSection = findSection(sections, 'FDA Pharmacological Classification');
+      if (fdaSection) {
+        const strings = extractStrings(fdaSection);
+        for (const s of strings) {
+          if (!s.startsWith('Pharmacological Classes:')) continue;
+          const classes = s.slice('Pharmacological Classes:'.length).trim();
+          for (const entry of classes.split(';')) {
+            const trimmed = entry.trim();
+            const tagMatch = trimmed.match(/^(.+?)\s*\[(\w+)\]$/);
+            if (!tagMatch) continue;
+            const [, name, tag] = tagMatch;
+            if (!name) continue;
+            if (tag === 'EPC' || tag === 'CS') result.fdaClasses.push(name.trim());
+            else if (tag === 'MoA') result.fdaMechanisms.push(name.trim());
+          }
+        }
+        result.fdaClasses = [...new Set(result.fdaClasses)];
+        result.fdaMechanisms = [...new Set(result.fdaMechanisms)];
+      }
+
+      // MeSH Pharmacological Classification
+      const meshSection = findSection(sections, 'MeSH Pharmacological Classification');
+      if (meshSection) {
+        result.meshClasses = extractStrings(meshSection);
+      }
+
+      // ATC Code
+      const atcSection = findSection(sections, 'ATC Code');
+      if (atcSection) {
+        const strings = extractStrings(atcSection);
+        for (const s of strings) {
+          // Match leaf codes like "N02BA01 - Acetylsalicylic acid" or bare "N02BA01"
+          const match = s.match(/^([A-Z]\d{2}[A-Z]{2}\d{2})\b/);
+          if (match) {
+            const desc = s.includes(' - ') ? s.split(' - ').slice(1).join(' - ').trim() : '';
+            result.atcCodes.push({ code: match[1] ?? '', description: desc });
+          }
+        }
+        // Deduplicate by code
+        const seen = new Set<string>();
+        result.atcCodes = result.atcCodes.filter((a) => {
+          if (seen.has(a.code)) return false;
+          seen.add(a.code);
+          return true;
+        });
+      }
+
+      const hasData =
+        result.fdaClasses.length > 0 ||
+        result.fdaMechanisms.length > 0 ||
+        result.meshClasses.length > 0 ||
+        result.atcCodes.length > 0;
+      return hasData ? result : null;
+    } catch (error) {
+      if (error instanceof PubChemNotFoundError) return null;
+      throw error;
+    }
+  }
+
   // ── Bioactivity ─────────────────────────────────────────────────
 
   async getAssaySummary(cid: number): Promise<BioactivityRow[]> {
@@ -617,6 +703,8 @@ export class PubChemClient {
       return arr[0] ?? null;
     } catch (error) {
       if (error instanceof PubChemNotFoundError) return null;
+      // PubChem returns HTTP 400 (not 404) for nonexistent entity IDs in some endpoints
+      if (error instanceof Error && /PubChem HTTP 400/.test(error.message)) return null;
       throw error;
     }
   }
