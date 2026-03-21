@@ -10,6 +10,7 @@ import type {
   BioactivityRow,
   CidListResponse,
   GHSClassification,
+  ListKeyResponse,
   PropertyTableResponse,
   PugViewInformation,
   PugViewResponse,
@@ -63,6 +64,20 @@ class RateLimiter {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** PubChem returns different field names than the request parameter names for some properties */
+const PROPERTY_NAME_MAP: Record<string, string> = {
+  SMILES: 'CanonicalSMILES',
+  ConnectivitySMILES: 'IsomericSMILES',
+};
+
+function normalizePropertyNames<T extends Record<string, unknown>>(row: T): T {
+  const result = {} as Record<string, unknown>;
+  for (const [key, value] of Object.entries(row)) {
+    result[PROPERTY_NAME_MAP[key] ?? key] = value;
+  }
+  return result as T;
+}
 
 function parseFaultMessage(text: string): string | undefined {
   try {
@@ -232,15 +247,33 @@ export class PubChemClient {
 
   // ── CID Resolution ──────────────────────────────────────────────
 
-  /** Fetch CID list, returning [] on 404 (no results) */
+  /** Fetch CID list, with automatic ListKey polling for async searches */
   private async fetchCids(url: string, init?: RequestInit): Promise<number[]> {
     try {
-      const data = await this.fetchJson<CidListResponse>(url, init);
+      const data = await this.fetchJson<CidListResponse | ListKeyResponse>(url, init);
+      if ('Waiting' in data) return this.pollListKey(data.Waiting.ListKey);
       return data.IdentifierList.CID;
     } catch (error) {
       if (error instanceof PubChemNotFoundError) return [];
       throw error;
     }
+  }
+
+  /** Poll a PubChem ListKey until results are ready */
+  private async pollListKey(listKey: string, maxAttempts = 20): Promise<number[]> {
+    const pollUrl = `${this.pugBase}/compound/listkey/${listKey}/cids/JSON`;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await sleep(1500);
+      try {
+        const data = await this.fetchJson<CidListResponse | ListKeyResponse>(pollUrl);
+        if ('Waiting' in data) continue;
+        return data.IdentifierList.CID;
+      } catch (error) {
+        if (error instanceof PubChemNotFoundError) return [];
+        throw error;
+      }
+    }
+    throw new Error('PubChem async search timed out after polling');
   }
 
   searchByName(name: string): Promise<number[]> {
@@ -309,6 +342,8 @@ export class PubChemClient {
     const propsPath = properties.join(',');
     const cidStr = cids.join(',');
 
+    let rows: Array<Record<string, unknown> & { CID: number }>;
+
     // POST for large CID lists, GET for small ones
     if (cids.length > 50) {
       const data = await this.fetchJson<PropertyTableResponse>(
@@ -319,13 +354,17 @@ export class PubChemClient {
           body: new URLSearchParams({ cid: cidStr }).toString(),
         },
       );
-      return data.PropertyTable.Properties;
+      rows = data.PropertyTable.Properties;
+    } else {
+      const data = await this.fetchJson<PropertyTableResponse>(
+        `${this.pugBase}/compound/cid/${cidStr}/property/${propsPath}/JSON`,
+      );
+      rows = data.PropertyTable.Properties;
     }
 
-    const data = await this.fetchJson<PropertyTableResponse>(
-      `${this.pugBase}/compound/cid/${cidStr}/property/${propsPath}/JSON`,
-    );
-    return data.PropertyTable.Properties;
+    // PubChem returns different field names than the request names for some properties.
+    // Normalize so consumers see the names they requested.
+    return rows.map((row) => normalizePropertyNames(row));
   }
 
   async getSynonyms(cid: number): Promise<string[]> {
@@ -426,6 +465,21 @@ export class PubChemClient {
         }
       }
 
+      // Deduplicate across depositors
+      result.pictograms = [...new Set(result.pictograms)];
+      const seenH = new Set<string>();
+      result.hazardStatements = result.hazardStatements.filter((h) => {
+        if (seenH.has(h.code)) return false;
+        seenH.add(h.code);
+        return true;
+      });
+      const seenP = new Set<string>();
+      result.precautionaryStatements = result.precautionaryStatements.filter((p) => {
+        if (seenP.has(p.code)) return false;
+        seenP.add(p.code);
+        return true;
+      });
+
       // Extract source from references
       const refs = data.Record.Reference;
       if (refs?.[0]?.SourceName) {
@@ -459,16 +513,22 @@ export class PubChemClient {
     const columns = data.Table.Columns.Column;
     const rows = data.Table.Row;
 
-    // Build column index lookup
+    // Build column index lookup — exact match
     const col = (name: string) => columns.indexOf(name);
+    // Prefix match for columns with embedded units like "Activity Value [uM]"
+    const colPrefix = (prefix: string) => columns.findIndex((c) => c.startsWith(prefix));
+
     const aidIdx = col('AID');
     const nameIdx = col('Assay Name');
     const outcomeIdx = col('Activity Outcome');
-    const targetNameIdx = col('Target Name');
-    const geneSymbolIdx = col('Target GeneSymbol');
-    const actValueIdx = col('Activity Value');
+    const targetAccIdx = col('Target Accession');
+    const geneIdIdx = col('Target GeneID');
+    const actValueIdx = colPrefix('Activity Value');
     const actNameIdx = col('Activity Name');
-    const actUnitIdx = col('Activity Unit');
+
+    // Extract unit from column name if present, e.g. "Activity Value [uM]" → "uM"
+    const actValueUnit =
+      actValueIdx >= 0 ? (columns[actValueIdx]?.match(/\[(.+)\]/)?.[1] ?? '') : '';
 
     // Group by AID to collect multiple activity values
     const byAid = new Map<number, BioactivityRow>();
@@ -479,16 +539,19 @@ export class PubChemClient {
       if (!aid || Number.isNaN(aid)) continue;
 
       if (!byAid.has(aid)) {
-        const row: BioactivityRow = {
+        const entry: BioactivityRow = {
           aid,
           assayName: String(cell[nameIdx] ?? ''),
           outcome: String(cell[outcomeIdx] ?? ''),
           activityValues: [],
         };
-        if (targetNameIdx >= 0 && cell[targetNameIdx]) row.targetName = String(cell[targetNameIdx]);
-        if (geneSymbolIdx >= 0 && cell[geneSymbolIdx])
-          row.targetGeneSymbol = String(cell[geneSymbolIdx]);
-        byAid.set(aid, row);
+        if (targetAccIdx >= 0 && cell[targetAccIdx])
+          entry.targetAccession = String(cell[targetAccIdx]);
+        if (geneIdIdx >= 0 && cell[geneIdIdx] != null) {
+          const gid = Number(cell[geneIdIdx]);
+          if (!Number.isNaN(gid) && gid > 0) entry.targetGeneId = gid;
+        }
+        byAid.set(aid, entry);
       }
 
       // Collect activity value if present
@@ -498,7 +561,7 @@ export class PubChemClient {
           byAid.get(aid)?.activityValues.push({
             name: actNameIdx >= 0 ? String(cell[actNameIdx] ?? '') : '',
             value,
-            unit: actUnitIdx >= 0 ? String(cell[actUnitIdx] ?? '') : '',
+            unit: actValueUnit,
           });
         }
       }
@@ -510,9 +573,11 @@ export class PubChemClient {
   // ── Assay Search ────────────────────────────────────────────────
 
   async searchAssaysByTarget(targetType: string, query: string): Promise<number[]> {
+    // PubChem API expects "accession" not "proteinaccession"
+    const apiTargetType = targetType === 'proteinaccession' ? 'accession' : targetType;
     try {
       const data = await this.fetchJson<AidListResponse>(
-        `${this.pugBase}/assay/target/${targetType}/${encodeURIComponent(query)}/aids/JSON`,
+        `${this.pugBase}/assay/target/${apiTargetType}/${encodeURIComponent(query)}/aids/JSON`,
       );
       return data.IdentifierList.AID;
     } catch (error) {
@@ -531,10 +596,7 @@ export class PubChemClient {
       assay: `/assay/aid/${identifier}/summary/JSON`,
       gene: `/gene/geneid/${identifier}/summary/JSON`,
       protein: `/protein/accession/${encodeURIComponent(String(identifier))}/summary/JSON`,
-      pathway: `/pathway/accession/${encodeURIComponent(String(identifier))}/summary/JSON`,
       taxonomy: `/taxonomy/taxid/${identifier}/summary/JSON`,
-      cell: `/cell/accession/${encodeURIComponent(String(identifier))}/summary/JSON`,
-      substance: `/substance/sid/${identifier}/summary/JSON`,
     };
 
     const path = pathMap[entityType];

@@ -10,6 +10,11 @@ export interface CidListResponse {
   IdentifierList: { CID: number[] };
 }
 
+/** Async search response — PubChem returns a ListKey when results aren't ready yet */
+export interface ListKeyResponse {
+  Waiting: { ListKey: string };
+}
+
 /** AID list from assay target searches */
 export interface AidListResponse {
   IdentifierList: { AID: number[] };
@@ -99,8 +104,8 @@ export interface BioactivityRow {
   aid: number;
   assayName: string;
   outcome: string;
-  targetGeneSymbol?: string;
-  targetName?: string;
+  targetAccession?: string;
+  targetGeneId?: number;
 }
 
 // ── PubChem error ────────────────────────────────────────────────────
