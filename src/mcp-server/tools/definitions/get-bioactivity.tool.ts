@@ -50,8 +50,11 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
           outcome: z
             .string()
             .describe('Activity outcome: Active, Inactive, Inconclusive, Unspecified.'),
-          targetName: z.string().optional().describe('Biological target name.'),
-          targetGeneSymbol: z.string().optional().describe('Target gene symbol.'),
+          targetAccession: z
+            .string()
+            .optional()
+            .describe('Target protein accession (UniProt/GenBank).'),
+          targetGeneId: z.number().optional().describe('Target NCBI Gene ID.'),
           activityValues: z
             .array(
               z.object({
@@ -112,7 +115,9 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     }
 
     for (const r of result.results) {
-      const target = [r.targetGeneSymbol, r.targetName].filter(Boolean).join(' — ');
+      const target = [r.targetGeneId ? `GeneID:${r.targetGeneId}` : undefined, r.targetAccession]
+        .filter(Boolean)
+        .join(' — ');
       lines.push(`**AID ${r.aid}** — ${r.assayName} (${r.outcome})`);
       if (target) lines.push(`  Target: ${target}`);
       if (r.activityValues.length > 0) {

@@ -24,8 +24,8 @@ const activeRow: BioactivityRow = {
   aid: 1000,
   assayName: 'COX-2 inhibition',
   outcome: 'Active',
-  targetName: 'Cyclooxygenase-2',
-  targetGeneSymbol: 'PTGS2',
+  targetAccession: 'P35354',
+  targetGeneId: 5743,
   activityValues: [{ name: 'IC50', value: 0.35, unit: 'uM' }],
 };
 
@@ -120,7 +120,7 @@ describe('getBioactivity format', () => {
     expect(text).toContain('Active: 1');
     expect(text).toContain('AID 1000');
     expect(text).toContain('COX-2 inhibition');
-    expect(text).toContain('PTGS2');
+    expect(text).toContain('GeneID:5743');
     expect(text).toContain('IC50: 0.35 uM');
   });
 
