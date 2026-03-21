@@ -1,108 +1,67 @@
 {
-  "name": "@cyanheads/pubchem-mcp-server",
-  "version": "1.0.2",
-  "description": "A Model Context Protocol (MCP) server providing comprehensive LLM tools for the PubChem PUG REST API.",
+  "name": "pubchem-mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for the PubChem chemical database. Search compounds, fetch properties, safety data, bioactivity, cross-references, and entity summaries.",
+  "mcpName": "io.github.cyanheads/pubchem-mcp-server",
+  "type": "module",
   "main": "dist/index.js",
-  "files": [
-    "dist"
-  ],
+  "types": "dist/index.d.ts",
   "bin": {
     "pubchem-mcp-server": "dist/index.js"
   },
-  "exports": "./dist/index.js",
-  "types": "dist/index.d.ts",
-  "type": "module",
+  "files": ["dist/"],
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "rebuild": "bun scripts/clean.ts && bun scripts/build.ts",
+    "clean": "bun scripts/clean.ts",
+    "devcheck": "bun scripts/devcheck.ts",
+    "tree": "bun scripts/tree.ts",
+    "format": "biome check --write --unsafe .",
+    "lint:mcp": "bun scripts/lint-mcp.ts",
+    "test": "vitest run",
+    "dev:stdio": "bun --watch src/index.ts",
+    "dev:http": "MCP_TRANSPORT_TYPE=http bun --watch src/index.ts",
+    "start:stdio": "node dist/index.js",
+    "start:http": "MCP_TRANSPORT_TYPE=http node dist/index.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/cyanheads/pubchem-mcp-server.git"
   },
+  "homepage": "https://github.com/cyanheads/pubchem-mcp-server#readme",
   "bugs": {
     "url": "https://github.com/cyanheads/pubchem-mcp-server/issues"
   },
-  "homepage": "https://github.com/cyanheads/pubchem-mcp-server#readme",
-  "scripts": {
-    "build": "tsc && node --loader ts-node/esm scripts/make-executable.ts dist/index.js",
-    "start": "node dist/index.js",
-    "start:stdio": "MCP_LOG_LEVEL=debug MCP_TRANSPORT_TYPE=stdio node dist/index.js",
-    "start:http": "MCP_LOG_LEVEL=debug MCP_TRANSPORT_TYPE=http node dist/index.js",
-    "start:agent": "MCP_LOG_LEVEL=debug node dist/agent/cli/boot.js",
-    "rebuild": "ts-node --esm scripts/clean.ts && npm run build",
-    "docs:generate": "typedoc --tsconfig ./tsconfig.typedoc.json",
-    "depcheck": "npx depcheck",
-    "tree": "ts-node --esm scripts/tree.ts",
-    "fetch-spec": "ts-node --esm scripts/fetch-openapi-spec.ts",
-    "format": "prettier --write \"**/*.{ts,js,json,md,html,css}\"",
-    "inspector": "npx mcp-inspector --config mcp.json --server pubchem-mcp-server",
-    "db:duckdb-example": "MCP_LOG_LEVEL=debug tsc && node dist/storage/duckdbExample.js"
-  },
-  "dependencies": {
-    "@duckdb/node-api": "^1.3.1-alpha.23",
-    "@hono/node-server": "^1.14.4",
-    "@modelcontextprotocol/sdk": "^1.13.2",
-    "@supabase/supabase-js": "^2.50.2",
-    "@types/node": "^24.0.7",
-    "@types/sanitize-html": "^2.16.0",
-    "@types/validator": "13.15.2",
-    "chrono-node": "^2.8.0",
-    "dotenv": "^16.5.0",
-    "hono": "^4.8.3",
-    "ignore": "^7.0.5",
-    "jose": "^6.0.11",
-    "limiter": "^3.0.0",
-    "node-cron": "^4.1.1",
-    "openai": "^5.8.2",
-    "partial-json": "^0.1.7",
-    "sanitize-html": "^2.17.0",
-    "tiktoken": "^1.0.21",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3",
-    "validator": "13.15.15",
-    "winston": "^3.17.0",
-    "winston-transport": "^4.9.0",
-    "zod": "^3.25.67"
-  },
+  "author": "Casey Hand <casey@cyanheads.dev> (https://github.com/cyanheads)",
   "keywords": [
     "mcp",
     "mcp-server",
     "model-context-protocol",
-    "ai-agent",
-    "llm",
     "pubchem",
     "chemistry",
-    "cheminformatics",
-    "bioinformatics",
-    "drug-discovery",
-    "scientific-computing",
-    "api-wrapper",
-    "typescript",
-    "hono",
-    "zod"
+    "compounds",
+    "bioactivity"
   ],
-  "author": "cyanheads <casey@caseyjhand.com> (https://github.com/cyanheads/pubchem-mcp-server#readme)",
   "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "bun": ">=1.2.0"
+  },
+  "packageManager": "bun@1.3.2",
   "publishConfig": {
     "access": "public"
   },
-  "funding": [
-    {
-      "type": "github",
-      "url": "https://github.com/sponsors/cyanheads"
-    },
-    {
-      "type": "buy_me_a_coffee",
-      "url": "https://www.buymeacoffee.com/cyanheads"
-    }
-  ],
-  "engines": {
-    "node": ">=20.0.0"
+  "dependencies": {
+    "@cyanheads/mcp-ts-core": "^0.1.16",
+    "pino-pretty": "^13.1.3"
   },
   "devDependencies": {
-    "@types/js-yaml": "^4.0.9",
-    "@types/node-cron": "^3.0.11",
-    "axios": "^1.10.0",
+    "@biomejs/biome": "^2.4.8",
+    "@types/node": "^25.5.0",
     "depcheck": "^1.4.7",
-    "js-yaml": "^4.1.0",
-    "prettier": "^3.6.2",
-    "typedoc": "^0.28.7"
+    "ignore": "^7.0.5",
+    "tsc-alias": "^1.8.16",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   }
 }
