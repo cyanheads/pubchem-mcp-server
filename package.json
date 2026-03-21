@@ -9,7 +9,7 @@
   "bin": {
     "pubchem-mcp-server": "dist/index.js"
   },
-  "files": ["dist/", "README.md", "LICENSE", "server.json"],
+  "files": ["dist/", "README.md", "LICENSE", "server.json", "Dockerfile"],
   "scripts": {
     "build": "bun scripts/build.ts",
     "rebuild": "bun scripts/clean.ts && bun scripts/build.ts",
