@@ -108,6 +108,42 @@ export interface BioactivityRow {
   targetGeneId?: number;
 }
 
+/** Pharmacological classification from PUG View */
+export interface CompoundClassification {
+  /** ATC codes with hierarchical descriptions */
+  atcCodes: Array<{ code: string; description: string }>;
+  /** FDA Established Pharmacologic Classes (e.g. "Nonsteroidal Anti-inflammatory Drug") */
+  fdaClasses: string[];
+  /** FDA Mechanisms of Action (e.g. "Cyclooxygenase Inhibitors") */
+  fdaMechanisms: string[];
+  /** MeSH pharmacological class descriptions */
+  meshClasses: string[];
+}
+
+/** Drug-likeness rule evaluation */
+export interface DrugLikenessRule {
+  limit: number;
+  pass: boolean | null;
+  value: number | null;
+}
+
+/** Computed drug-likeness assessment (Lipinski + Veber) */
+export interface DrugLikenessAssessment {
+  lipinski: {
+    hba: DrugLikenessRule;
+    hbd: DrugLikenessRule;
+    mw: DrugLikenessRule;
+    violations: number;
+    xLogP: DrugLikenessRule;
+  };
+  pass: boolean;
+  veber: {
+    rotatableBonds: DrugLikenessRule;
+    tpsa: DrugLikenessRule;
+    violations: number;
+  };
+}
+
 // ── PubChem error ────────────────────────────────────────────────────
 
 /** Structured error from PubChem API */

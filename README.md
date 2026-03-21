@@ -18,7 +18,7 @@ Eight tools for querying PubChem's chemical information database:
 | Tool Name | Description |
 |:----------|:------------|
 | `pubchem_search_compounds` | Search for compounds by name, SMILES, InChIKey, formula, substructure, superstructure, or 2D similarity. |
-| `pubchem_get_compound_details` | Get physicochemical properties, descriptions, and synonyms for compounds by CID. |
+| `pubchem_get_compound_details` | Get physicochemical properties, descriptions, synonyms, drug-likeness, and classification for compounds by CID. |
 | `pubchem_get_compound_image` | Fetch a 2D structure diagram (PNG) for a compound by CID. |
 | `pubchem_get_compound_safety` | Get GHS hazard classification and safety data for a compound. |
 | `pubchem_get_compound_xrefs` | Get external database cross-references (PubMed, patents, genes, proteins, etc.). |
@@ -43,9 +43,11 @@ Search PubChem for chemical compounds across five search modes.
 Get detailed compound information by CID.
 
 - Batches up to 100 CIDs in a single request
-- 24 available properties: molecular weight, SMILES, InChIKey, XLogP, TPSA, complexity, stereo counts, and more
+- 27 available properties: molecular weight, SMILES, InChIKey, XLogP, TPSA, complexity, stereo counts, and more
 - Optionally includes textual descriptions (pharmacology, mechanism, therapeutic use) from PUG View
 - Optionally includes all known synonyms (trade names, systematic names, registry numbers)
+- Optionally computes drug-likeness assessment (Lipinski Rule of Five + Veber rules) from fetched properties
+- Optionally fetches pharmacological classification (FDA classes, mechanisms of action, MeSH classes, ATC codes)
 
 ---
 
