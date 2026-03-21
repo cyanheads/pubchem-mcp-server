@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-03-21 14:26:01
+Generated on: 2026-03-21 16:15:06
 
 ```text
 pubchem-mcp-server/
@@ -55,6 +55,8 @@ pubchem-mcp-server/
 │   │   └── SKILL.md
 │   ├── devcheck/
 │   │   └── SKILL.md
+│   ├── field-test/
+│   │   └── SKILL.md
 │   ├── maintenance/
 │   │   └── SKILL.md
 │   ├── migrate-mcp-ts-template/
@@ -72,28 +74,32 @@ pubchem-mcp-server/
 │   ├── mcp-server/
 │   │   └── tools/
 │   │       └── definitions/
-│   │           ├── get-bioactivity.tool.test.ts
 │   │           ├── get-bioactivity.tool.ts
-│   │           ├── get-compound-details.tool.test.ts
 │   │           ├── get-compound-details.tool.ts
-│   │           ├── get-compound-image.tool.test.ts
 │   │           ├── get-compound-image.tool.ts
-│   │           ├── get-compound-safety.tool.test.ts
 │   │           ├── get-compound-safety.tool.ts
-│   │           ├── get-compound-xrefs.tool.test.ts
 │   │           ├── get-compound-xrefs.tool.ts
-│   │           ├── get-summary.tool.test.ts
 │   │           ├── get-summary.tool.ts
 │   │           ├── index.ts
-│   │           ├── search-assays.tool.test.ts
 │   │           ├── search-assays.tool.ts
-│   │           ├── search-compounds.tool.test.ts
 │   │           └── search-compounds.tool.ts
 │   ├── services/
 │   │   └── pubchem/
 │   │       ├── pubchem-client.ts
 │   │       └── types.ts
 │   └── index.ts
+├── tests/
+│   └── mcp-server/
+│       └── tools/
+│           └── definitions/
+│               ├── get-bioactivity.tool.test.ts
+│               ├── get-compound-details.tool.test.ts
+│               ├── get-compound-image.tool.test.ts
+│               ├── get-compound-safety.tool.test.ts
+│               ├── get-compound-xrefs.tool.test.ts
+│               ├── get-summary.tool.test.ts
+│               ├── search-assays.tool.test.ts
+│               └── search-compounds.tool.test.ts
 ├── .env.example
 ├── .gitignore
 ├── biome.json

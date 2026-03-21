@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.2] — 2026-03-21
+
+### Added
+
+- **Drug-likeness assessment** — `pubchem_get_compound_details` now optionally computes Lipinski Rule of Five and Veber rules from fetched properties (no extra API calls)
+- **Pharmacological classification** — `pubchem_get_compound_details` can fetch FDA Established Pharmacologic Classes, mechanisms of action, MeSH classes, and ATC codes via PUG View
+
+### Changed
+
+- **Test location** — moved all tool tests from `src/` to a top-level `tests/` directory with path-alias imports
+- **PUG View call consolidation** — description and classification fetches share a single CID cap (10) instead of separate limits
+- **Dependency** — updated `@cyanheads/mcp-ts-core` from `^0.1.18` to `^0.1.20`
+
+### Fixed
+
+- **SMILES property name mapping** — corrected inverted mapping (`IsomericSMILES` ↔ `CanonicalSMILES` were swapped)
+- **Plain-text fault parsing** — image endpoint returns non-JSON fault responses; parser now handles `Code:/Message:` format
+- **Entity summary HTTP 400** — PubChem returns 400 (not 404) for nonexistent entity IDs on some endpoints; now treated as not-found
+- **Bioactivity format** — activity values without a name are now filtered out of the display
+
 ## [0.1.1] — 2026-03-21
 
 ### Changed
