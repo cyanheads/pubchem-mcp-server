@@ -120,10 +120,9 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
         .join(' — ');
       lines.push(`**AID ${r.aid}** — ${r.assayName} (${r.outcome})`);
       if (target) lines.push(`  Target: ${target}`);
-      if (r.activityValues.length > 0) {
-        for (const av of r.activityValues) {
-          lines.push(`  ${av.name}: ${av.value} ${av.unit}`);
-        }
+      const meaningful = r.activityValues.filter((av) => av.name);
+      for (const av of meaningful) {
+        lines.push(`  ${av.name}: ${av.value} ${av.unit}`);
       }
       lines.push('');
     }
