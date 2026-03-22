@@ -10,6 +10,12 @@
 
 </div>
 
+<div align="center">
+
+**Public Hosted Server:** [https://pubchem.caseyjhand.com/mcp](https://pubchem.caseyjhand.com/mcp)
+
+</div>
+
 ---
 
 ## Tools
@@ -89,7 +95,22 @@ PubChem-specific:
 
 ## Getting Started
 
-### MCP Client Configuration
+### Public Hosted Instance
+
+A public instance is available at `https://pubchem.caseyjhand.com/mcp` — no installation required. Point any MCP client at it via Streamable HTTP:
+
+```json
+{
+  "mcpServers": {
+    "pubchem": {
+      "type": "streamable-http",
+      "url": "https://pubchem.caseyjhand.com/mcp"
+    }
+  }
+}
+```
+
+### Self-Hosted / Local
 
 Add to your MCP client config (e.g., `claude_desktop_config.json`):
 
