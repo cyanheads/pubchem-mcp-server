@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.6] — 2026-03-21
+
+### Changed
+
+- **Dependency** — updated `@cyanheads/mcp-ts-core` from `^0.1.23` to `^0.1.24`
+
 ## [0.1.5] — 2026-03-21
 
 ### Changed
