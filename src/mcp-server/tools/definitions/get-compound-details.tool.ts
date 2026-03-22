@@ -15,6 +15,46 @@ import { COMPOUND_PROPERTIES, DEFAULT_PROPERTIES } from '@/services/pubchem/type
 
 const propertyEnum = z.enum(COMPOUND_PROPERTIES as unknown as [string, ...string[]]);
 
+const drugLikenessRuleSchema = z.object({
+  limit: z.number().describe('Rule threshold.'),
+  pass: z.boolean().nullable().describe('Whether the rule passes (null if value unavailable).'),
+  value: z.number().nullable().describe('Measured value (null if unavailable).'),
+});
+
+const drugLikenessSchema = z.object({
+  lipinski: z
+    .object({
+      hba: drugLikenessRuleSchema.describe('HBond acceptor count rule (≤10).'),
+      hbd: drugLikenessRuleSchema.describe('HBond donor count rule (≤5).'),
+      mw: drugLikenessRuleSchema.describe('Molecular weight rule (≤500).'),
+      violations: z.number().describe('Number of Lipinski violations (0-4).'),
+      xLogP: drugLikenessRuleSchema.describe('XLogP rule (≤5).'),
+    })
+    .describe('Lipinski Rule of Five evaluation.'),
+  pass: z.boolean().describe('Overall drug-likeness pass.'),
+  veber: z
+    .object({
+      rotatableBonds: drugLikenessRuleSchema.describe('Rotatable bond count rule (≤10).'),
+      tpsa: drugLikenessRuleSchema.describe('TPSA rule (≤140).'),
+      violations: z.number().describe('Number of Veber violations (0-2).'),
+    })
+    .describe('Veber rules evaluation.'),
+});
+
+const classificationSchema = z.object({
+  atcCodes: z
+    .array(
+      z.object({
+        code: z.string().describe('ATC code.'),
+        description: z.string().describe('ATC code description.'),
+      }),
+    )
+    .describe('ATC codes with hierarchical descriptions.'),
+  fdaClasses: z.array(z.string()).describe('FDA Established Pharmacologic Classes.'),
+  fdaMechanisms: z.array(z.string()).describe('FDA Mechanisms of Action.'),
+  meshClasses: z.array(z.string()).describe('MeSH pharmacological class descriptions.'),
+});
+
 // ── Drug-likeness computation ──────────────────────────────────────────
 
 /** Properties needed for drug-likeness — all included in DEFAULT_PROPERTIES */
@@ -121,14 +161,12 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
             .describe('Requested physicochemical properties.'),
           description: z.string().optional().describe('Textual description from PUG View.'),
           synonyms: z.array(z.string()).optional().describe('Known names and synonyms.'),
-          drugLikeness: z
-            .custom<DrugLikenessAssessment>()
+          drugLikeness: drugLikenessSchema
             .optional()
             .describe(
               'Drug-likeness assessment. lipinski.violations ≤ 1 and veber.violations = 0 → pass.',
             ),
-          classification: z
-            .custom<CompoundClassification>()
+          classification: classificationSchema
             .optional()
             .describe('Pharmacological classification (FDA, MeSH, ATC).'),
         }),
