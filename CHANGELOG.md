@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.4] — 2026-03-21
+
+### Fixed
+
+- **Output schema introspection** — replaced opaque `z.custom<>()` with explicit Zod schemas for `drugLikeness` and `classification` in `pubchem_get_compound_details` output; MCP clients can now see the full output shape with field descriptions
+
+### Added
+
+- **`.dockerignore`** — comprehensive ignore file for Docker builds
+
 ## [0.1.3] — 2026-03-21
 
 ### Changed
