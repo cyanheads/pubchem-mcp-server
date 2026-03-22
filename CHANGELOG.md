@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.5] — 2026-03-21
+
+### Changed
+
+- **Dependency** — updated `@cyanheads/mcp-ts-core` from `^0.1.21` to `^0.1.23`
+- **Docker OpenTelemetry** — Dockerfile now conditionally installs OpenTelemetry peer dependencies via `OTEL_ENABLED` build arg (defaults to `true`)
+- **Agent protocol** — added Publishing section to CLAUDE.md
+
 ## [0.1.4] — 2026-03-21
 
 ### Fixed
