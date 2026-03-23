@@ -9,7 +9,7 @@
   "version": "0.1.8",
   "remotes": [
     {
-      "transportType": "streamable-http",
+      "type": "streamable-http",
       "url": "https://pubchem.caseyjhand.com/mcp"
     }
   ],
