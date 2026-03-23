@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8] — 2026-03-23
+
+### Changed
+
+- **Dependencies** — updated `@cyanheads/mcp-ts-core` from `^0.1.25` to `^0.1.28`, `typescript` from `^5.9.3` to `^6.0.2`, `vitest` from `^4.1.0` to `^4.1.1`
+- **tsconfig** — removed `baseUrl`, adjusted `paths` alias syntax
+
 ## [0.1.7] — 2026-03-21
 
 ### Changed
