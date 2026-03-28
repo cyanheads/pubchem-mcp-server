@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-03-21 16:15:06
+Generated on: 2026-03-28 16:26:54
 
 ```text
 pubchem-mcp-server/
@@ -68,6 +68,10 @@ pubchem-mcp-server/
 │   │   │   ├── readme.md
 │   │   │   └── server-json.md
 │   │   └── SKILL.md
+│   ├── report-issue-framework/
+│   │   └── SKILL.md
+│   ├── report-issue-local/
+│   │   └── SKILL.md
 │   └── setup/
 │       └── SKILL.md
 ├── src/
@@ -100,6 +104,7 @@ pubchem-mcp-server/
 │               ├── get-summary.tool.test.ts
 │               ├── search-assays.tool.test.ts
 │               └── search-compounds.tool.test.ts
+├── .dockerignore
 ├── .env.example
 ├── .gitignore
 ├── biome.json
@@ -107,6 +112,7 @@ pubchem-mcp-server/
 ├── bunfig.toml
 ├── CHANGELOG.md
 ├── CLAUDE.md
+├── devcheck.config.json
 ├── Dockerfile
 ├── LICENSE
 ├── package.json

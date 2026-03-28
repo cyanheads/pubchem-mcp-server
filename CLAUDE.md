@@ -1,7 +1,7 @@
 # Agent Protocol
 
 **Server:** pubchem-mcp-server
-**Version:** 0.1.9
+**Version:** 0.1.10
 **Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core)
 
 > **Read the framework docs first:** `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` contains the full API reference — builders, Context, error codes, exports, patterns. This file covers server-specific conventions only.
@@ -59,8 +59,23 @@ export const searchAssays = tool('pubchem_search_assays', {
     return { targetType: input.targetType, targetQuery: input.targetQuery, totalFound: allAids.length, aids };
   },
 
+  // format() populates MCP content[] — the only field most LLM clients forward to the model.
+  // structuredContent (from output schema) is for programmatic use. Make format() content-complete.
   format(result) {
-    return [{ type: 'text', text: `Found ${result.totalFound} assays for "${result.targetQuery}"` }];
+    const truncated =
+      result.totalFound > result.aids.length
+        ? ` (showing ${result.aids.length} of ${result.totalFound})`
+        : '';
+    const lines = [
+      `Found ${result.totalFound} assay${result.totalFound !== 1 ? 's' : ''} for "${result.targetQuery}" (${result.targetType})${truncated}`,
+      '',
+    ];
+    if (result.aids.length > 0) {
+      lines.push(`AIDs: ${result.aids.join(', ')}`);
+    } else {
+      lines.push('No assays found.');
+    }
+    return [{ type: 'text', text: lines.join('\\n') }];
   },
 });
 ```
@@ -237,6 +252,7 @@ mcp-publisher publish
 
 ## Checklist
 
+- [ ] `format()` renders all data the LLM needs — `content[]` is the only field most clients forward to the model
 - [ ] Zod schemas: all fields have `.describe()`
 - [ ] JSDoc `@fileoverview` + `@module` on every file
 - [ ] `ctx.log` for logging
