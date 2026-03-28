@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.10] — 2026-03-28
+
+### Changed
+
+- Removed redundant `destructiveHint: false` annotations from all tool definitions
+- Externalized devcheck configuration to `devcheck.config.json` (depcheck ignores, outdated allowlist)
+- Dynamic `.tsbuildinfo` file discovery in clean script instead of hardcoded filenames
+- Enhanced MCP linter with task handler detection and server.json/package.json validation
+- Updated agent protocol (CLAUDE.md) with `format()` guidance and checklist item
+- Updated skills: add-tool v1.1, add-resource v1.1, design-mcp-server v2.1, polish-docs-meta v1.2
+
+### Added
+
+- `devcheck.config.json` for project-local devcheck configuration
+- `report-issue-framework` skill for filing bugs against `@cyanheads/mcp-ts-core`
+- `report-issue-local` skill for filing bugs against this server
+- Security overrides in package.json for `brace-expansion`, `path-to-regexp`, `picomatch`
+
 ## [0.1.9] — 2026-03-28
 
 ### Changed
