@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.9] — 2026-03-28
+
+### Changed
+
+- **Dependencies** — updated `@cyanheads/mcp-ts-core` from `^0.1.28` to `^0.2.8`, `@biomejs/biome` from `^2.4.8` to `^2.4.9`, `vitest` from `^4.1.1` to `^4.1.2`
+
 ## [0.1.8] — 2026-03-23
 
 ### Changed
