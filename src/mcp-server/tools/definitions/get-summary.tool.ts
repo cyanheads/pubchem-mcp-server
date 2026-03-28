@@ -18,7 +18,6 @@ export const getSummary = tool('pubchem_get_summary', {
     'proteins (UniProt accession), and taxonomy (Tax ID). Up to 10 per call.',
   annotations: {
     readOnlyHint: true,
-    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },

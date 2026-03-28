@@ -15,7 +15,6 @@ export const searchAssays = tool('pubchem_search_assays', {
     'which can be explored further with pubchem_get_summary.',
   annotations: {
     readOnlyHint: true,
-    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },

@@ -17,7 +17,6 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
     'type with total counts reported.',
   annotations: {
     readOnlyHint: true,
-    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },

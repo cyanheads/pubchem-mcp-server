@@ -14,7 +14,6 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
     'Data sourced from PubChem depositors — source attribution included.',
   annotations: {
     readOnlyHint: true,
-    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },

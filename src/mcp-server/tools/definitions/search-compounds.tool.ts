@@ -32,7 +32,6 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     `Optionally hydrate results with properties to avoid a follow-up details call.`,
   annotations: {
     readOnlyHint: true,
-    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },

@@ -16,7 +16,6 @@ export const getCompoundImage = tool('pubchem_get_compound_image', {
   description: 'Fetch a 2D structure diagram (PNG image) for a compound by CID.',
   annotations: {
     readOnlyHint: true,
-    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },

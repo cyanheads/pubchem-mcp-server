@@ -15,7 +15,6 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     'and quantitative values (IC50, EC50, Ki, etc.). Filter by outcome to focus on active results.',
   annotations: {
     readOnlyHint: true,
-    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },

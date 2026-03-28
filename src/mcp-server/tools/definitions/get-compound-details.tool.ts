@@ -104,7 +104,6 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     '(FDA classes, MeSH classes, ATC codes). Efficiently batches up to 100 CIDs.',
   annotations: {
     readOnlyHint: true,
-    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },
