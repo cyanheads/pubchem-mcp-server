@@ -11,6 +11,33 @@ const entityTypeEnum = z.enum(['assay', 'gene', 'protein', 'taxonomy']);
 
 type EntityType = z.infer<typeof entityTypeEnum>;
 
+/**
+ * Union-of-shapes schema for entity summaries. All fields are optional because the
+ * set of populated fields depends on entityType (assay/gene/protein/taxonomy).
+ * Fields absent from the upstream response are omitted entirely rather than filled
+ * with empty strings or zeros.
+ */
+const entitySummaryDataSchema = z.object({
+  aid: z.number().optional().describe('Assay ID — present on assay summaries.'),
+  name: z.string().optional().describe('Primary display name.'),
+  description: z.string().optional().describe('Descriptive text when available.'),
+  sourceName: z.string().optional().describe('Data source attribution (assay summaries).'),
+  numSubstances: z.number().optional().describe('Substances tested (assay summaries).'),
+  numActive: z.number().optional().describe('Substances marked active (assay summaries).'),
+  geneId: z.number().optional().describe('NCBI Gene ID (gene summaries).'),
+  symbol: z.string().optional().describe('Gene symbol (gene summaries).'),
+  taxonomyId: z.number().optional().describe('NCBI Taxonomy ID (gene/protein/taxonomy summaries).'),
+  taxonomy: z.string().optional().describe('Taxonomy scientific name (gene/protein summaries).'),
+  synonyms: z.array(z.string()).optional().describe('Known synonyms / other names.'),
+  proteinAccession: z.string().optional().describe('Protein accession (protein summaries).'),
+  scientificName: z.string().optional().describe('Scientific name (taxonomy summaries).'),
+  commonName: z.string().optional().describe('Common name (taxonomy summaries).'),
+  rank: z.string().optional().describe('Taxonomic rank (taxonomy summaries).'),
+  lineage: z.array(z.string()).optional().describe('Parent taxonomy lineage (taxonomy summaries).'),
+});
+
+type EntitySummaryData = z.infer<typeof entitySummaryDataSchema>;
+
 export const getSummary = tool('pubchem_get_summary', {
   title: 'Get Entity Summary',
   description:
@@ -42,10 +69,9 @@ export const getSummary = tool('pubchem_get_summary', {
         z.object({
           identifier: z.union([z.string(), z.number()]).describe('Queried identifier.'),
           found: z.boolean().describe('Whether the entity was found.'),
-          data: z
-            .record(z.string(), z.unknown())
+          data: entitySummaryDataSchema
             .optional()
-            .describe('Entity summary data (shape varies by type).'),
+            .describe('Entity summary data. Populated fields depend on entityType.'),
         }),
       )
       .describe('Summary results.'),
@@ -108,50 +134,77 @@ export const getSummary = tool('pubchem_get_summary', {
 
 // ── Summary extraction per entity type ──────────────────────────────
 
-function extractSummary(
-  entityType: EntityType,
-  raw: Record<string, unknown>,
-): Record<string, unknown> {
+function toNum(v: unknown): number | undefined {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return;
+}
+
+function toStr(v: unknown): string | undefined {
+  if (typeof v === 'string' && v.length > 0) return v;
+  if (typeof v === 'number') return String(v);
+  if (Array.isArray(v)) {
+    const joined = v.filter((x) => typeof x === 'string').join('\n');
+    return joined.length > 0 ? joined : undefined;
+  }
+  return;
+}
+
+function toStrArr(v: unknown): string[] | undefined {
+  if (Array.isArray(v)) {
+    const arr = v.map((x) => (typeof x === 'string' ? x : String(x))).filter((s) => s.length > 0);
+    return arr.length > 0 ? arr : undefined;
+  }
+  if (typeof v === 'string' && v.length > 0) return [v];
+  return;
+}
+
+/** Assign `value` to `target[key]` only when defined — keeps unknowns off the output. */
+function put<K extends keyof EntitySummaryData>(
+  target: EntitySummaryData,
+  key: K,
+  value: EntitySummaryData[K] | undefined,
+): void {
+  if (value !== undefined) target[key] = value;
+}
+
+function extractSummary(entityType: EntityType, raw: Record<string, unknown>): EntitySummaryData {
+  const data: EntitySummaryData = {};
   switch (entityType) {
     case 'assay':
-      return {
-        aid: raw.AID,
-        name: raw.Name ?? raw.AssayName,
-        description: Array.isArray(raw.Description)
-          ? (raw.Description as string[]).join('\n')
-          : raw.Description,
-        sourceName: raw.SourceName,
-        numSubstances: raw.NumberOfSubstances ?? raw.TotalSIDCount,
-        numActive: raw.ActiveSidCount ?? raw.ActiveCount,
-      };
+      put(data, 'aid', toNum(raw.AID));
+      put(data, 'name', toStr(raw.Name ?? raw.AssayName));
+      put(data, 'description', toStr(raw.Description));
+      put(data, 'sourceName', toStr(raw.SourceName));
+      put(data, 'numSubstances', toNum(raw.NumberOfSubstances ?? raw.TotalSIDCount));
+      put(data, 'numActive', toNum(raw.ActiveSidCount ?? raw.ActiveCount));
+      return data;
     case 'gene':
-      return {
-        geneId: raw.GeneID,
-        symbol: raw.Symbol,
-        name: raw.Name,
-        taxonomyId: raw.TaxID ?? raw.TaxonomyID,
-        taxonomy: raw.Taxonomy ?? raw.ScientificName,
-        description: raw.Description ?? raw.Summary,
-        synonyms: raw.Synonym ?? raw.OtherNames,
-      };
+      put(data, 'geneId', toNum(raw.GeneID));
+      put(data, 'symbol', toStr(raw.Symbol));
+      put(data, 'name', toStr(raw.Name));
+      put(data, 'taxonomyId', toNum(raw.TaxID ?? raw.TaxonomyID));
+      put(data, 'taxonomy', toStr(raw.Taxonomy ?? raw.ScientificName));
+      put(data, 'description', toStr(raw.Description ?? raw.Summary));
+      put(data, 'synonyms', toStrArr(raw.Synonym ?? raw.OtherNames));
+      return data;
     case 'protein':
-      return {
-        proteinAccession: raw.ProteinAccession ?? raw.Accession,
-        name: raw.Name ?? raw.Title,
-        taxonomyId: raw.TaxID ?? raw.TaxonomyID,
-        taxonomy: raw.Taxonomy ?? raw.ScientificName,
-        synonyms: raw.Synonym ?? raw.OtherNames,
-      };
+      put(data, 'proteinAccession', toStr(raw.ProteinAccession ?? raw.Accession));
+      put(data, 'name', toStr(raw.Name ?? raw.Title));
+      put(data, 'taxonomyId', toNum(raw.TaxID ?? raw.TaxonomyID));
+      put(data, 'taxonomy', toStr(raw.Taxonomy ?? raw.ScientificName));
+      put(data, 'synonyms', toStrArr(raw.Synonym ?? raw.OtherNames));
+      return data;
     case 'taxonomy':
-      return {
-        taxonomyId: raw.TaxonomyID ?? raw.TaxID,
-        scientificName: raw.ScientificName,
-        commonName: raw.CommonName,
-        rank: raw.Rank,
-        lineage: raw.Lineage ?? raw.ParentTaxList,
-      };
-    default:
-      return raw;
+      put(data, 'taxonomyId', toNum(raw.TaxonomyID ?? raw.TaxID));
+      put(data, 'scientificName', toStr(raw.ScientificName));
+      put(data, 'commonName', toStr(raw.CommonName));
+      put(data, 'rank', toStr(raw.Rank));
+      put(data, 'lineage', toStrArr(raw.Lineage ?? raw.ParentTaxList));
+      return data;
   }
 }
 

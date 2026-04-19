@@ -199,6 +199,24 @@ describe('searchCompounds handler', () => {
       /query and queryType are required/,
     );
   });
+
+  it('rejects empty-string entries in identifiers from form-based clients', () => {
+    expect(() =>
+      searchCompounds.input.parse({
+        searchType: 'identifier',
+        identifierType: 'name',
+        identifiers: [''],
+      }),
+    ).toThrow(/non-empty/);
+
+    expect(() =>
+      searchCompounds.input.parse({
+        searchType: 'identifier',
+        identifierType: 'name',
+        identifiers: ['aspirin', '   '],
+      }),
+    ).toThrow(/non-empty/);
+  });
 });
 
 describe('searchCompounds format', () => {

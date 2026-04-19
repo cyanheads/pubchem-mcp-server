@@ -31,7 +31,10 @@ const drugLikenessSchema = z.object({
       xLogP: drugLikenessRuleSchema.describe('XLogP rule (≤5).'),
     })
     .describe('Lipinski Rule of Five evaluation.'),
-  pass: z.boolean().describe('Overall drug-likeness pass.'),
+  pass: z
+    .boolean()
+    .nullable()
+    .describe('Overall drug-likeness pass. Null when insufficient properties were available.'),
   veber: z
     .object({
       rotatableBonds: drugLikenessRuleSchema.describe('Rotatable bond count rule (≤10).'),
@@ -68,8 +71,16 @@ const DRUG_LIKENESS_PROPS = [
 ] as const;
 
 function evaluateRule(value: unknown, limit: number): DrugLikenessRule {
-  if (value == null || typeof value !== 'number') return { limit, pass: null, value: null };
-  return { limit, pass: value <= limit, value };
+  let num: number | null = null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    num = value;
+  } else if (typeof value === 'string') {
+    // PubChem returns some numeric properties (MolecularWeight, ExactMass, ...) as strings.
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) num = parsed;
+  }
+  if (num === null) return { limit, pass: null, value: null };
+  return { limit, pass: num <= limit, value: num };
 }
 
 function computeDrugLikeness(properties: Record<string, unknown>): DrugLikenessAssessment {
@@ -85,9 +96,13 @@ function computeDrugLikeness(properties: Record<string, unknown>): DrugLikenessA
   const lipinskiViolations = lipinskiRules.filter((r) => r.pass === false).length;
   const veberViolations = veberRules.filter((r) => r.pass === false).length;
 
+  // Any null rule means the underlying property was unavailable — refuse to invent a pass/fail.
+  const hasGap = [...lipinskiRules, ...veberRules].some((r) => r.pass === null);
+  const pass = hasGap ? null : lipinskiViolations <= 1 && veberViolations === 0;
+
   return {
     lipinski: { hba, hbd, mw, violations: lipinskiViolations, xLogP },
-    pass: lipinskiViolations <= 1 && veberViolations === 0,
+    pass,
     veber: { rotatableBonds, tpsa, violations: veberViolations },
   };
 }
@@ -125,8 +140,8 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .boolean()
       .default(false)
       .describe(
-        'Fetch textual description from PUG View (pharmacology, mechanism, therapeutic use). ' +
-          'Adds one API call per CID — consider limiting CID count when enabled.',
+        'Include textual description (pharmacology, mechanism, therapeutic use). ' +
+          'Slower when enabled — prefer small CID batches.',
       ),
     includeSynonyms: z
       .boolean()
@@ -145,9 +160,9 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .boolean()
       .default(false)
       .describe(
-        'Fetch pharmacological classification from PUG View: FDA Established Pharmacologic ' +
-          'Classes, mechanisms of action, MeSH classes, and ATC codes. ' +
-          'Adds one API call per CID — consider limiting CID count when enabled.',
+        'Include pharmacological classification: FDA Established Pharmacologic Classes, ' +
+          'mechanisms of action, MeSH classes, and ATC codes. ' +
+          'Slower when enabled — prefer small CID batches.',
       ),
   }),
   output: z.object({
@@ -158,7 +173,10 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
           properties: z
             .record(z.string(), z.unknown())
             .describe('Requested physicochemical properties.'),
-          description: z.string().optional().describe('Textual description from PUG View.'),
+          description: z
+            .string()
+            .optional()
+            .describe('Textual description of the compound when available.'),
           synonyms: z.array(z.string()).optional().describe('Known names and synonyms.'),
           drugLikeness: drugLikenessSchema
             .optional()
@@ -331,7 +349,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       // Drug-likeness assessment
       if (c.drugLikeness) {
         const dl = c.drugLikeness;
-        const status = dl.pass ? 'PASS' : 'FAIL';
+        const status = dl.pass === null ? 'N/A (insufficient data)' : dl.pass ? 'PASS' : 'FAIL';
         lines.length = 0;
         lines.push(`\n**Drug-likeness:** ${status}`);
         lines.push(

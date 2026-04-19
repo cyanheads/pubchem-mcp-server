@@ -170,7 +170,7 @@ describe('getCompoundDetails handler', () => {
     expect(dl!.lipinski.xLogP.pass).toBe(false);
   });
 
-  it('handles missing properties in drug-likeness', async () => {
+  it('returns null pass when properties are unavailable', async () => {
     mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244 }]);
     const ctx = createMockContext();
     const input = getCompoundDetails.input.parse({
@@ -180,10 +180,56 @@ describe('getCompoundDetails handler', () => {
     const result = await getCompoundDetails.handler(input, ctx);
     const dl = result.compounds[0]!.drugLikeness;
 
-    expect(dl!.pass).toBe(true);
+    expect(dl!.pass).toBeNull();
     expect(dl!.lipinski.violations).toBe(0);
     expect(dl!.lipinski.mw.pass).toBeNull();
     expect(dl!.lipinski.mw.value).toBeNull();
+  });
+
+  it('coerces string-valued numeric properties (PubChem returns MW as string)', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([
+      {
+        CID: 2244,
+        MolecularWeight: '180.16',
+        XLogP: 1.2,
+        HBondDonorCount: 1,
+        HBondAcceptorCount: 4,
+        TPSA: 63.6,
+        RotatableBondCount: 3,
+      },
+    ]);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244],
+      includeDrugLikeness: true,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+    const dl = result.compounds[0]!.drugLikeness;
+
+    expect(dl!.pass).toBe(true);
+    expect(dl!.lipinski.mw).toEqual({ limit: 500, pass: true, value: 180.16 });
+  });
+
+  it('returns null pass when any rule is indeterminate', async () => {
+    // MW, XLogP, HBD, HBA, TPSA present; RotatableBondCount missing → null
+    mockClient.getProperties.mockResolvedValueOnce([
+      {
+        CID: 2244,
+        MolecularWeight: 180.16,
+        XLogP: 1.2,
+        HBondDonorCount: 1,
+        HBondAcceptorCount: 4,
+        TPSA: 63.6,
+      },
+    ]);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244],
+      includeDrugLikeness: true,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+
+    expect(result.compounds[0]!.drugLikeness!.pass).toBeNull();
   });
 
   it('includes classification when requested', async () => {

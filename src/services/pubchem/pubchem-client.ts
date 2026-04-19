@@ -640,15 +640,19 @@ export class PubChemClient {
         byAid.set(aid, entry);
       }
 
-      // Collect activity value if present
+      // Collect activity value if present — omit name/unit when genuinely unknown
       if (actValueIdx >= 0 && cell[actValueIdx] != null) {
         const value = Number(cell[actValueIdx]);
         if (!Number.isNaN(value)) {
-          byAid.get(aid)?.activityValues.push({
-            name: actNameIdx >= 0 ? String(cell[actNameIdx] ?? '') : '',
-            value,
-            unit: actValueUnit,
-          });
+          const entry: { name?: string; value: number; unit?: string } = { value };
+          if (actNameIdx >= 0) {
+            const rawName = cell[actNameIdx];
+            if (rawName != null && String(rawName).trim().length > 0) {
+              entry.name = String(rawName);
+            }
+          }
+          if (actValueUnit) entry.unit = actValueUnit;
+          byAid.get(aid)?.activityValues.push(entry);
         }
       }
     }

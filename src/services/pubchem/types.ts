@@ -100,7 +100,7 @@ export interface GHSClassification {
 
 /** Parsed bioactivity row from assay summary table */
 export interface BioactivityRow {
-  activityValues: Array<{ name: string; value: number; unit: string }>;
+  activityValues: Array<{ name?: string; value: number; unit?: string }>;
   aid: number;
   assayName: string;
   outcome: string;
@@ -136,7 +136,8 @@ export interface DrugLikenessAssessment {
     violations: number;
     xLogP: DrugLikenessRule;
   };
-  pass: boolean;
+  /** Overall pass, or null when insufficient properties were available to assess. */
+  pass: boolean | null;
   veber: {
     rotatableBonds: DrugLikenessRule;
     tpsa: DrugLikenessRule;

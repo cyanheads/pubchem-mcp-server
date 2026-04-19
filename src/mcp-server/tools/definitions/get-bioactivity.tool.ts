@@ -57,9 +57,15 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
           activityValues: z
             .array(
               z.object({
-                name: z.string().describe('Measurement name (e.g. IC50, EC50, Ki).'),
+                name: z
+                  .string()
+                  .optional()
+                  .describe('Measurement name (e.g. IC50, EC50, Ki). Omitted when not reported.'),
                 value: z.number().describe('Measured value.'),
-                unit: z.string().describe('Unit of measurement (e.g. uM, nM).'),
+                unit: z
+                  .string()
+                  .optional()
+                  .describe('Unit of measurement (e.g. uM, nM). Omitted when not reported.'),
               }),
             )
             .describe('Quantitative activity measurements.'),
@@ -119,9 +125,10 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
         .join(' — ');
       lines.push(`**AID ${r.aid}** — ${r.assayName} (${r.outcome})`);
       if (target) lines.push(`  Target: ${target}`);
-      const meaningful = r.activityValues.filter((av) => av.name);
-      for (const av of meaningful) {
-        lines.push(`  ${av.name}: ${av.value} ${av.unit}`);
+      for (const av of r.activityValues) {
+        const label = av.name ?? 'Value';
+        const unit = av.unit ?? '';
+        lines.push(`  ${label}: ${av.value}${unit ? ` ${unit}` : ''}`);
       }
       lines.push('');
     }

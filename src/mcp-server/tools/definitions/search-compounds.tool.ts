@@ -48,6 +48,9 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .array(z.string())
       .min(1)
       .max(25)
+      .refine((arr) => arr.every((s) => s.trim().length > 0), {
+        message: 'identifiers must all be non-empty strings',
+      })
       .optional()
       .describe(
         'Required for identifier search. Array of identifiers to resolve (1-25). ' +
