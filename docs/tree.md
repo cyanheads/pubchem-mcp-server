@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-04-19 15:45:14
+Generated on: 2026-04-19 16:34:05
 
 ```text
 pubchem-mcp-server/
@@ -95,17 +95,20 @@ pubchem-mcp-server/
 │   │       └── types.ts
 │   └── index.ts
 ├── tests/
-│   └── mcp-server/
-│       └── tools/
-│           └── definitions/
-│               ├── get-bioactivity.tool.test.ts
-│               ├── get-compound-details.tool.test.ts
-│               ├── get-compound-image.tool.test.ts
-│               ├── get-compound-safety.tool.test.ts
-│               ├── get-compound-xrefs.tool.test.ts
-│               ├── get-summary.tool.test.ts
-│               ├── search-assays.tool.test.ts
-│               └── search-compounds.tool.test.ts
+│   ├── mcp-server/
+│   │   └── tools/
+│   │       └── definitions/
+│   │           ├── get-bioactivity.tool.test.ts
+│   │           ├── get-compound-details.tool.test.ts
+│   │           ├── get-compound-image.tool.test.ts
+│   │           ├── get-compound-safety.tool.test.ts
+│   │           ├── get-compound-xrefs.tool.test.ts
+│   │           ├── get-summary.tool.test.ts
+│   │           ├── search-assays.tool.test.ts
+│   │           └── search-compounds.tool.test.ts
+│   └── services/
+│       └── pubchem/
+│           └── pubchem-client.test.ts
 ├── .dockerignore
 ├── .env.example
 ├── .gitignore

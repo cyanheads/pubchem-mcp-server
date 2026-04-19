@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.13] — 2026-04-19
+
+### Fixed
+
+- **`pubchem_get_compound_details` silent empty record for nonexistent CIDs** ([#5](https://github.com/cyanheads/pubchem-mcp-server/issues/5)) — output now carries a required `found: boolean` flag; not-found CIDs render as `## CID X — not found in PubChem` instead of an empty block. PUG View calls (description, synonyms, classification) are skipped for not-found CIDs to avoid wasted requests
+- **`pubchem_get_bioactivity` phantom `Value: 0 uM` entries** ([#6](https://github.com/cyanheads/pubchem-mcp-server/issues/6)) — `parseAssayTable` now skips empty/whitespace cells before `Number()` coercion (PubChem returns `""` for missing values, which silently coerced to `0`); affected AIDs (1195, 1811, 182665, 284327, 328210, etc.) now correctly report `activityValues: []`
+- **`pubchem_get_bioactivity` duplicate activity entries within an AID** ([#6](https://github.com/cyanheads/pubchem-mcp-server/issues/6)) — replicate rows in PubChem's assaysummary table no longer produce duplicate `{name, value, unit}` triples; dedup is keyed on the triple
+
+### Changed
+
+- **`pubchem_get_compound_details` description shape** ([#7](https://github.com/cyanheads/pubchem-mcp-server/issues/7)) — replaced `description?: string` (unbounded join of all depositor blurbs) with `descriptions?: Array<{ source?: string; text: string }>` plus `descriptionsTotal?: number`. Descriptions are deduped by exact normalized text and capped at the new `maxDescriptions` input (default 3, max 20). Format renders each with source attribution and a `+K more descriptions from other sources` marker when truncated
+- **`PubChemClient.getDescription` return type** — now `Promise<Array<{source?, text}>>` (was `Promise<string | null>`); empty results are `[]` rather than `null`. Source attribution is derived from PUG View `Reference` entries
+
+### Added
+
+- Client-level test suite at `tests/services/pubchem/pubchem-client.test.ts` — exercises `parseAssayTable` (empty-cell filtering, NaN rejection, dedup behavior, distinct-value preservation) and `getDescription` (dedup, source attribution, missing-section/404 paths) with realistic PubChem response shapes
+
 ## [0.1.12] — 2026-04-19
 
 ### Changed
