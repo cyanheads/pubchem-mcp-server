@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14] — 2026-04-19
+
+### Changed
+
+- **Dependencies** — updated `@cyanheads/mcp-ts-core` from `^0.3.5` to `^0.3.7`
+- **Skills** — synced `add-tool` (1.3 → 1.4) and `design-mcp-server` (2.2 → 2.3) from `@cyanheads/mcp-ts-core@0.3.7`
+
 ## [0.1.13] — 2026-04-19
 
 ### Fixed
