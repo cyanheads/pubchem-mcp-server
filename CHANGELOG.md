@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.12] — 2026-04-19
+
+### Changed
+
+- **Dependencies** — updated `@cyanheads/mcp-ts-core` from `^0.2.10` to `^0.3.5`, `@biomejs/biome` from `^2.4.10` to `^2.4.12`, `@types/node` from `^25.5.0` to `^25.6.0`, `typescript` from `^6.0.2` to `^6.0.3`, `vitest` from `^4.1.2` to `^4.1.4`
+- **`pubchem_get_summary` output shape** — replaced opaque `z.record(z.string(), z.unknown())` with a typed entity-summary schema (16 optional fields spanning assay/gene/protein/taxonomy). Fields absent from upstream are now omitted entirely rather than filled with empty strings or zeros — MCP clients can now introspect the full output shape with per-field descriptions
+- **`pubchem_get_bioactivity` activity values** — `name` and `unit` are now optional and omitted when upstream doesn't provide them, replacing previous fabricated empty strings
+- **`pubchem_get_compound_details` descriptions** — rewrote `includeDescription` and `includeClassification` parameter descriptions to remove PUG-View implementation leakage and describe actual data returned; renamed output `description` describe to match
+- **Skills** — synced 14 framework skills (`add-prompt`, `add-resource`, `add-service`, `add-test`, `add-tool`, `api-testing`, `api-workers`, `design-mcp-server`, `devcheck`, `field-test`, `maintenance`, `migrate-mcp-ts-template`, `polish-docs-meta`, `setup`) from `@cyanheads/mcp-ts-core@0.3.5`
+
+### Added
+
+- **`add-app-tool` skill** — scaffolding guide for MCP App Tools (interactive UI components) surfaced by the framework upgrade
+- **Empty-string refinement on `pubchem_search_compounds`** — `identifiers` now rejects `[""]` and whitespace-only entries with a clear validation error, preventing bad form-client submissions from reaching PubChem
+
+### Fixed
+
+- **Drug-likeness honesty** — `pass` is now `boolean | null`; returns `null` when any Lipinski/Veber rule can't be evaluated (missing property) instead of silently treating missing data as a violation. Matching `null` propagation in per-rule `pass` and `value`
+- **Drug-likeness MolecularWeight coercion** — `evaluateRule` now parses numeric-string values (PubChem returns `MolecularWeight` as `"180.16"`, not `180.16`), unblocking Lipinski MW evaluation that previously returned `pass: null` for all compounds
+
 ## [0.1.11] — 2026-03-30
 
 ### Changed

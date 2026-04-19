@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-03-28 16:26:54
+Generated on: 2026-04-19 15:45:14
 
 ```text
 pubchem-mcp-server/
@@ -17,6 +17,8 @@ pubchem-mcp-server/
 │   ├── lint-mcp.ts
 │   └── tree.ts
 ├── skills/
+│   ├── add-app-tool/
+│   │   └── SKILL.md
 │   ├── add-prompt/
 │   │   └── SKILL.md
 │   ├── add-resource/
