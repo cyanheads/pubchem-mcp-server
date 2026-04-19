@@ -33,11 +33,12 @@ describe('getCompoundDetails handler', () => {
 
     expect(result.compounds).toHaveLength(1);
     expect(result.compounds[0]!.cid).toBe(2244);
+    expect(result.compounds[0]!.found).toBe(true);
     expect(result.compounds[0]!.properties).toEqual({
       MolecularFormula: 'C9H8O4',
       MolecularWeight: 180.16,
     });
-    expect(result.compounds[0]!.description).toBeUndefined();
+    expect(result.compounds[0]!.descriptions).toBeUndefined();
     expect(result.compounds[0]!.synonyms).toBeUndefined();
   });
 
@@ -53,11 +54,14 @@ describe('getCompoundDetails handler', () => {
     expect(result.compounds).toHaveLength(2);
     expect(result.compounds[0]!.cid).toBe(2244);
     expect(result.compounds[1]!.cid).toBe(3672);
+    expect(result.compounds.every((c) => c.found)).toBe(true);
   });
 
   it('includes descriptions when requested', async () => {
-    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244 }]);
-    mockClient.getDescription.mockResolvedValueOnce('Aspirin is an NSAID.');
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+    mockClient.getDescription.mockResolvedValueOnce([
+      { source: 'DrugBank', text: 'Aspirin is an NSAID.' },
+    ]);
     const ctx = createMockContext();
     const input = getCompoundDetails.input.parse({
       cids: [2244],
@@ -65,13 +69,16 @@ describe('getCompoundDetails handler', () => {
     });
     const result = await getCompoundDetails.handler(input, ctx);
 
-    expect(result.compounds[0]!.description).toBe('Aspirin is an NSAID.');
+    expect(result.compounds[0]!.descriptions).toEqual([
+      { source: 'DrugBank', text: 'Aspirin is an NSAID.' },
+    ]);
+    expect(result.compounds[0]!.descriptionsTotal).toBe(1);
     expect(mockClient.getDescription).toHaveBeenCalledWith(2244);
   });
 
-  it('handles null descriptions gracefully', async () => {
-    mockClient.getProperties.mockResolvedValueOnce([{ CID: 999 }]);
-    mockClient.getDescription.mockResolvedValueOnce(null);
+  it('handles empty descriptions gracefully', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 999, MolecularFormula: 'C1H1' }]);
+    mockClient.getDescription.mockResolvedValueOnce([]);
     const ctx = createMockContext();
     const input = getCompoundDetails.input.parse({
       cids: [999],
@@ -79,11 +86,105 @@ describe('getCompoundDetails handler', () => {
     });
     const result = await getCompoundDetails.handler(input, ctx);
 
-    expect(result.compounds[0]!.description).toBeUndefined();
+    expect(result.compounds[0]!.descriptions).toBeUndefined();
+    expect(result.compounds[0]!.descriptionsTotal).toBeUndefined();
+  });
+
+  it('caps descriptions at maxDescriptions and reports total (#7 regression)', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+    const allDescs = Array.from({ length: 11 }, (_, i) => ({
+      source: `Source ${i}`,
+      text: `Description ${i} with sufficient unique prefix to avoid dedup collision.`,
+    }));
+    mockClient.getDescription.mockResolvedValueOnce(allDescs);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244],
+      includeDescription: true,
+      maxDescriptions: 3,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+
+    expect(result.compounds[0]!.descriptions).toHaveLength(3);
+    expect(result.compounds[0]!.descriptionsTotal).toBe(11);
+    // First three are preserved in order
+    expect(result.compounds[0]!.descriptions![0]!.source).toBe('Source 0');
+    expect(result.compounds[0]!.descriptions![2]!.source).toBe('Source 2');
+  });
+
+  it('respects maxDescriptions=20 upper bound', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+    const allDescs = Array.from({ length: 25 }, (_, i) => ({
+      text: `Description ${i} unique prefix.`,
+    }));
+    mockClient.getDescription.mockResolvedValueOnce(allDescs);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244],
+      includeDescription: true,
+      maxDescriptions: 20,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+
+    expect(result.compounds[0]!.descriptions).toHaveLength(20);
+    expect(result.compounds[0]!.descriptionsTotal).toBe(25);
+  });
+
+  it('signals not-found for nonexistent CIDs (#5 regression)', async () => {
+    // PubChem returns {CID: x} with no other fields when the CID does not exist.
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 999999999 }]);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({ cids: [999999999] });
+    const result = await getCompoundDetails.handler(input, ctx);
+
+    expect(result.compounds).toHaveLength(1);
+    expect(result.compounds[0]!.found).toBe(false);
+    expect(result.compounds[0]!.properties).toEqual({});
+  });
+
+  it('mixes found and not-found CIDs in batch (#5 regression)', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([
+      { CID: 2244, MolecularFormula: 'C9H8O4' },
+      { CID: 999999999 }, // not found
+      { CID: 3672, MolecularFormula: 'C13H18O2' },
+    ]);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({ cids: [2244, 999999999, 3672] });
+    const result = await getCompoundDetails.handler(input, ctx);
+
+    expect(result.compounds.map((c) => c.found)).toEqual([true, false, true]);
+    expect(result.compounds[1]!.properties).toEqual({});
+  });
+
+  it('skips PUG View calls for not-found CIDs (#5 regression)', async () => {
+    // Only the found CID should trigger a description / synonym / classification call.
+    mockClient.getProperties.mockResolvedValueOnce([
+      { CID: 2244, MolecularFormula: 'C9H8O4' },
+      { CID: 999999999 },
+    ]);
+    mockClient.getDescription.mockResolvedValueOnce([{ text: 'Aspirin.' }]);
+    mockClient.getSynonyms.mockResolvedValueOnce(['Aspirin']);
+    mockClient.getClassification.mockResolvedValueOnce(null);
+
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244, 999999999],
+      includeDescription: true,
+      includeSynonyms: true,
+      includeClassification: true,
+    });
+    await getCompoundDetails.handler(input, ctx);
+
+    expect(mockClient.getDescription).toHaveBeenCalledTimes(1);
+    expect(mockClient.getDescription).toHaveBeenCalledWith(2244);
+    expect(mockClient.getSynonyms).toHaveBeenCalledTimes(1);
+    expect(mockClient.getSynonyms).toHaveBeenCalledWith(2244);
+    expect(mockClient.getClassification).toHaveBeenCalledTimes(1);
+    expect(mockClient.getClassification).toHaveBeenCalledWith(2244);
   });
 
   it('includes synonyms when requested', async () => {
-    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244 }]);
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
     mockClient.getSynonyms.mockResolvedValueOnce(['Aspirin', 'ASA', 'Acetylsalicylic acid']);
     const ctx = createMockContext();
     const input = getCompoundDetails.input.parse({
@@ -171,7 +272,10 @@ describe('getCompoundDetails handler', () => {
   });
 
   it('returns null pass when properties are unavailable', async () => {
-    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244 }]);
+    // Compound exists (has IUPACName) but the drug-likeness inputs are missing.
+    mockClient.getProperties.mockResolvedValueOnce([
+      { CID: 2244, IUPACName: '2-acetyloxybenzoic acid' },
+    ]);
     const ctx = createMockContext();
     const input = getCompoundDetails.input.parse({
       cids: [2244],
@@ -233,7 +337,7 @@ describe('getCompoundDetails handler', () => {
   });
 
   it('includes classification when requested', async () => {
-    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244 }]);
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
     mockClient.getClassification.mockResolvedValueOnce({
       atcCodes: [{ code: 'N02BA01', description: 'Acetylsalicylic acid' }],
       fdaClasses: ['Nonsteroidal Anti-inflammatory Drug'],
@@ -255,7 +359,7 @@ describe('getCompoundDetails handler', () => {
   });
 
   it('handles null classification gracefully', async () => {
-    mockClient.getProperties.mockResolvedValueOnce([{ CID: 241 }]);
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 241, MolecularFormula: 'H2O' }]);
     mockClient.getClassification.mockResolvedValueOnce(null);
     const ctx = createMockContext();
     const input = getCompoundDetails.input.parse({
@@ -274,6 +378,7 @@ describe('getCompoundDetails format', () => {
       compounds: [
         {
           cid: 2244,
+          found: true,
           properties: {
             IUPACName: '2-acetoxybenzoic acid',
             MolecularFormula: 'C9H8O4',
@@ -290,20 +395,71 @@ describe('getCompoundDetails format', () => {
     expect(text).toContain('180.16');
   });
 
-  it('formats compound with description and synonyms', () => {
+  it('formats compound with descriptions and synonyms', () => {
     const blocks = getCompoundDetails.format!({
       compounds: [
         {
           cid: 2244,
+          found: true,
           properties: {},
-          description: 'A non-steroidal anti-inflammatory drug.',
+          descriptions: [{ source: 'DrugBank', text: 'A non-steroidal anti-inflammatory drug.' }],
+          descriptionsTotal: 1,
           synonyms: ['Aspirin', 'ASA'],
         },
       ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).toContain('non-steroidal');
+    expect(text).toContain('Description (DrugBank)');
     expect(text).toContain('Aspirin, ASA');
+  });
+
+  it('renders truncation marker when descriptions exceed cap (#7 regression)', () => {
+    const blocks = getCompoundDetails.format!({
+      compounds: [
+        {
+          cid: 2244,
+          found: true,
+          properties: {},
+          descriptions: [
+            { source: 'A', text: 'first' },
+            { source: 'B', text: 'second' },
+            { source: 'C', text: 'third' },
+          ],
+          descriptionsTotal: 11,
+        },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(text).toContain('+8 more descriptions from other sources');
+    expect(text).toContain('Description (A)');
+    expect(text).toContain('Description (C)');
+  });
+
+  it('omits truncation marker when descriptions fit (#7 regression)', () => {
+    const blocks = getCompoundDetails.format!({
+      compounds: [
+        {
+          cid: 2244,
+          found: true,
+          properties: {},
+          descriptions: [{ text: 'only one' }],
+          descriptionsTotal: 1,
+        },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(text).not.toContain('more description');
+    expect(text).toContain('**Description:** only one');
+  });
+
+  it('renders not-found header for missing CIDs (#5 regression)', () => {
+    const blocks = getCompoundDetails.format!({
+      compounds: [{ cid: 999999999, found: false, properties: {} }],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(text).toContain('CID 999999999 — not found in PubChem');
+    expect(text).not.toContain('**Formula:**');
   });
 
   it('formats drug-likeness assessment', () => {
@@ -311,6 +467,7 @@ describe('getCompoundDetails format', () => {
       compounds: [
         {
           cid: 2244,
+          found: true,
           properties: {},
           drugLikeness: {
             lipinski: {
@@ -342,6 +499,7 @@ describe('getCompoundDetails format', () => {
       compounds: [
         {
           cid: 2244,
+          found: true,
           properties: {},
           classification: {
             atcCodes: [{ code: 'N02BA01', description: 'Acetylsalicylic acid' }],

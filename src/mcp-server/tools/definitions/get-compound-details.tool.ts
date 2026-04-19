@@ -140,8 +140,19 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .boolean()
       .default(false)
       .describe(
-        'Include textual description (pharmacology, mechanism, therapeutic use). ' +
+        'Include textual descriptions (pharmacology, mechanism, therapeutic use) attributed by source. ' +
+          'Well-studied compounds have many overlapping summaries — capped via maxDescriptions. ' +
           'Slower when enabled — prefer small CID batches.',
+      ),
+    maxDescriptions: z
+      .number()
+      .int()
+      .min(1)
+      .max(20)
+      .default(3)
+      .describe(
+        'Max number of distinct description entries per compound (1-20). PubChem returns near-duplicate ' +
+          'summaries from many depositors; we dedup and cap to keep responses focused. Default: 3.',
       ),
     includeSynonyms: z
       .boolean()
@@ -170,13 +181,36 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .array(
         z.object({
           cid: z.number().describe('PubChem Compound ID.'),
+          found: z
+            .boolean()
+            .describe(
+              'False when the CID does not exist in PubChem (properties, description, etc. are empty).',
+            ),
           properties: z
             .record(z.string(), z.unknown())
             .describe('Requested physicochemical properties.'),
-          description: z
-            .string()
+          descriptions: z
+            .array(
+              z.object({
+                source: z
+                  .string()
+                  .optional()
+                  .describe('Depositor source (e.g. "DrugBank", "Wikipedia", "ChEBI").'),
+                text: z.string().describe('Description text.'),
+              }),
+            )
             .optional()
-            .describe('Textual description of the compound when available.'),
+            .describe(
+              'Textual descriptions, deduplicated and capped at maxDescriptions. Each entry carries ' +
+                'optional source attribution.',
+            ),
+          descriptionsTotal: z
+            .number()
+            .optional()
+            .describe(
+              'Total distinct descriptions available before truncation. Larger than descriptions.length ' +
+                'when more sources exist — increase maxDescriptions to see them.',
+            ),
           synonyms: z.array(z.string()).optional().describe('Known names and synonyms.'),
           drugLikeness: drugLikenessSchema
             .optional()
@@ -207,32 +241,41 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     const propertyRows = await client.getProperties(input.cids, props);
     const propsMap = new Map(propertyRows.map((r) => [r.CID, r]));
 
-    // PUG View calls (per-CID, capped at 10)
-    const viewCids = input.cids.slice(0, 10);
+    // PubChem returns HTTP 200 with `{CID: x}` and no other fields for nonexistent CIDs.
+    // Treat a row with only the CID key as not-found.
+    const isFound = (cid: number): boolean => {
+      const row = propsMap.get(cid);
+      if (!row) return false;
+      return Object.keys(row).some((k) => k !== 'CID');
+    };
+
+    // PUG View calls (per-CID, capped at 10) — skip CIDs that aren't in PubChem
+    const foundCids = input.cids.filter(isFound);
+    const viewCids = foundCids.slice(0, 10);
     if (
       (input.includeDescription || input.includeClassification) &&
-      viewCids.length < input.cids.length
+      viewCids.length < foundCids.length
     ) {
       ctx.log.info('PUG View fetch capped at 10 CIDs', {
-        requested: input.cids.length,
+        requested: foundCids.length,
         fetching: viewCids.length,
       });
     }
 
-    // Optional: descriptions
-    let descMap: Map<number, string> | undefined;
+    // Optional: descriptions — deduped by client, capped here.
+    let descMap: Map<number, Array<{ source?: string; text: string }>> | undefined;
     if (input.includeDescription) {
       const entries = await Promise.all(
         viewCids.map(async (cid) => [cid, await client.getDescription(cid)] as const),
       );
-      descMap = new Map(entries.filter((e): e is [number, string] => e[1] !== null));
+      descMap = new Map(entries.filter((e) => e[1].length > 0));
     }
 
-    // Optional: synonyms (per-CID)
+    // Optional: synonyms (per-CID) — skip CIDs that aren't in PubChem
     let synMap: Map<number, string[]> | undefined;
     if (input.includeSynonyms) {
       const entries = await Promise.all(
-        input.cids.map(async (cid) => [cid, await client.getSynonyms(cid)] as const),
+        foundCids.map(async (cid) => [cid, await client.getSynonyms(cid)] as const),
       );
       synMap = new Map(entries.filter((e): e is [number, string[]] => e[1].length > 0));
     }
@@ -257,6 +300,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     });
 
     const compounds = input.cids.map((cid) => {
+      const found = isFound(cid);
       const rawProps = propsMap.get(cid) ?? {};
       const properties = { ...rawProps };
       delete (properties as Record<string, unknown>).CID;
@@ -264,14 +308,22 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       const compound: {
         cid: number;
         classification?: CompoundClassification;
-        description?: string;
+        descriptions?: Array<{ source?: string; text: string }>;
+        descriptionsTotal?: number;
         drugLikeness?: DrugLikenessAssessment;
+        found: boolean;
         properties: Record<string, unknown>;
         synonyms?: string[];
-      } = { cid, properties };
+      } = { cid, found, properties };
 
-      const desc = descMap?.get(cid);
-      if (desc) compound.description = desc;
+      // Skip enrichment for CIDs not in PubChem — properties is already empty.
+      if (!found) return compound;
+
+      const allDescs = descMap?.get(cid);
+      if (allDescs && allDescs.length > 0) {
+        compound.descriptions = allDescs.slice(0, input.maxDescriptions);
+        compound.descriptionsTotal = allDescs.length;
+      }
       const syns = synMap?.get(cid);
       if (syns) compound.synonyms = syns;
       if (input.includeDrugLikeness) compound.drugLikeness = computeDrugLikeness(properties);
@@ -288,6 +340,11 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     const blocks: string[] = [];
 
     for (const c of result.compounds) {
+      if (!c.found) {
+        blocks.push(`## CID ${c.cid} — not found in PubChem`, '');
+        continue;
+      }
+
       const p = c.properties as Record<string, unknown>;
       const name = (p.IUPACName as string) ?? (p.Title as string) ?? '';
       const header = name ? `## CID ${c.cid} — ${name}` : `## CID ${c.cid}`;
@@ -394,9 +451,21 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         blocks.push(lines.join('\n'));
       }
 
-      // Description
-      if (c.description) {
-        blocks.push(`\n> ${c.description.replace(/\n/g, '\n> ')}`);
+      // Descriptions (with source attribution; truncated to maxDescriptions)
+      if (c.descriptions && c.descriptions.length > 0) {
+        const descLines: string[] = [''];
+        for (const d of c.descriptions) {
+          const label = d.source ? `**Description (${d.source}):**` : '**Description:**';
+          descLines.push(`${label} ${d.text}`);
+        }
+        const total = c.descriptionsTotal ?? c.descriptions.length;
+        const more = total - c.descriptions.length;
+        if (more > 0) {
+          descLines.push(
+            `_+${more} more description${more === 1 ? '' : 's'} from other sources — increase maxDescriptions to see them._`,
+          );
+        }
+        blocks.push(descLines.join('\n\n'));
       }
 
       // Synonyms

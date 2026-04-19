@@ -135,6 +135,45 @@ function extractStrings(section: PugViewSection): string[] {
   return strings;
 }
 
+/** Extract description strings paired with their PUG View ReferenceNumber so we can attribute sources. */
+function extractDescriptionItems(
+  section: PugViewSection,
+): Array<{ refNum?: number; text: string }> {
+  const items: Array<{ refNum?: number; text: string }> = [];
+  if (section.Information) {
+    for (const info of section.Information) {
+      if (!info.Value.StringWithMarkup) continue;
+      for (const swm of info.Value.StringWithMarkup) {
+        if (!swm.String) continue;
+        items.push(
+          info.ReferenceNumber != null
+            ? { refNum: info.ReferenceNumber, text: swm.String }
+            : { text: swm.String },
+        );
+      }
+    }
+  }
+  if (section.Section) {
+    for (const sub of section.Section) {
+      items.push(...extractDescriptionItems(sub));
+    }
+  }
+  return items;
+}
+
+/** Dedup descriptions by exact normalized text — drops byte-identical reposts across depositors. */
+function dedupDescriptions<T extends { text: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const item of items) {
+    const key = item.text.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
 /** Extract GHS info items from a PUG View section */
 function extractGHSInfo(section: PugViewSection): PugViewInformation[] {
   const infos: PugViewInformation[] = [];
@@ -411,22 +450,32 @@ export class PubChemClient {
 
   // ── PUG View ────────────────────────────────────────────────────
 
-  async getDescription(cid: number): Promise<string | null> {
+  async getDescription(cid: number): Promise<Array<{ source?: string; text: string }>> {
     try {
       const data = await this.fetchJson<PugViewResponse>(
         `${this.viewBase}/data/compound/${cid}/JSON?heading=Record+Description`,
       );
 
       const sections = data.Record.Section;
-      if (!sections) return null;
+      if (!sections) return [];
 
       const descSection = findSection(sections, 'Record Description');
-      if (!descSection) return null;
+      if (!descSection) return [];
 
-      const strings = extractStrings(descSection);
-      return strings.length > 0 ? strings.join('\n\n') : null;
+      // Build refNum → SourceName lookup so each description can carry attribution.
+      const refToSource = new Map<number, string>();
+      for (const ref of data.Record.Reference ?? []) {
+        refToSource.set(ref.ReferenceNumber, ref.SourceName);
+      }
+
+      const raw = extractDescriptionItems(descSection);
+      const deduped = dedupDescriptions(raw);
+      return deduped.map((item) => {
+        const source = item.refNum != null ? refToSource.get(item.refNum) : undefined;
+        return source ? { source, text: item.text } : { text: item.text };
+      });
     } catch (error) {
-      if (error instanceof PubChemNotFoundError) return null;
+      if (error instanceof PubChemNotFoundError) return [];
       throw error;
     }
   }
@@ -640,20 +689,29 @@ export class PubChemClient {
         byAid.set(aid, entry);
       }
 
-      // Collect activity value if present — omit name/unit when genuinely unknown
-      if (actValueIdx >= 0 && cell[actValueIdx] != null) {
-        const value = Number(cell[actValueIdx]);
-        if (!Number.isNaN(value)) {
-          const entry: { name?: string; value: number; unit?: string } = { value };
-          if (actNameIdx >= 0) {
-            const rawName = cell[actNameIdx];
-            if (rawName != null && String(rawName).trim().length > 0) {
-              entry.name = String(rawName);
-            }
-          }
-          if (actValueUnit) entry.unit = actValueUnit;
-          byAid.get(aid)?.activityValues.push(entry);
-        }
+      // Collect activity value if present — omit name/unit when genuinely unknown.
+      // Empty cells in PubChem's table arrive as "" (not null); Number("") is 0, which
+      // would otherwise produce a misleading "Value: 0 uM". Skip blanks before coercion.
+      if (actValueIdx < 0) continue;
+      const rawValue = cell[actValueIdx];
+      if (rawValue == null || String(rawValue).trim().length === 0) continue;
+      const value = Number(rawValue);
+      if (!Number.isFinite(value)) continue;
+      const bucket = byAid.get(aid);
+      if (!bucket) continue;
+
+      const entry: { name?: string; value: number; unit?: string } = { value };
+      const rawName = actNameIdx >= 0 ? cell[actNameIdx] : null;
+      if (rawName != null && String(rawName).trim().length > 0) {
+        entry.name = String(rawName);
+      }
+      if (actValueUnit) entry.unit = actValueUnit;
+
+      const activityKey = (v: { name?: string; value: number; unit?: string }) =>
+        `${v.name ?? ''}|${v.value}|${v.unit ?? ''}`;
+      const key = activityKey(entry);
+      if (!bucket.activityValues.some((v) => activityKey(v) === key)) {
+        bucket.activityValues.push(entry);
       }
     }
 

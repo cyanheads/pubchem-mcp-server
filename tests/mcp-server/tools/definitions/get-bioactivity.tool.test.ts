@@ -135,4 +135,26 @@ describe('getBioactivity format', () => {
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).toContain('No matching assay results');
   });
+
+  it('omits the value line entirely when activityValues is empty (#6 regression)', () => {
+    // After the #6 fix, parseAssayTable filters phantom 0s so most categorical assays land here
+    // with no activityValues. Format must NOT print "Value: 0 uM" for those.
+    const noValueRow: BioactivityRow = {
+      aid: 1195,
+      assayName: 'DSSTox FDAMDD',
+      outcome: 'Active',
+      activityValues: [],
+    };
+    const blocks = getBioactivity.format!({
+      cid: 2244,
+      totalAssays: 1,
+      activeCount: 1,
+      inactiveCount: 0,
+      results: [noValueRow],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(text).toContain('AID 1195');
+    expect(text).not.toContain('Value: 0');
+    expect(text).not.toContain('0 uM');
+  });
 });
