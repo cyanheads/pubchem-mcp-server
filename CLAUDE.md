@@ -1,7 +1,7 @@
 # Agent Protocol
 
 **Server:** pubchem-mcp-server
-**Version:** 0.1.11
+**Version:** 0.1.15
 **Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core)
 
 > **Read the framework docs first:** `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` contains the full API reference — builders, Context, error codes, exports, patterns. This file covers server-specific conventions only.
@@ -59,8 +59,10 @@ export const searchAssays = tool('pubchem_search_assays', {
     return { targetType: input.targetType, targetQuery: input.targetQuery, totalFound: allAids.length, aids };
   },
 
-  // format() populates MCP content[] — the only field most LLM clients forward to the model.
-  // structuredContent (from output schema) is for programmatic use. Make format() content-complete.
+  // format() populates content[] — the markdown twin of structuredContent.
+  // Different clients read different surfaces (Claude Code → structuredContent,
+  // Claude Desktop → content[]); both must carry the same data.
+  // Enforced at lint time: every field in `output` must appear in the rendered text.
   format(result) {
     const truncated =
       result.totalFound > result.aids.length
@@ -252,7 +254,7 @@ mcp-publisher publish
 
 ## Checklist
 
-- [ ] `format()` renders all data the LLM needs — `content[]` is the only field most clients forward to the model
+- [ ] `format()` renders all data the LLM needs — different clients forward different surfaces (Claude Code → `structuredContent`, Claude Desktop → `content[]`); both must carry the same data. Enforced by the `format-parity` linter
 - [ ] Zod schemas: all fields have `.describe()`
 - [ ] JSDoc `@fileoverview` + `@module` on every file
 - [ ] `ctx.log` for logging
