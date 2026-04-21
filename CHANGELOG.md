@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.15] — 2026-04-20
+
+### Changed
+
+- **Dependencies** — updated `@cyanheads/mcp-ts-core` from `^0.3.7` to `^0.5.3` (spans nine upstream releases; notable: `parseEnvConfig` helper, framework-level `ZodError` banner at startup, new `format-parity` lint rule, dual-surface parity framing, `Docs Sync` devcheck step, pino-redact Node 25 crash fix)
+- **`package.json` overrides removed** — dropped `brace-expansion`, `path-to-regexp`, `picomatch` pins. Upstream now publishes safe versions (`>= 2.1.0`, `>= 8.4.2`, `>= 4.0.4`) so the overrides are redundant; `bun audit` remains clean
+- **`CLAUDE.md`** — rewrote the `format()` guidance (inline tool example and checklist item) to match the upstream dual-surface framing: `content[]` is the markdown twin of `structuredContent`, not a reduced summary; Claude Code forwards `structuredContent`, Claude Desktop forwards `content[]`, both must be content-complete, enforced at lint time
+- **Skills synced** from `@cyanheads/mcp-ts-core@0.5.3`: `add-tool` (1.4 → 1.6), `api-config` (1.1 → 1.2), `design-mcp-server` (2.3 → 2.4), `field-test` (1.1 → 1.2), `maintenance` (1.2 → 1.3), `polish-docs-meta` (1.3 → 1.4), `setup` (1.2 → 1.3)
+
+### Fixed
+
+- **`format-parity` lint compliance across 5 tools** — the new `format-parity` linter (`@cyanheads/mcp-ts-core@0.5.2+`) flagged 9 output fields whose values were not rendered in `format()` text. Every affected tool now renders the missing field so `content[]`-only clients see the same data as `structuredContent`-only clients:
+  - `pubchem_get_compound_safety` — header changed to `## GHS Safety Data — CID {cid}` (renders the `hasData` field)
+  - `pubchem_get_summary` — always renders `identifier` and the found/not-found state explicitly; `symbol` is no longer skipped in the field loop
+  - `pubchem_get_compound_details` — adds `(found)` tag to the compound header, a `**Properties:**` sub-header above the property block, a `(showing N of M total)` qualifier that renders `descriptionsTotal`; renamed the drug-likeness descriptor line from `**Properties:**` to `**Descriptors:**` to eliminate the resulting duplicate label
+  - `pubchem_get_compound_xrefs` — truncated count string now ends with `— truncated`
+  - `pubchem_search_compounds` — adds a `**Properties:**` sub-header above hydrated property entries
+
 ## [0.1.14] — 2026-04-19
 
 ### Changed
