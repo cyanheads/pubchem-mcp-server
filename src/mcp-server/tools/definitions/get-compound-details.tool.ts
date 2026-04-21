@@ -347,10 +347,10 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
 
       const p = c.properties as Record<string, unknown>;
       const name = (p.IUPACName as string) ?? (p.Title as string) ?? '';
-      const header = name ? `## CID ${c.cid} — ${name}` : `## CID ${c.cid}`;
+      const header = name ? `## CID ${c.cid} — ${name} (found)` : `## CID ${c.cid} (found)`;
       blocks.push(header);
 
-      const lines: string[] = [];
+      const lines: string[] = ['**Properties:**'];
 
       // Key identifiers
       if (p.MolecularFormula) lines.push(`**Formula:** ${p.MolecularFormula}`);
@@ -367,7 +367,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       if (p.XLogP != null) drugProps.push(`XLogP: ${p.XLogP}`);
       if (p.TPSA != null) drugProps.push(`TPSA: ${p.TPSA}`);
       if (p.Complexity != null) drugProps.push(`Complexity: ${p.Complexity}`);
-      if (drugProps.length > 0) lines.push(`**Properties:** ${drugProps.join(' | ')}`);
+      if (drugProps.length > 0) lines.push(`**Descriptors:** ${drugProps.join(' | ')}`);
 
       // Atom/bond counts
       const counts: string[] = [];
@@ -453,13 +453,18 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
 
       // Descriptions (with source attribution; truncated to maxDescriptions)
       if (c.descriptions && c.descriptions.length > 0) {
-        const descLines: string[] = [''];
+        const total = c.descriptionsTotal ?? c.descriptions.length;
+        const shown = c.descriptions.length;
+        const header =
+          total > shown
+            ? `\n**Descriptions** (showing ${shown} of ${total} total)`
+            : `\n**Descriptions** (${total} total)`;
+        const descLines: string[] = [header];
         for (const d of c.descriptions) {
           const label = d.source ? `**Description (${d.source}):**` : '**Description:**';
           descLines.push(`${label} ${d.text}`);
         }
-        const total = c.descriptionsTotal ?? c.descriptions.length;
-        const more = total - c.descriptions.length;
+        const more = total - shown;
         if (more > 0) {
           descLines.push(
             `_+${more} more description${more === 1 ? '' : 's'} from other sources — increase maxDescriptions to see them._`,

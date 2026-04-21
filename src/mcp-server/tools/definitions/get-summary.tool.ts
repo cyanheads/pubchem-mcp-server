@@ -104,16 +104,17 @@ export const getSummary = tool('pubchem_get_summary', {
 
     for (const s of result.summaries) {
       if (!s.found || !s.data) {
-        lines.push(`**${s.identifier}** — not found`);
+        lines.push(`**Identifier ${s.identifier}** — not found`);
         lines.push('');
         continue;
       }
 
       const d = s.data;
-      lines.push(`**${d.name ?? d.symbol ?? s.identifier}**`);
+      const displayName = d.name ?? d.symbol ?? String(s.identifier);
+      lines.push(`**${displayName}** (identifier: ${s.identifier}, found)`);
 
       for (const [key, value] of Object.entries(d)) {
-        if (value == null || key === 'name' || key === 'symbol') continue;
+        if (value == null || key === 'name') continue;
         if (Array.isArray(value)) {
           if (value.length === 0) continue;
           const display =

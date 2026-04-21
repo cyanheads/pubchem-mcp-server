@@ -93,7 +93,7 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
 
     for (const xref of result.xrefs) {
       const countInfo = xref.truncated
-        ? `${xref.ids.length} of ${xref.totalAvailable} total`
+        ? `${xref.ids.length} of ${xref.totalAvailable} total — truncated`
         : `${xref.totalAvailable} total`;
       lines.push(`**${xref.type}** (${countInfo})`);
 

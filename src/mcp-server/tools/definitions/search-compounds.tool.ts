@@ -237,7 +237,8 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         lines.push(`**${label}**`);
         if (r.properties) {
           const entries = Object.entries(r.properties);
-          lines.push(entries.map(([k, v]) => `  ${k}: ${v}`).join('\n'));
+          lines.push('  **Properties:**');
+          lines.push(entries.map(([k, v]) => `    ${k}: ${v}`).join('\n'));
         }
         lines.push('');
       }

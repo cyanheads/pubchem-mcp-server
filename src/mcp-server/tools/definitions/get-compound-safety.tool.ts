@@ -79,7 +79,7 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
       return [{ type: 'text', text: `No GHS safety data available for CID ${result.cid}.` }];
     }
 
-    const lines: string[] = [`## GHS Safety — CID ${result.cid}`, ''];
+    const lines: string[] = [`## GHS Safety Data — CID ${result.cid}`, ''];
     const g = result.ghs;
 
     if (g.signalWord) lines.push(`**Signal Word:** ${g.signalWord}`);
