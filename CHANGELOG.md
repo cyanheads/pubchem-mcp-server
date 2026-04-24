@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.16] — 2026-04-24
+
+### Changed
+
+- **Dependencies** — bumped `@cyanheads/mcp-ts-core` from `^0.5.3` to `^0.7.0` (spans 19 upstream releases; notable: landing page + SEP-1649 Server Card auto-served in HTTP mode, directory-based changelog system, `MCP_PUBLIC_URL` override for TLS-terminating proxies, `HtmlExtractor` utility, `describe-on-fields` linter now recurses into nested object shapes / array element types / union variants, resource output schemas also validated, flat ZodError messages with structured `issues` on `error.data`, retry-with-backoff in `release-and-publish`, per-server notifier race fix in HTTP transport); `@biomejs/biome` `^2.4.12` → `^2.4.13`; `vitest` `^4.1.4` → `^4.1.5`
+- **`CLAUDE.md`** — skills table expanded with `security-pass`, `release-and-publish`, `api-linter`, `add-app-tool`, `field-test`, `report-issue-framework`, and `report-issue-local`; Publishing section now delegates to the `release-and-publish` skill; Phase B (agent mirror sync) referenced in the skills directory note
+- **Skills synced** from `@cyanheads/mcp-ts-core@0.7.0` — added `api-linter` (1.1), `release-and-publish` (2.1), `security-pass` (1.1); updated 15 existing skills: `add-app-tool` (1.2 → 1.3), `add-prompt` (1.1 → 1.2), `add-resource` (1.2 → 1.3), `add-service` (1.2 → 1.3), `add-tool` (1.6 → 1.8), `api-context` (1.0 → 1.1), `api-services` (1.2 → 1.3), `api-utils` (2.0 → 2.1), `design-mcp-server` (2.4 → 2.7), `field-test` (1.2 → 2.0), `maintenance` (1.3 → 1.5), `polish-docs-meta` (1.4 → 1.7), `report-issue-framework` (1.1 → 1.3), `report-issue-local` (1.1 → 1.3), `setup` (1.3 → 1.5); `.claude/skills/` agent mirror refreshed
+- **Framework scripts synced** (Phase C from `maintenance` v1.5) — added `build-changelog.ts`, `check-docs-sync.ts`, `check-skills-sync.ts`; updated `devcheck.ts` (new `Docs Sync`, `Skills Sync`, `Changelog Sync` steps) and `tree.ts`
+- **`.github/ISSUE_TEMPLATE/`** — committed bug report / feature request forms + config scaffolded by the init CLI
+
+### Fixed
+
+- **`describe-on-fields` lint compliance across 6 tools** — the recursive `describe-on-fields` rule (`@cyanheads/mcp-ts-core@0.6.16`) now walks into nested object shapes, array element types, and union variants. Added `.describe()` on 18 newly-flagged paths so the rendered JSON Schema carries descriptions for every non-primitive position the LLM sees:
+  - `pubchem_get_compound_safety` — `output.ghs.hazardStatements[]`, `output.ghs.precautionaryStatements[]` element objects
+  - `pubchem_get_summary` — `input.identifiers[]` union + both variants (`|0`, `|1`), `output.summaries[]` element object + its `identifier` union
+  - `pubchem_get_compound_details` — `output.compounds[]`, `output.compounds[].descriptions[]`, `output.compounds[].classification.atcCodes[]` element objects
+  - `pubchem_get_compound_xrefs` — `output.xrefs[]` element, `output.xrefs[].ids[]` union + both variants
+  - `pubchem_search_compounds` — `output.results[]` element object
+  - `pubchem_get_bioactivity` — `output.results[]`, `output.results[].activityValues[]` element objects
+
+### Refactored
+
+- **`pubchem-client.ts` — hoisted `activityKey` helper to module scope** (`parseAssayTable`). Previously re-allocated per row inside the iteration loop; now constructed once. Measurable for well-studied compounds where `assaysummary` returns thousands of rows (e.g. aspirin: 3,367 assays)
+- **`get-compound-image.tool.ts` — inlined one-use `arrayBufferToBase64` helper**. Collapses a 3-line named function into `Buffer.from(buffer).toString('base64')` at the sole call site
+
 ## [0.1.15] — 2026-04-20
 
 ### Changed
