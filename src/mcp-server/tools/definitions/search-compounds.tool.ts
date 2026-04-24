@@ -108,17 +108,19 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     totalFound: z.number().describe('Total CIDs found (before maxResults cap).'),
     results: z
       .array(
-        z.object({
-          cid: z.number().describe('PubChem Compound ID.'),
-          identifier: z
-            .string()
-            .optional()
-            .describe('Echoed input identifier (identifier mode only).'),
-          properties: z
-            .record(z.string(), z.unknown())
-            .optional()
-            .describe('Compound properties when requested.'),
-        }),
+        z
+          .object({
+            cid: z.number().describe('PubChem Compound ID.'),
+            identifier: z
+              .string()
+              .optional()
+              .describe('Echoed input identifier (identifier mode only).'),
+            properties: z
+              .record(z.string(), z.unknown())
+              .optional()
+              .describe('Compound properties when requested.'),
+          })
+          .describe('Matching compound entry.'),
       )
       .describe('Matching compounds.'),
   }),

@@ -43,33 +43,39 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     inactiveCount: z.number().describe('Assays with "Inactive" outcome.'),
     results: z
       .array(
-        z.object({
-          aid: z.number().describe('PubChem Assay ID.'),
-          assayName: z.string().describe('Assay name/title.'),
-          outcome: z
-            .string()
-            .describe('Activity outcome: Active, Inactive, Inconclusive, Unspecified.'),
-          targetAccession: z
-            .string()
-            .optional()
-            .describe('Target protein accession (UniProt/GenBank).'),
-          targetGeneId: z.number().optional().describe('Target NCBI Gene ID.'),
-          activityValues: z
-            .array(
-              z.object({
-                name: z
-                  .string()
-                  .optional()
-                  .describe('Measurement name (e.g. IC50, EC50, Ki). Omitted when not reported.'),
-                value: z.number().describe('Measured value.'),
-                unit: z
-                  .string()
-                  .optional()
-                  .describe('Unit of measurement (e.g. uM, nM). Omitted when not reported.'),
-              }),
-            )
-            .describe('Quantitative activity measurements.'),
-        }),
+        z
+          .object({
+            aid: z.number().describe('PubChem Assay ID.'),
+            assayName: z.string().describe('Assay name/title.'),
+            outcome: z
+              .string()
+              .describe('Activity outcome: Active, Inactive, Inconclusive, Unspecified.'),
+            targetAccession: z
+              .string()
+              .optional()
+              .describe('Target protein accession (UniProt/GenBank).'),
+            targetGeneId: z.number().optional().describe('Target NCBI Gene ID.'),
+            activityValues: z
+              .array(
+                z
+                  .object({
+                    name: z
+                      .string()
+                      .optional()
+                      .describe(
+                        'Measurement name (e.g. IC50, EC50, Ki). Omitted when not reported.',
+                      ),
+                    value: z.number().describe('Measured value.'),
+                    unit: z
+                      .string()
+                      .optional()
+                      .describe('Unit of measurement (e.g. uM, nM). Omitted when not reported.'),
+                  })
+                  .describe('Quantitative activity measurement entry.'),
+              )
+              .describe('Quantitative activity measurements.'),
+          })
+          .describe('Assay result entry.'),
       )
       .describe('Assay results matching the filter.'),
   }),

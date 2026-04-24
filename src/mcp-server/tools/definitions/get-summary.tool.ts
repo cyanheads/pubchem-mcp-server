@@ -51,7 +51,14 @@ export const getSummary = tool('pubchem_get_summary', {
   input: z.object({
     entityType: entityTypeEnum.describe('Entity type. Determines ID format and returned fields.'),
     identifiers: z
-      .array(z.union([z.string(), z.number()]))
+      .array(
+        z
+          .union([
+            z.string().describe('String identifier (e.g. UniProt accession).'),
+            z.number().describe('Numeric identifier (e.g. AID, Gene ID, Tax ID).'),
+          ])
+          .describe('Entity identifier — string or number depending on entityType.'),
+      )
       .min(1)
       .max(10)
       .describe(
@@ -66,13 +73,20 @@ export const getSummary = tool('pubchem_get_summary', {
     entityType: z.string().describe('Entity type queried.'),
     summaries: z
       .array(
-        z.object({
-          identifier: z.union([z.string(), z.number()]).describe('Queried identifier.'),
-          found: z.boolean().describe('Whether the entity was found.'),
-          data: entitySummaryDataSchema
-            .optional()
-            .describe('Entity summary data. Populated fields depend on entityType.'),
-        }),
+        z
+          .object({
+            identifier: z
+              .union([
+                z.string().describe('String identifier (e.g. UniProt accession).'),
+                z.number().describe('Numeric identifier (e.g. AID, Gene ID, Tax ID).'),
+              ])
+              .describe('Queried identifier.'),
+            found: z.boolean().describe('Whether the entity was found.'),
+            data: entitySummaryDataSchema
+              .optional()
+              .describe('Entity summary data. Populated fields depend on entityType.'),
+          })
+          .describe('Per-identifier summary result.'),
       )
       .describe('Summary results.'),
   }),

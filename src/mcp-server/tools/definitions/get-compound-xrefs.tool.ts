@@ -43,14 +43,25 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
     cid: z.number().describe('PubChem Compound ID.'),
     xrefs: z
       .array(
-        z.object({
-          type: z.string().describe('Cross-reference type.'),
-          ids: z
-            .array(z.union([z.string(), z.number()]))
-            .describe('Cross-reference IDs (capped by maxPerType).'),
-          totalAvailable: z.number().describe('Total IDs available before truncation.'),
-          truncated: z.boolean().describe('Whether results were truncated.'),
-        }),
+        z
+          .object({
+            type: z.string().describe('Cross-reference type.'),
+            ids: z
+              .array(
+                z
+                  .union([
+                    z
+                      .string()
+                      .describe('String-form cross-reference ID (e.g. CAS number, patent).'),
+                    z.number().describe('Numeric cross-reference ID (e.g. PubMed ID, Gene ID).'),
+                  ])
+                  .describe('Cross-reference identifier — string or number depending on type.'),
+              )
+              .describe('Cross-reference IDs (capped by maxPerType).'),
+            totalAvailable: z.number().describe('Total IDs available before truncation.'),
+            truncated: z.boolean().describe('Whether results were truncated.'),
+          })
+          .describe('Cross-reference group for one type.'),
       )
       .describe('Cross-references grouped by type.'),
   }),

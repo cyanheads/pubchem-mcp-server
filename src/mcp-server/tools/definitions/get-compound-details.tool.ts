@@ -47,10 +47,12 @@ const drugLikenessSchema = z.object({
 const classificationSchema = z.object({
   atcCodes: z
     .array(
-      z.object({
-        code: z.string().describe('ATC code.'),
-        description: z.string().describe('ATC code description.'),
-      }),
+      z
+        .object({
+          code: z.string().describe('ATC code.'),
+          description: z.string().describe('ATC code description.'),
+        })
+        .describe('ATC code entry with hierarchical description.'),
     )
     .describe('ATC codes with hierarchical descriptions.'),
   fdaClasses: z.array(z.string()).describe('FDA Established Pharmacologic Classes.'),
@@ -179,48 +181,52 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
   output: z.object({
     compounds: z
       .array(
-        z.object({
-          cid: z.number().describe('PubChem Compound ID.'),
-          found: z
-            .boolean()
-            .describe(
-              'False when the CID does not exist in PubChem (properties, description, etc. are empty).',
-            ),
-          properties: z
-            .record(z.string(), z.unknown())
-            .describe('Requested physicochemical properties.'),
-          descriptions: z
-            .array(
-              z.object({
-                source: z
-                  .string()
-                  .optional()
-                  .describe('Depositor source (e.g. "DrugBank", "Wikipedia", "ChEBI").'),
-                text: z.string().describe('Description text.'),
-              }),
-            )
-            .optional()
-            .describe(
-              'Textual descriptions, deduplicated and capped at maxDescriptions. Each entry carries ' +
-                'optional source attribution.',
-            ),
-          descriptionsTotal: z
-            .number()
-            .optional()
-            .describe(
-              'Total distinct descriptions available before truncation. Larger than descriptions.length ' +
-                'when more sources exist — increase maxDescriptions to see them.',
-            ),
-          synonyms: z.array(z.string()).optional().describe('Known names and synonyms.'),
-          drugLikeness: drugLikenessSchema
-            .optional()
-            .describe(
-              'Drug-likeness assessment. lipinski.violations ≤ 1 and veber.violations = 0 → pass.',
-            ),
-          classification: classificationSchema
-            .optional()
-            .describe('Pharmacological classification (FDA, MeSH, ATC).'),
-        }),
+        z
+          .object({
+            cid: z.number().describe('PubChem Compound ID.'),
+            found: z
+              .boolean()
+              .describe(
+                'False when the CID does not exist in PubChem (properties, description, etc. are empty).',
+              ),
+            properties: z
+              .record(z.string(), z.unknown())
+              .describe('Requested physicochemical properties.'),
+            descriptions: z
+              .array(
+                z
+                  .object({
+                    source: z
+                      .string()
+                      .optional()
+                      .describe('Depositor source (e.g. "DrugBank", "Wikipedia", "ChEBI").'),
+                    text: z.string().describe('Description text.'),
+                  })
+                  .describe('Description entry with optional source attribution.'),
+              )
+              .optional()
+              .describe(
+                'Textual descriptions, deduplicated and capped at maxDescriptions. Each entry carries ' +
+                  'optional source attribution.',
+              ),
+            descriptionsTotal: z
+              .number()
+              .optional()
+              .describe(
+                'Total distinct descriptions available before truncation. Larger than descriptions.length ' +
+                  'when more sources exist — increase maxDescriptions to see them.',
+              ),
+            synonyms: z.array(z.string()).optional().describe('Known names and synonyms.'),
+            drugLikeness: drugLikenessSchema
+              .optional()
+              .describe(
+                'Drug-likeness assessment. lipinski.violations ≤ 1 and veber.violations = 0 → pass.',
+              ),
+            classification: classificationSchema
+              .optional()
+              .describe('Pharmacological classification (FDA, MeSH, ATC).'),
+          })
+          .describe('Per-CID compound detail record.'),
       )
       .describe('Compound detail records.'),
   }),

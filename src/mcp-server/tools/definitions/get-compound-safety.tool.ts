@@ -31,18 +31,22 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
           .describe('GHS pictogram labels (e.g. "Flammable", "Toxic").'),
         hazardStatements: z
           .array(
-            z.object({
-              code: z.string().describe('H-code (e.g. "H225").'),
-              statement: z.string().describe('Hazard statement text.'),
-            }),
+            z
+              .object({
+                code: z.string().describe('H-code (e.g. "H225").'),
+                statement: z.string().describe('Hazard statement text.'),
+              })
+              .describe('GHS hazard statement entry.'),
           )
           .describe('GHS hazard statements.'),
         precautionaryStatements: z
           .array(
-            z.object({
-              code: z.string().describe('P-code (e.g. "P210").'),
-              statement: z.string().describe('Precautionary statement text.'),
-            }),
+            z
+              .object({
+                code: z.string().describe('P-code (e.g. "P210").'),
+                statement: z.string().describe('Precautionary statement text.'),
+              })
+              .describe('GHS precautionary statement entry.'),
           )
           .describe('GHS precautionary statements.'),
       })
