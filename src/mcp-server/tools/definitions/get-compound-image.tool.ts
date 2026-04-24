@@ -6,11 +6,6 @@
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 
-/** Convert ArrayBuffer to base64 string */
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  return Buffer.from(buffer).toString('base64');
-}
-
 export const getCompoundImage = tool('pubchem_get_compound_image', {
   title: 'Get Compound Image',
   description: 'Fetch a 2D structure diagram (PNG image) for a compound by CID.',
@@ -43,7 +38,7 @@ export const getCompoundImage = tool('pubchem_get_compound_image', {
 
     return {
       cid: input.cid,
-      imageBase64: arrayBufferToBase64(buffer),
+      imageBase64: Buffer.from(buffer).toString('base64'),
       mimeType: 'image/png',
       width: dim,
       height: dim,

@@ -215,6 +215,10 @@ function parsePictogram(text: string): string {
   return text.replace(/.*\//, '').replace(/\..*/, '');
 }
 
+/** Identity key for bioactivity entry dedup within an AID. */
+const activityKey = (v: { name?: string; value: number; unit?: string }) =>
+  `${v.name ?? ''}|${v.value}|${v.unit ?? ''}`;
+
 // ── Client ───────────────────────────────────────────────────────────
 
 export class PubChemClient {
@@ -707,8 +711,6 @@ export class PubChemClient {
       }
       if (actValueUnit) entry.unit = actValueUnit;
 
-      const activityKey = (v: { name?: string; value: number; unit?: string }) =>
-        `${v.name ?? ''}|${v.value}|${v.unit ?? ''}`;
       const key = activityKey(entry);
       if (!bucket.activityValues.some((v) => activityKey(v) === key)) {
         bucket.activityValues.push(entry);
