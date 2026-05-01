@@ -11,6 +11,24 @@ import { initPubChemClient } from './services/pubchem/pubchem-client.js';
 
 await createApp({
   tools: allToolDefinitions,
+  landing: {
+    tagline:
+      'Search PubChem for chemical compounds, properties, safety, bioactivity, and cross-references.',
+    repoRoot: 'https://github.com/cyanheads/pubchem-mcp-server',
+    links: [
+      { label: 'PubChem', href: 'https://pubchem.ncbi.nlm.nih.gov/', external: true },
+      {
+        label: 'PUG REST docs',
+        href: 'https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest',
+        external: true,
+      },
+      {
+        label: 'PUG View docs',
+        href: 'https://pubchem.ncbi.nlm.nih.gov/docs/pug-view',
+        external: true,
+      },
+    ],
+  },
   setup() {
     initPubChemClient();
   },
