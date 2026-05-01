@@ -115,24 +115,41 @@ Handlers receive a unified `ctx` object. Properties used by this server:
 
 ## Errors
 
-Handlers throw — the framework catches, classifies, and formats. Three escalation levels:
+Handlers throw — the framework catches, classifies, and formats.
+
+**Recommended: typed error contract.** Declare `errors: [{ reason, code, when, recovery, retryable? }]` on `tool()` to receive a typed `ctx.fail(reason, …)` keyed by the declared reason union. TypeScript catches `ctx.fail('typo')` at compile time, `data.reason` is auto-populated for observability, and the linter enforces conformance. The `recovery` field is required descriptive metadata (≥ 5 words, lint-validated). Spread `ctx.recoveryFor('reason')` into `data` to opt the contract recovery onto the wire (the framework mirrors `data.recovery.hint` into `content[]` text). Override with explicit `{ recovery: { hint: '...' } }` when runtime context matters. Baseline codes (`InternalError`, `ServiceUnavailable`, `Timeout`, `ValidationError`, `SerializationError`) bubble freely without declaration.
 
 ```ts
-// 1. Plain Error — framework auto-classifies from message patterns
+errors: [
+  { reason: 'cid_not_found', code: JsonRpcErrorCode.NotFound,
+    when: 'PubChem returned 404 for the requested CID',
+    recovery: 'Verify the CID via pubchem_search_compounds before retrying.' },
+],
+async handler(input, ctx) {
+  // Static recovery — pulled from the contract via ctx.recoveryFor.
+  if (!exists) throw ctx.fail('cid_not_found', `CID ${input.cid} not found`,
+    { ...ctx.recoveryFor('cid_not_found') });
+}
+```
+
+**Fallback for ad-hoc throws** (no contract entry fits, service-layer code):
+
+```ts
+// Plain Error — framework auto-classifies from message patterns
 throw new Error('Item not found');           // → NotFound
 throw new Error('Invalid query format');     // → ValidationError
 
-// 2. Error factories — explicit code, concise
+// Error factories — explicit code, concise
 import { notFound, validationError, serviceUnavailable } from '@cyanheads/mcp-ts-core/errors';
 throw notFound('Compound not found', { cid });
 throw serviceUnavailable('PubChem API unavailable', { url }, { cause: err });
 
-// 3. McpError — full control over code and data
+// McpError — full control over code and data
 import { McpError, JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 throw new McpError(JsonRpcErrorCode.InternalError, 'Unexpected response', { url });
 ```
 
-Plain `Error` is fine for most cases. Use factories when the error code matters. See framework CLAUDE.md for the full auto-classification table and all available factories.
+See framework CLAUDE.md for the full auto-classification table and all available factories.
 
 ---
 
@@ -222,10 +239,10 @@ When you complete a skill's checklist, check the boxes and add a completion time
 | `bun run tree` | Generate directory structure doc |
 | `bun run format` | Auto-fix formatting |
 | `bun run test` | Run tests |
-| `bun run dev:stdio` | Dev mode (stdio) |
-| `bun run dev:http` | Dev mode (HTTP) |
 | `bun run start:stdio` | Production mode (stdio) |
 | `bun run start:http` | Production mode (HTTP) |
+
+For smoke-testing during development, use `bun run rebuild && bun run start:stdio` (or `start:http`) — same execution surface as production.
 
 ---
 

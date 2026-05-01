@@ -171,17 +171,11 @@ No API keys are required — PubChem's API is freely accessible.
 
 ### Local Development
 
-- **Build and run the production version:**
+- **Build and run:**
 
   ```sh
-  bun run build
-  bun run start:http   # or start:stdio
-  ```
-
-- **Run in dev mode (auto-reload):**
-
-  ```sh
-  bun run dev:stdio    # or dev:http
+  bun run rebuild
+  bun run start:stdio   # or start:http
   ```
 
 - **Run checks and tests:**
