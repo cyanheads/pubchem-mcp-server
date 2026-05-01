@@ -5,6 +5,7 @@
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { COMPOUND_PROPERTIES } from '@/services/pubchem/types.js';
 
@@ -124,6 +125,28 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       )
       .describe('Matching compounds.'),
   }),
+  errors: [
+    {
+      reason: 'missing_identifier_args',
+      code: JsonRpcErrorCode.InvalidParams,
+      when: 'searchType is "identifier" but identifierType or identifiers were omitted',
+      recovery:
+        'Set identifierType (name/smiles/inchikey) and pass a non-empty identifiers array (1-25 entries).',
+    },
+    {
+      reason: 'missing_formula',
+      code: JsonRpcErrorCode.InvalidParams,
+      when: 'searchType is "formula" but the formula field was omitted',
+      recovery: 'Pass formula in Hill notation, for example "C6H12O6" or "CaH2O2".',
+    },
+    {
+      reason: 'missing_structure_args',
+      code: JsonRpcErrorCode.InvalidParams,
+      when: 'substructure/superstructure/similarity search missing query or queryType',
+      recovery:
+        'Provide both query (SMILES string or CID as string) and queryType ("smiles" or "cid").',
+    },
+  ],
 
   async handler(input, ctx) {
     const client = getPubChemClient();
@@ -134,7 +157,9 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       case 'identifier': {
         const { identifierType, identifiers } = input;
         if (!identifierType || !identifiers) {
-          throw new Error('identifierType and identifiers are required for identifier search');
+          throw ctx.fail('missing_identifier_args', undefined, {
+            ...ctx.recoveryFor('missing_identifier_args'),
+          });
         }
         const lookups = identifiers.map(async (id) => {
           let cids: number[];
@@ -157,7 +182,11 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         break;
       }
       case 'formula': {
-        if (!input.formula) throw new Error('formula is required for formula search');
+        if (!input.formula) {
+          throw ctx.fail('missing_formula', undefined, {
+            ...ctx.recoveryFor('missing_formula'),
+          });
+        }
         allCids = await client.searchByFormula(input.formula, input.allowOtherElements);
         break;
       }
@@ -165,7 +194,9 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       case 'superstructure':
       case 'similarity': {
         if (!input.query || !input.queryType) {
-          throw new Error('query and queryType are required for structure/similarity searches');
+          throw ctx.fail('missing_structure_args', undefined, {
+            ...ctx.recoveryFor('missing_structure_args'),
+          });
         }
         allCids = await client.searchByStructure(
           input.searchType,

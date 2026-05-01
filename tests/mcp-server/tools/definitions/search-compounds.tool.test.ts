@@ -3,6 +3,7 @@
  * @module mcp-server/tools/definitions/search-compounds.test
  */
 
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchCompounds } from '@/mcp-server/tools/definitions/search-compounds.tool.js';
@@ -179,25 +180,30 @@ describe('searchCompounds handler', () => {
   });
 
   it('throws when identifier search missing required fields', async () => {
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({ searchType: 'identifier' });
-    await expect(searchCompounds.handler(input, ctx)).rejects.toThrow(
-      /identifierType and identifiers are required/,
-    );
+    await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.InvalidParams,
+      data: { reason: 'missing_identifier_args' },
+    });
   });
 
   it('throws when formula search missing formula', async () => {
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({ searchType: 'formula' });
-    await expect(searchCompounds.handler(input, ctx)).rejects.toThrow(/formula is required/);
+    await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.InvalidParams,
+      data: { reason: 'missing_formula' },
+    });
   });
 
   it('throws when structure search missing query', async () => {
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({ searchType: 'similarity' });
-    await expect(searchCompounds.handler(input, ctx)).rejects.toThrow(
-      /query and queryType are required/,
-    );
+    await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.InvalidParams,
+      data: { reason: 'missing_structure_args' },
+    });
   });
 
   it('rejects empty-string entries in identifiers from form-based clients', () => {
