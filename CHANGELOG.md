@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.17] — 2026-05-01
+
+### Changed
+
+- **Dependencies** — bumped `@cyanheads/mcp-ts-core` from `^0.7.0` to `^0.8.8` (spans 15 upstream releases; notable: typed error contracts via `errors: [{ reason, code, when, recovery, retryable? }]` declarations on `tool()`/`resource()` with typed `ctx.fail(reason, ...)` keyed by the declared reason union, `ctx.recoveryFor(reason)` opt-in resolver, lint-validated `recovery` field (≥5 words), tool errors now surfaced on `structuredContent.error` instead of `_meta.error`, HTTP Origin guard fail-closed when `MCP_HTTP_ALLOWED_ORIGINS` is unset, `httpErrorFromResponse` helper, `dev:*` watch scripts removed in favor of `rebuild && start:*`); `@biomejs/biome` `^2.4.13` → `^2.4.14`; `tsc-alias` `^1.8.16` → `^1.8.17`
+- **`pubchem_search_compounds` adopted typed error contract** — declared three `errors` entries (`missing_identifier_args`, `missing_formula`, `missing_structure_args`, all `JsonRpcErrorCode.InvalidParams`) with `when` and `recovery` metadata. Replaced three ad-hoc `throw new Error(...)` sites with `ctx.fail(reason, undefined, { ...ctx.recoveryFor(reason) })`; reason is auto-populated on `data.reason` for observability and the recovery hint is mirrored into `content[]` text. Tests updated to use `createMockContext({ errors: searchCompounds.errors })` and assert on `code` + `data.reason` instead of regex-matching error messages
+- **`src/index.ts` landing config** — added `landing` block to `createApp()` (tagline, `repoRoot`, three documentation links: PubChem, PUG REST docs, PUG View docs) so the hosted instance at <https://pubchem.caseyjhand.com/mcp> renders the same landing card as sibling servers in the cyanheads MCP suite. `envExample` deliberately omitted — PubChem requires no API keys
+- **`package.json` scripts** — removed `dev:stdio` and `dev:http` (per upstream 0.8.6/0.8.7 cleanup of `bun --watch` scripts that masked rebuild-time bugs). Smoke-testing now uses `bun run rebuild && bun run start:stdio` — same execution surface as production
+- **`CLAUDE.md`** — Errors section rewritten to lead with typed error contracts (declarative `errors: [...]`, `ctx.fail`, `ctx.recoveryFor`) and demote plain `Error` / factories / `McpError` to a "fallback for ad-hoc throws" section; Commands table trimmed of removed `dev:*` rows with a smoke-test note added; Version bumped
+- **Skills synced** from `@cyanheads/mcp-ts-core@0.8.8` — version bumps: `add-tool` (1.8 → 2.4), `maintenance` (1.5 → 2.0), `field-test` (2.0 → 2.3), `api-errors` (1.0 → 1.4), `add-service` (1.3 → 1.5), `setup` (1.5 → 1.6), `report-issue-framework` (1.3 → 1.4), `release-and-publish` (2.1 → 2.2), `security-pass` (1.1 → 1.2), `api-context` (1.1 → 1.2), `api-linter` (1.1 → 1.2), `design-mcp-server` (2.7 → 2.8). Content-drift refresh (no version metadata bump): `add-app-tool`, `add-resource`, `add-test`, `api-auth`, `api-testing`, `api-utils`, `polish-docs-meta`, `report-issue-local`. `.claude/skills/` agent mirror refreshed
+- **Framework scripts synced** (Phase C from `maintenance` v2.0) — added `check-framework-antipatterns.ts` (guards SDK-coupling antipatterns) and `split-changelog.ts`; updated `devcheck.ts`
+
 ## [0.1.16] — 2026-04-24
 
 ### Changed
