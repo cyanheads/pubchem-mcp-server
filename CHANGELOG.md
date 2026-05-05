@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.1.18] — 2026-05-05
+
+### Changed
+
+- **Dependencies** — bumped `@cyanheads/mcp-ts-core` from `^0.8.8` to `^0.8.15` (7 upstream releases)
+- **Tool descriptions consolidated to single strings** across all 8 tools — removed `+` concatenation in `description` and `.describe()` fields per upstream `name-format`/style guidance. No semantic change to the LLM-facing copy beyond the rewrites called out below
+- **`pubchem_search_compounds` error codes corrected** — `missing_identifier_args`, `missing_formula`, `missing_structure_args` migrated from `JsonRpcErrorCode.InvalidParams` to `JsonRpcErrorCode.ValidationError`. `InvalidParams` is reserved for malformed JSON-RPC; semantic input failures belong to `ValidationError`. Tests updated to match
+- **Tool descriptions sharpened** with cross-reference hints and tighter type guidance:
+  - `pubchem_get_bioactivity`, `pubchem_get_compound_image`, `pubchem_get_compound_safety`, `pubchem_get_compound_xrefs`, `pubchem_get_compound_details` — `cid` field now points the LLM at `pubchem_search_compounds` for resolution from name/SMILES
+  - `pubchem_search_compounds.identifiers` — added InChIKey example (`["BSYNRYMUTXBXSQ-UHFFFAOYSA-N"]`) with the 27-char block-format note
+  - `pubchem_search_compounds.query` — concrete SMILES + CID-as-string examples
+  - `pubchem_get_compound_details.includeDescription` and `includeClassification` — call out the 10-CID upstream limit ("Fetched only for the first 10 CIDs in the batch; remaining CIDs return without descriptions/classification")
+  - `pubchem_get_compound_details.includeSynonyms` — note that synonyms are one-API-call-per-CID (slower than the property batch)
+  - `pubchem_get_compound_details` drug-likeness rules — added units (`MW ≤ 500 g/mol`, `TPSA ≤ 140 Å²`)
+  - `pubchem_get_compound_xrefs.xrefTypes` — split string-ID types (RegistryID, RN, PatentID) from numeric-ID types (PubMedID, GeneID, ProteinGI, TaxonomyID); spelled out RegistryID provenance
+  - `searchType` / `targetType` output fields on `pubchem_search_compounds` and `pubchem_search_assays` now enumerate allowed values in their descriptions (closes a `describe-on-fields` blind spot)
+  - `pubchem_get_compound_image.mimeType` — narrowed to `'MIME type — always "image/png".'`
+  - `pubchem_get_summary` `@fileoverview` — corrected to assays/genes/proteins/taxonomy (the actually-supported entity types)
+
+### Refactored
+
+- **`pubchem-client.ts` — generic `dedupByKey()` helper** replaces four hand-rolled dedup loops (description text, hazard statement codes, precautionary statement codes, ATC codes). Identical behavior, ~20 fewer lines
+- **`pubchem-client.ts.getProperties()` — collapsed to a ternary** on `cids.length > 50` for the GET-vs-POST branch; removes the intermediate `let rows` and the duplicate `data.PropertyTable.Properties` assignment
+- **Property destructuring via spread** in `search-compounds` and `get-compound-details` — `const { CID: _CID, ...props } = rawProps` replaces `const props = { ...rawProps }; delete (props as Record<string, unknown>).CID`
+
+### Skills
+
+- **Skills synced** from `@cyanheads/mcp-ts-core@0.8.15` — added `tool-defs-analysis` (1.0, audit) and `api-canvas` (1.2, DataCanvas Tier 3 reference). Version bumps: `add-tool` (2.4 → 2.8), `api-config` (1.2 → 1.3), `api-errors` (1.4 → 1.5), `api-workers` (1.1 → 1.3), `design-mcp-server` (2.8 → 2.10), `report-issue-framework` (1.4 → 1.5), `report-issue-local` (1.3 → 1.4), `security-pass` (1.2 → 1.3)
+- **`CLAUDE.md` skills table** — added rows for `tool-defs-analysis` and `api-canvas`
+
 ## [0.1.17] — 2026-05-01
 
 ### Changed

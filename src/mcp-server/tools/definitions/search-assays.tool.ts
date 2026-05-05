@@ -10,9 +10,7 @@ import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 export const searchAssays = tool('pubchem_search_assays', {
   title: 'Search Assays',
   description:
-    'Find PubChem bioassays associated with a biological target. Search by gene symbol ' +
-    '(e.g. "EGFR"), protein name, NCBI Gene ID, or UniProt accession. Returns assay IDs (AIDs) ' +
-    'which can be explored further with pubchem_get_summary.',
+    'Find PubChem bioassays associated with a biological target. Search by gene symbol (e.g. "EGFR"), protein name, NCBI Gene ID, or UniProt accession. Returns assay IDs (AIDs) which can be explored further with pubchem_get_summary.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -22,14 +20,12 @@ export const searchAssays = tool('pubchem_search_assays', {
     targetType: z
       .enum(['genesymbol', 'proteinname', 'geneid', 'proteinaccession'])
       .describe(
-        'Target identifier type. "genesymbol" and "proteinname" accept text names. ' +
-          '"geneid" accepts NCBI Gene IDs. "proteinaccession" accepts UniProt accessions.',
+        'Target identifier type. "genesymbol" and "proteinname" accept text names. "geneid" accepts NCBI Gene IDs. "proteinaccession" accepts UniProt accessions.',
       ),
     targetQuery: z
       .string()
       .describe(
-        'Target identifier. Examples: "EGFR" (genesymbol), "Epidermal growth factor receptor" ' +
-          '(proteinname), "1956" (geneid), "P00533" (proteinaccession).',
+        'Target identifier. Examples: "EGFR" (genesymbol), "Epidermal growth factor receptor" (proteinname), "1956" (geneid), "P00533" (proteinaccession).',
       ),
     maxResults: z
       .number()
@@ -41,7 +37,11 @@ export const searchAssays = tool('pubchem_search_assays', {
       ),
   }),
   output: z.object({
-    targetType: z.string().describe('Target identifier type used.'),
+    targetType: z
+      .string()
+      .describe(
+        'Target identifier type used: genesymbol, proteinname, geneid, or proteinaccession.',
+      ),
     targetQuery: z.string().describe('Target identifier searched.'),
     totalFound: z.number().describe('Total AIDs found.'),
     aids: z.array(z.number()).describe('PubChem Assay IDs.'),

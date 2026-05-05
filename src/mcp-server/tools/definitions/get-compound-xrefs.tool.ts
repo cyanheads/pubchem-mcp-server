@@ -12,22 +12,23 @@ const xrefTypeEnum = z.enum(XREF_TYPES as unknown as [string, ...string[]]);
 export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
   title: 'Get Compound Cross-References',
   description:
-    'Get external database cross-references for a compound: PubMed citations, patent IDs, ' +
-    'gene/protein associations, registry numbers, and taxonomy IDs. Results are capped per ' +
-    'type with total counts reported.',
+    'Get external database cross-references for a compound: PubMed citations, patent IDs, gene/protein associations, registry numbers, and taxonomy IDs. Results are capped per type with total counts reported.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
     openWorldHint: true,
   },
   input: z.object({
-    cid: z.number().int().positive().describe('PubChem Compound ID.'),
+    cid: z
+      .number()
+      .int()
+      .positive()
+      .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     xrefTypes: z
       .array(xrefTypeEnum)
       .min(1)
       .describe(
-        'Cross-reference types to retrieve. Options: RegistryID, RN (CAS numbers), ' +
-          'PubMedID, PatentID, GeneID, ProteinGI, TaxonomyID.',
+        'Cross-reference types to retrieve. String IDs: RegistryID (DSSTox/EPA registry numbers), RN (CAS numbers), PatentID. Numeric IDs: PubMedID, GeneID (NCBI Gene), ProteinGI (legacy NCBI Protein GI), TaxonomyID.',
       ),
     maxPerType: z
       .number()
@@ -35,8 +36,7 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       .max(500)
       .default(50)
       .describe(
-        'Max IDs to return per xref type (1-500). A compound may have thousands of PubMed ' +
-          'references — this cap prevents bloat. Total count always reported. Default: 50.',
+        'Max IDs to return per xref type (1-500). A compound may have thousands of PubMed references. Total count always reported. Default: 50.',
       ),
   }),
   output: z.object({
@@ -45,7 +45,11 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       .array(
         z
           .object({
-            type: z.string().describe('Cross-reference type.'),
+            type: z
+              .string()
+              .describe(
+                'Cross-reference type: RegistryID, RN, PubMedID, PatentID, GeneID, ProteinGI, or TaxonomyID.',
+              ),
             ids: z
               .array(
                 z

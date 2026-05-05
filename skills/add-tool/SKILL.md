@@ -4,7 +4,7 @@ description: >
   Scaffold a new MCP tool definition. Use when the user asks to add a tool, create a new tool, or implement a new capability for the server.
 metadata:
   author: cyanheads
-  version: "2.4"
+  version: "2.8"
   audience: external
   type: reference
 ---
@@ -65,6 +65,11 @@ export const {{TOOL_EXPORT}} = tool('{{tool_name}}', {
   // (InternalError, ServiceUnavailable, Timeout, ValidationError,
   // SerializationError) bubble freely — only declare domain-specific reasons.
   // Delete this block if no domain failures apply.
+  //
+  // Keep contracts inline on this tool, even when other tools have similar
+  // entries. The contract is part of the tool's documented public surface —
+  // don't extract a shared `errors[]` constant; per-tool repetition is the
+  // intended cost of self-contained tool defs.
   //
   // `recovery` is required (≥ 5 words) — it's the agent's next move when this
   // failure fires. Forcing function for thoughtful guidance: placeholders like
@@ -159,6 +164,44 @@ await createApp({
 ```
 
 If the repo already uses `src/mcp-server/tools/definitions/index.ts`, update that barrel instead of switching patterns midstream.
+
+### Feature-flagged tools (`disabledTool` wrapper)
+
+When a tool is gated behind config (e.g., `BRAPI_ENABLE_WRITES`, `FOO_PRO_FEATURES`), the gate has two failure modes when wired naively. **Excluding the tool from the array** hides it from MCP registration *and* from the HTTP landing page — operators see a smaller catalog than the README documents and have no in-page hint that the tool exists at all. **Always registering it** lets clients call the tool and forces handler-side `forbidden` throws, which keeps the dangerous surface in the LLM's reach.
+
+`disabledTool()` resolves this: the wrapped tool is **present in the manifest and rendered on the landing page** (muted card, with a reason and an optional hint for how to enable it), but **skipped during MCP server registration** so clients cannot call it.
+
+```typescript
+import { disabledTool, tool, z } from '@cyanheads/mcp-ts-core';
+import { getServerConfig } from '@/config/server-config.js';
+
+const submitObservationsDef = tool('brapi_submit_observations', {
+  description: 'Submit observation records (POST/PUT) with elicit gate.',
+  annotations: { readOnlyHint: false, destructiveHint: false },
+  input: z.object({ /* … */ }),
+  output: z.object({ /* … */ }),
+  async handler(input, ctx) { /* … */ },
+});
+
+export const submitObservations = getServerConfig().enableWrites
+  ? submitObservationsDef
+  : disabledTool(submitObservationsDef, {
+      reason: 'Writes are turned off in this deployment.',
+      hint: 'BRAPI_ENABLE_WRITES=true',
+    });
+```
+
+`DisabledMetadata` shape: `{ reason: string; hint?: string; since?: string }`. The `reason` renders as a sentence on the disabled card; `hint` (when present) renders as a code-styled block — use whatever the gate is (env var line, config key, doc reference). `since` annotates the card with a small "since vX" tag — useful when phasing a tool out behind a flag before removal.
+
+**Three tool listings** to keep straight:
+
+| Surface | Disabled tools? |
+|:---|:---|
+| `tools/list` (MCP protocol — what clients call) | **No** — disabled tools are skipped at registration |
+| `/.well-known/mcp.json` `definitions.tools` (Server Card) | **Yes**, with `disabled` field — discovery agents see them as present-but-uncallable |
+| `/` (HTML landing page) | **Yes**, in a 4th muted bucket after `read \| write \| destructive` |
+
+The wrapper composes with both standard and task tools, and preserves all original definition fields (handler, schemas, auth scopes, error contracts) — when re-enabled, the tool already conforms to every lint rule.
 
 ## Tool Response Design
 
@@ -465,6 +508,7 @@ Large payloads burn the agent's context window. Default to curated summaries; of
 - **Lists**: Return top N with a total count and pagination cursor, not unbounded arrays
 - **Large objects**: Return key fields by default; accept a `fields` or `verbose` parameter for full data
 - **Binary/blob content**: Return metadata and a reference, not the raw content
+- **Tabular working sets**: When upstream returns more rows than fit in context, `DataCanvas` (`ctx.core.canvas?`, Tier 3 — opt-in via `CANVAS_PROVIDER_TYPE=duckdb`) lets you register the rows and return the `canvas_id` plus a preview so the agent can run SQL to slice down without a re-fetch. The `spillover()` helper (`@cyanheads/mcp-ts-core/canvas`) automates the overflow case: drain rows up to a character budget for the inline preview, auto-register the full source on overflow, return both as a discriminated union. Compute distributions or refinement hints across the full result — not the preview — so the agent gets honest aggregate signal on the rows it didn't read. See `api-canvas` for the register / query / export pattern and the spillover flow.
 
 ## Checklist
 
@@ -478,6 +522,7 @@ Large payloads burn the agent's context window. Default to curated summaries; of
 - [ ] If wrapping external API: output schema and `format()` preserve uncertainty from sparse upstream payloads instead of inventing concrete values
 - [ ] `auth` scopes declared if the tool needs authorization
 - [ ] `errors: [...]` contract declared for the tool's domain-specific failure modes — or block deleted if no domain failures apply (baseline codes bubble freely)
+- [ ] Error contract declared inline on this tool — not imported from a shared module, even when other tools have near-identical entries
 - [ ] `task: true` added if the tool is long-running
 - [ ] Registered in the project's existing `createApp()` tool list (directly or via barrel)
 - [ ] `bun run devcheck` passes

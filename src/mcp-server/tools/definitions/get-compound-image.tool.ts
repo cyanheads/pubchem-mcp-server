@@ -15,7 +15,11 @@ export const getCompoundImage = tool('pubchem_get_compound_image', {
     openWorldHint: true,
   },
   input: z.object({
-    cid: z.number().int().positive().describe('PubChem Compound ID.'),
+    cid: z
+      .number()
+      .int()
+      .positive()
+      .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     size: z
       .enum(['small', 'large'])
       .default('large')
@@ -24,7 +28,7 @@ export const getCompoundImage = tool('pubchem_get_compound_image', {
   output: z.object({
     cid: z.number().describe('PubChem Compound ID.'),
     imageBase64: z.string().describe('Base64-encoded PNG image data.'),
-    mimeType: z.string().describe('Image MIME type.'),
+    mimeType: z.string().describe('MIME type — always "image/png".'),
     width: z.number().describe('Image width in pixels.'),
     height: z.number().describe('Image height in pixels.'),
   }),

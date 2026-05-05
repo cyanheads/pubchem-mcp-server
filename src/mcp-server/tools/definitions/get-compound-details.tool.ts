@@ -26,9 +26,9 @@ const drugLikenessSchema = z.object({
     .object({
       hba: drugLikenessRuleSchema.describe('HBond acceptor count rule (≤10).'),
       hbd: drugLikenessRuleSchema.describe('HBond donor count rule (≤5).'),
-      mw: drugLikenessRuleSchema.describe('Molecular weight rule (≤500).'),
+      mw: drugLikenessRuleSchema.describe('Molecular weight rule (≤500 g/mol).'),
       violations: z.number().describe('Number of Lipinski violations (0-4).'),
-      xLogP: drugLikenessRuleSchema.describe('XLogP rule (≤5).'),
+      xLogP: drugLikenessRuleSchema.describe('XLogP rule (≤5; calculated logP).'),
     })
     .describe('Lipinski Rule of Five evaluation.'),
   pass: z
@@ -38,7 +38,7 @@ const drugLikenessSchema = z.object({
   veber: z
     .object({
       rotatableBonds: drugLikenessRuleSchema.describe('Rotatable bond count rule (≤10).'),
-      tpsa: drugLikenessRuleSchema.describe('TPSA rule (≤140).'),
+      tpsa: drugLikenessRuleSchema.describe('Topological polar surface area rule (≤140 Å²).'),
       violations: z.number().describe('Number of Veber violations (0-2).'),
     })
     .describe('Veber rules evaluation.'),
@@ -114,11 +114,7 @@ function computeDrugLikeness(properties: Record<string, unknown>): DrugLikenessA
 export const getCompoundDetails = tool('pubchem_get_compound_details', {
   title: 'Get Compound Details',
   description:
-    'Get detailed compound information by CID. Returns physicochemical properties ' +
-    '(molecular weight, SMILES, InChIKey, XLogP, TPSA, etc.), optionally with a textual ' +
-    'description (pharmacology, mechanism, therapeutic use), all known synonyms, ' +
-    'drug-likeness assessment (Lipinski/Veber rules), and/or pharmacological classification ' +
-    '(FDA classes, MeSH classes, ATC codes). Efficiently batches up to 100 CIDs.',
+    'Get detailed compound information by CID. Returns physicochemical properties (molecular weight, SMILES, InChIKey, XLogP, TPSA, etc.), optionally with a textual description (pharmacology, mechanism, therapeutic use), all known synonyms, drug-likeness assessment (Lipinski/Veber rules), and/or pharmacological classification (FDA classes, MeSH classes, ATC codes). Efficiently batches up to 100 CIDs.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -129,22 +125,20 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .array(z.number().int().positive())
       .min(1)
       .max(100)
-      .describe('PubChem Compound IDs to fetch (1-100). Batched efficiently.'),
+      .describe(
+        'PubChem Compound IDs to fetch (1-100). Batched efficiently. Resolve from names/SMILES with pubchem_search_compounds.',
+      ),
     properties: z
       .array(propertyEnum)
       .optional()
       .describe(
-        'Properties to retrieve. Defaults to a core set: MolecularFormula, MolecularWeight, ' +
-          'IUPACName, CanonicalSMILES, IsomericSMILES, InChIKey, XLogP, TPSA, HBondDonorCount, ' +
-          'HBondAcceptorCount, RotatableBondCount, HeavyAtomCount, Charge, Complexity.',
+        'Properties to retrieve. Defaults to a core set: MolecularFormula, MolecularWeight, IUPACName, CanonicalSMILES, IsomericSMILES, InChIKey, XLogP, TPSA, HBondDonorCount, HBondAcceptorCount, RotatableBondCount, HeavyAtomCount, Charge, Complexity.',
       ),
     includeDescription: z
       .boolean()
       .default(false)
       .describe(
-        'Include textual descriptions (pharmacology, mechanism, therapeutic use) attributed by source. ' +
-          'Well-studied compounds have many overlapping summaries — capped via maxDescriptions. ' +
-          'Slower when enabled — prefer small CID batches.',
+        'Include textual descriptions (pharmacology, mechanism, therapeutic use) attributed by source. Well-studied compounds have many overlapping summaries — capped via maxDescriptions. Fetched only for the first 10 CIDs in the batch; remaining CIDs return without descriptions.',
       ),
     maxDescriptions: z
       .number()
@@ -153,29 +147,25 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .max(20)
       .default(3)
       .describe(
-        'Max number of distinct description entries per compound (1-20). PubChem returns near-duplicate ' +
-          'summaries from many depositors; we dedup and cap to keep responses focused. Default: 3.',
+        'Max number of distinct description entries per compound (1-20). PubChem returns near-duplicate summaries from many depositors; we dedup and cap to keep responses focused. Default: 3.',
       ),
     includeSynonyms: z
       .boolean()
       .default(false)
       .describe(
-        'Fetch all known names and synonyms (trade names, systematic names, registry numbers).',
+        'Fetch all known names and synonyms (trade names, systematic names, registry numbers). One API call per CID — slower than the property batch for large CID lists.',
       ),
     includeDrugLikeness: z
       .boolean()
       .default(false)
       .describe(
-        'Compute drug-likeness assessment: Lipinski Rule of Five (MW, XLogP, HBD, HBA) and ' +
-          'Veber rules (TPSA, rotatable bonds). No extra API calls — computed from properties.',
+        'Compute drug-likeness assessment: Lipinski Rule of Five (MW, XLogP, HBD, HBA) and Veber rules (TPSA, rotatable bonds). No extra API calls — computed from properties.',
       ),
     includeClassification: z
       .boolean()
       .default(false)
       .describe(
-        'Include pharmacological classification: FDA Established Pharmacologic Classes, ' +
-          'mechanisms of action, MeSH classes, and ATC codes. ' +
-          'Slower when enabled — prefer small CID batches.',
+        'Include pharmacological classification: FDA Established Pharmacologic Classes, mechanisms of action, MeSH classes, and ATC codes. Fetched only for the first 10 CIDs in the batch; remaining CIDs return without classification.',
       ),
   }),
   output: z.object({
@@ -191,7 +181,9 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
               ),
             properties: z
               .record(z.string(), z.unknown())
-              .describe('Requested physicochemical properties.'),
+              .describe(
+                'Physicochemical properties keyed by name (echoes input.properties or the default core set; drug-likeness inputs are appended automatically when includeDrugLikeness is true).',
+              ),
             descriptions: z
               .array(
                 z
@@ -206,15 +198,13 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
               )
               .optional()
               .describe(
-                'Textual descriptions, deduplicated and capped at maxDescriptions. Each entry carries ' +
-                  'optional source attribution.',
+                'Textual descriptions, deduplicated and capped at maxDescriptions. Each entry carries optional source attribution.',
               ),
             descriptionsTotal: z
               .number()
               .optional()
               .describe(
-                'Total distinct descriptions available before truncation. Larger than descriptions.length ' +
-                  'when more sources exist — increase maxDescriptions to see them.',
+                'Total distinct descriptions available before truncation. Larger than descriptions.length when more sources exist — increase maxDescriptions to see them.',
               ),
             synonyms: z.array(z.string()).optional().describe('Known names and synonyms.'),
             drugLikeness: drugLikenessSchema
@@ -307,9 +297,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
 
     const compounds = input.cids.map((cid) => {
       const found = isFound(cid);
-      const rawProps = propsMap.get(cid) ?? {};
-      const properties = { ...rawProps };
-      delete (properties as Record<string, unknown>).CID;
+      const { CID: _CID, ...properties } = propsMap.get(cid) ?? { CID: cid };
 
       const compound: {
         cid: number;

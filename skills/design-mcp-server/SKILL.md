@@ -4,7 +4,7 @@ description: >
   Design the tool surface, resources, and service layer for a new MCP server. Use when starting a new server, planning a major feature expansion, or when the user describes a domain/API they want to expose via MCP. Produces a design doc at docs/design.md that drives implementation.
 metadata:
   author: cyanheads
-  version: "2.8"
+  version: "2.10"
   audience: external
   type: workflow
 ---
@@ -271,6 +271,7 @@ output: z.object({
 ```
 
 - **Truncate large output with counts.** When a list exceeds a reasonable display size, show the top N and append "...and X more". Don't silently drop results.
+- **Spill big tabular results to a queryable surface.** When a tool's row set can exceed any reasonable context budget — paginated APIs, streamed exports, big query results — pair an inline preview with a `DataCanvas` table holding the full set, returned as a token the agent can SQL. Compute distributions or refinement hints across the full result, not the preview, so aggregate signal stays honest. See `api-canvas` for the `spillover()` helper.
 - **`format()` is the markdown twin of `structuredContent` — make both content-complete.** Different MCP clients forward different surfaces to the model: some (e.g., Claude Code) read `structuredContent` from `output`, others (e.g., Claude Desktop) read `content[]` from `format()`. Both must carry the same data so every client sees the same picture — `format()` just dresses it up with markdown. A thin `format()` that returns only a count or title leaves `content[]`-only clients blind to data that `structuredContent` clients can see. Render all fields the LLM needs, with structured markdown (headers, bold labels, lists) for readability.
 
 #### Batch input design
@@ -407,6 +408,8 @@ Skip for purely data/action-oriented servers.
 **Services** — one per external dependency. Init/accessor pattern. Skip if all tools are thin wrappers with no shared state.
 
 **Server-as-service.** When the server IS the source of truth (knowledge graph, in-memory task tracker, local scratchpad, embedded inference wrapper), the resilience table below doesn't apply — there's no upstream to retry. The design questions shift to state management: what's tenant-scoped vs. global, what TTLs apply, what survives a restart, what the storage backend is. Plan persistence via `ctx.state` for tenant-scoped KV (auto-namespaced by `tenantId`), or use a `StorageService` provider directly when data must cross tenants. Service init still happens in `setup()`, accessed via `getMyService()` at request time. Calls within the server are local and synchronous-ish — the API-efficiency table below also doesn't apply.
+
+**Tabular API servers: DataCanvas is one option.** For servers that fetch tabular data and want to expose a SQL/analytical workspace — register tables, run cross-table queries, export results — the framework's optional `DataCanvas` primitive (Tier 3, opt-in via `CANVAS_PROVIDER_TYPE=duckdb`) handles lifecycle, ID generation, eviction, and export wiring so you don't design your own. If you opt in, surface `canvas_id` as an optional input on register/query/export tools; the framework mints on omit and resolves on match. Tools access it via `ctx.core.canvas?` (undefined when disabled or running on Workers — DuckDB has no V8-isolate build). See `api-canvas` for the full reference.
 
 For services wrapping external APIs, plan the resilience layer.
 
@@ -551,4 +554,5 @@ Items without an `If …:` prefix apply to every design. Conditional items only 
 - [ ] **If the server exposes resources:** URIs use `{param}` templates, pagination planned for large lists
 - [ ] **If the server has external deps or shared state:** service layer planned (or explicitly skipped with reasoning)
 - [ ] **If services wrap external APIs:** resilience planned (retry boundary, backoff, parse classification)
+- [ ] **If exposing a SQL/analytical workspace over tabular data is in scope:** DataCanvas considered (`api-canvas` skill) as one option before designing custom analytical state — register / query / export tools accepting an optional `canvas_id`, with `ctx.core.canvas?` reads
 - [ ] **If the server needs runtime config:** env vars identified in `server-config.ts`

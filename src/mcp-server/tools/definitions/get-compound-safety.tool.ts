@@ -9,16 +9,18 @@ import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 export const getCompoundSafety = tool('pubchem_get_compound_safety', {
   title: 'Get Compound Safety',
   description:
-    'Get GHS (Globally Harmonized System) hazard classification and safety data for a compound. ' +
-    'Returns signal word, pictograms, hazard statements (H-codes), and precautionary statements (P-codes). ' +
-    'Data sourced from PubChem depositors — source attribution included.',
+    'Get GHS (Globally Harmonized System) hazard classification and safety data for a compound. Returns signal word, pictograms, hazard statements (H-codes), and precautionary statements (P-codes). Data sourced from PubChem depositors — source attribution included.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
     openWorldHint: true,
   },
   input: z.object({
-    cid: z.number().int().positive().describe('PubChem Compound ID.'),
+    cid: z
+      .number()
+      .int()
+      .positive()
+      .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
   }),
   output: z.object({
     cid: z.number().describe('PubChem Compound ID.'),

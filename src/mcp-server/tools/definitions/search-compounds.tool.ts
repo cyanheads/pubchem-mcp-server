@@ -24,13 +24,7 @@ const propertyEnum = z.enum(COMPOUND_PROPERTIES as unknown as [string, ...string
 export const searchCompounds = tool('pubchem_search_compounds', {
   title: 'Search Compounds',
   description:
-    `Search PubChem for chemical compounds. Five search modes:\n` +
-    `- identifier: Resolve compound names, SMILES, or InChIKeys to CIDs (batch up to 25)\n` +
-    `- formula: Find compounds by molecular formula (Hill notation, e.g. "C6H12O6")\n` +
-    `- substructure: Find compounds containing a substructure (SMILES or CID)\n` +
-    `- superstructure: Find compounds that are substructures of the query\n` +
-    `- similarity: Find structurally similar compounds by 2D Tanimoto similarity\n\n` +
-    `Optionally hydrate results with properties to avoid a follow-up details call.`,
+    'Search PubChem for chemical compounds by identifier (name, SMILES, or InChIKey, batched up to 25), molecular formula in Hill notation, substructure or superstructure containment, or 2D Tanimoto similarity. Optionally hydrate results with properties to avoid a follow-up pubchem_get_compound_details call.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -38,7 +32,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
   },
   input: z.object({
     searchType: searchTypeEnum.describe(
-      'Search strategy: "identifier" (name/SMILES/InChIKey lookup), "formula", "substructure", "superstructure", or "similarity".',
+      'Search strategy. "identifier": name/SMILES/InChIKey lookup. "formula": molecular formula. "substructure": find compounds containing the query as a substructure. "superstructure": find compounds that are themselves substructures of the query. "similarity": 2D Tanimoto similarity to the query.',
     ),
     identifierType: identifierTypeEnum
       .optional()
@@ -54,8 +48,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       })
       .optional()
       .describe(
-        'Required for identifier search. Array of identifiers to resolve (1-25). ' +
-          'Examples: ["aspirin", "ibuprofen"] for name, ["CC(=O)OC1=CC=CC=C1C(=O)O"] for SMILES.',
+        'Required for identifier search. Array of identifiers to resolve (1-25). Examples: ["aspirin", "ibuprofen"] for name, ["CC(=O)OC1=CC=CC=C1C(=O)O"] for SMILES, ["BSYNRYMUTXBXSQ-UHFFFAOYSA-N"] for inchikey (27-char block format).',
       ),
     formula: z
       .string()
@@ -73,8 +66,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .string()
       .optional()
       .describe(
-        'Required for substructure/superstructure/similarity searches. ' +
-          'A SMILES string or PubChem CID (as string) for the query structure.',
+        'Required for substructure/superstructure/similarity searches. A SMILES string (e.g. "CC(=O)O") or PubChem CID as a string (e.g. "2244").',
       ),
     queryType: queryTypeEnum
       .optional()
@@ -87,8 +79,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .max(100)
       .default(90)
       .describe(
-        'Similarity search only. Minimum Tanimoto similarity (70-100). ' +
-          '90+ for close analogs, 70-80 for scaffold hops. Default: 90.',
+        'Similarity search only. Minimum Tanimoto similarity (70-100). 90+ for close analogs, 70-80 for scaffold hops. Default: 90.',
       ),
     maxResults: z
       .number()
@@ -100,12 +91,15 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .array(propertyEnum)
       .optional()
       .describe(
-        'Optional: fetch these properties for each result, avoiding a follow-up details call. ' +
-          'E.g. ["MolecularFormula", "MolecularWeight", "CanonicalSMILES"].',
+        'Optional: fetch these properties for each result, avoiding a follow-up details call. E.g. ["MolecularFormula", "MolecularWeight", "CanonicalSMILES"].',
       ),
   }),
   output: z.object({
-    searchType: z.string().describe('The search strategy used.'),
+    searchType: z
+      .string()
+      .describe(
+        'Search strategy used: identifier, formula, substructure, superstructure, or similarity.',
+      ),
     totalFound: z.number().describe('Total CIDs found (before maxResults cap).'),
     results: z
       .array(
@@ -119,7 +113,9 @@ export const searchCompounds = tool('pubchem_search_compounds', {
             properties: z
               .record(z.string(), z.unknown())
               .optional()
-              .describe('Compound properties when requested.'),
+              .describe(
+                'Compound properties keyed by name (echoes input.properties; only present when requested).',
+              ),
           })
           .describe('Matching compound entry.'),
       )
@@ -128,20 +124,20 @@ export const searchCompounds = tool('pubchem_search_compounds', {
   errors: [
     {
       reason: 'missing_identifier_args',
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.ValidationError,
       when: 'searchType is "identifier" but identifierType or identifiers were omitted',
       recovery:
         'Set identifierType (name/smiles/inchikey) and pass a non-empty identifiers array (1-25 entries).',
     },
     {
       reason: 'missing_formula',
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.ValidationError,
       when: 'searchType is "formula" but the formula field was omitted',
       recovery: 'Pass formula in Hill notation, for example "C6H12O6" or "CaH2O2".',
     },
     {
       reason: 'missing_structure_args',
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.ValidationError,
       when: 'substructure/superstructure/similarity search missing query or queryType',
       recovery:
         'Provide both query (SMILES string or CID as string) and queryType ("smiles" or "cid").',
@@ -237,8 +233,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       if (identifier) result.identifier = identifier;
       const rawProps = propsMap?.get(cid);
       if (rawProps) {
-        const props = { ...rawProps };
-        delete (props as Record<string, unknown>).CID;
+        const { CID: _CID, ...props } = rawProps;
         result.properties = props;
       }
       return result;

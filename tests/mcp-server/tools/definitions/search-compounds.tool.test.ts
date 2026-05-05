@@ -183,7 +183,7 @@ describe('searchCompounds handler', () => {
     const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({ searchType: 'identifier' });
     await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.ValidationError,
       data: { reason: 'missing_identifier_args' },
     });
   });
@@ -192,7 +192,7 @@ describe('searchCompounds handler', () => {
     const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({ searchType: 'formula' });
     await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.ValidationError,
       data: { reason: 'missing_formula' },
     });
   });
@@ -201,7 +201,7 @@ describe('searchCompounds handler', () => {
     const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({ searchType: 'similarity' });
     await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.InvalidParams,
+      code: JsonRpcErrorCode.ValidationError,
       data: { reason: 'missing_structure_args' },
     });
   });

@@ -10,22 +10,23 @@ import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 export const getBioactivity = tool('pubchem_get_bioactivity', {
   title: 'Get Bioactivity',
   description:
-    "Get a compound's bioactivity profile: which assays tested it, activity outcomes " +
-    '(Active/Inactive/Inconclusive), target information (gene symbols, protein names), ' +
-    'and quantitative values (IC50, EC50, Ki, etc.). Filter by outcome to focus on active results.',
+    "Get a compound's bioactivity profile: which assays tested it, activity outcomes (Active/Inactive/Inconclusive), target identifiers (NCBI Gene ID, UniProt/GenBank accession), and quantitative values (IC50, EC50, Ki, etc.). Filter by outcome to focus on active results.",
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
     openWorldHint: true,
   },
   input: z.object({
-    cid: z.number().int().positive().describe('PubChem Compound ID.'),
+    cid: z
+      .number()
+      .int()
+      .positive()
+      .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     outcomeFilter: z
       .enum(['active', 'inactive', 'all'])
       .default('all')
       .describe(
-        'Filter by activity outcome. "active" shows only assays where the compound showed activity — ' +
-          'most useful for understanding biological profile. Default: "all".',
+        'Filter by activity outcome. "active" shows only assays where the compound showed activity — most useful for understanding biological profile. Default: "all".',
       ),
     maxResults: z
       .number()

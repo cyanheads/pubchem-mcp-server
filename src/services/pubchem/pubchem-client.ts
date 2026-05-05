@@ -161,18 +161,19 @@ function extractDescriptionItems(
   return items;
 }
 
-/** Dedup descriptions by exact normalized text — drops byte-identical reposts across depositors. */
-function dedupDescriptions<T extends { text: string }>(items: T[]): T[] {
+/** Filter to first occurrence of each non-empty key. Empty keys are dropped. */
+function dedupByKey<T>(items: T[], keyFn: (item: T) => string): T[] {
   const seen = new Set<string>();
-  const out: T[] = [];
-  for (const item of items) {
-    const key = item.text.toLowerCase().replace(/\s+/g, ' ').trim();
-    if (!key || seen.has(key)) continue;
+  return items.filter((item) => {
+    const key = keyFn(item);
+    if (!key || seen.has(key)) return false;
     seen.add(key);
-    out.push(item);
-  }
-  return out;
+    return true;
+  });
 }
+
+const descriptionKey = (item: { text: string }) =>
+  item.text.toLowerCase().replace(/\s+/g, ' ').trim();
 
 /** Extract GHS info items from a PUG View section */
 function extractGHSInfo(section: PugViewSection): PugViewInformation[] {
@@ -395,29 +396,24 @@ export class PubChemClient {
     const propsPath = properties.join(',');
     const cidStr = cids.join(',');
 
-    let rows: Array<Record<string, unknown> & { CID: number }>;
-
     // POST for large CID lists, GET for small ones
-    if (cids.length > 50) {
-      const data = await this.fetchJson<PropertyTableResponse>(
-        `${this.pugBase}/compound/cid/property/${propsPath}/JSON`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ cid: cidStr }).toString(),
-        },
-      );
-      rows = data.PropertyTable.Properties;
-    } else {
-      const data = await this.fetchJson<PropertyTableResponse>(
-        `${this.pugBase}/compound/cid/${cidStr}/property/${propsPath}/JSON`,
-      );
-      rows = data.PropertyTable.Properties;
-    }
+    const data =
+      cids.length > 50
+        ? await this.fetchJson<PropertyTableResponse>(
+            `${this.pugBase}/compound/cid/property/${propsPath}/JSON`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ cid: cidStr }).toString(),
+            },
+          )
+        : await this.fetchJson<PropertyTableResponse>(
+            `${this.pugBase}/compound/cid/${cidStr}/property/${propsPath}/JSON`,
+          );
 
     // PubChem returns different field names than the request names for some properties.
     // Normalize so consumers see the names they requested.
-    return rows.map((row) => normalizePropertyNames(row));
+    return data.PropertyTable.Properties.map(normalizePropertyNames);
   }
 
   async getSynonyms(cid: number): Promise<string[]> {
@@ -473,7 +469,7 @@ export class PubChemClient {
       }
 
       const raw = extractDescriptionItems(descSection);
-      const deduped = dedupDescriptions(raw);
+      const deduped = dedupByKey(raw, descriptionKey);
       return deduped.map((item) => {
         const source = item.refNum != null ? refToSource.get(item.refNum) : undefined;
         return source ? { source, text: item.text } : { text: item.text };
@@ -530,18 +526,8 @@ export class PubChemClient {
 
       // Deduplicate across depositors
       result.pictograms = [...new Set(result.pictograms)];
-      const seenH = new Set<string>();
-      result.hazardStatements = result.hazardStatements.filter((h) => {
-        if (seenH.has(h.code)) return false;
-        seenH.add(h.code);
-        return true;
-      });
-      const seenP = new Set<string>();
-      result.precautionaryStatements = result.precautionaryStatements.filter((p) => {
-        if (seenP.has(p.code)) return false;
-        seenP.add(p.code);
-        return true;
-      });
+      result.hazardStatements = dedupByKey(result.hazardStatements, (h) => h.code);
+      result.precautionaryStatements = dedupByKey(result.precautionaryStatements, (p) => p.code);
 
       // Extract source from references
       const refs = data.Record.Reference;
@@ -613,13 +599,7 @@ export class PubChemClient {
             result.atcCodes.push({ code: match[1] ?? '', description: desc });
           }
         }
-        // Deduplicate by code
-        const seen = new Set<string>();
-        result.atcCodes = result.atcCodes.filter((a) => {
-          if (seen.has(a.code)) return false;
-          seen.add(a.code);
-          return true;
-        });
+        result.atcCodes = dedupByKey(result.atcCodes, (a) => a.code);
       }
 
       const hasData =

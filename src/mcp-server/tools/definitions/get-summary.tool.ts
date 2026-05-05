@@ -1,6 +1,5 @@
 /**
- * @fileoverview Get descriptive summaries for PubChem entities: assays, genes,
- * proteins, pathways, taxonomy, cell lines, or substances.
+ * @fileoverview Get descriptive summaries for PubChem entities: assays, genes, proteins, or taxonomy.
  * @module mcp-server/tools/definitions/get-summary
  */
 
@@ -41,8 +40,7 @@ type EntitySummaryData = z.infer<typeof entitySummaryDataSchema>;
 export const getSummary = tool('pubchem_get_summary', {
   title: 'Get Entity Summary',
   description:
-    'Get descriptive summaries for PubChem entities by ID. Supports assays (AID), genes (Gene ID), ' +
-    'proteins (UniProt accession), and taxonomy (Tax ID). Up to 10 per call.',
+    'Get descriptive summaries for PubChem entities by ID. Supports assays (AID), genes (Gene ID), proteins (UniProt accession), and taxonomy (Tax ID). Up to 10 per call.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -62,11 +60,7 @@ export const getSummary = tool('pubchem_get_summary', {
       .min(1)
       .max(10)
       .describe(
-        'Entity identifiers (1-10). Type depends on entityType:\n' +
-          '- assay: AID (number), e.g. [1000]\n' +
-          '- gene: Gene ID (number), e.g. [1956]\n' +
-          '- protein: UniProt accession (string), e.g. ["P00533"]\n' +
-          '- taxonomy: Tax ID (number), e.g. [9606]',
+        'Entity identifiers (1-10). Type depends on entityType:\n- assay: AID (number), e.g. [1000]\n- gene: Gene ID (number), e.g. [1956]\n- protein: UniProt accession (string), e.g. ["P00533"]\n- taxonomy: Tax ID (number), e.g. [9606]',
       ),
   }),
   output: z.object({
