@@ -145,13 +145,6 @@ export interface DrugLikenessAssessment {
   };
 }
 
-// ── PubChem error ────────────────────────────────────────────────────
-
-/** Structured error from PubChem API */
-export class PubChemNotFoundError extends Error {
-  override name = 'PubChemNotFoundError' as const;
-}
-
 // ── Constants ────────────────────────────────────────────────────────
 
 /** All valid PubChem compound property names */

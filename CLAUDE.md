@@ -1,7 +1,7 @@
 # Agent Protocol
 
 **Server:** pubchem-mcp-server
-**Version:** 0.1.18
+**Version:** 0.1.19
 **Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core)
 
 > **Read the framework docs first:** `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` contains the full API reference — builders, Context, error codes, exports, patterns. This file covers server-specific conventions only.
@@ -207,7 +207,7 @@ Available skills:
 | `add-service` | Scaffold a new service integration |
 | `add-test` | Scaffold test file for a tool, resource, or service |
 | `field-test` | Exercise tools/resources/prompts with real inputs, verify behavior, report issues |
-| `tool-defs-analysis` | Audit LLM-facing language across every tool/resource/prompt: voice, internal leaks, defaults, recovery hints, output descriptions, sparsity, examples, structure |
+| `tool-defs-analysis` | Audit LLM-facing language across every tool/resource/prompt: voice, internal leaks, defaults, recovery hints, output descriptions, sparsity, examples, structure, mutator observability, unit-bearing numeric names (12 categories) |
 | `security-pass` | Audit server for MCP-flavored security gaps: output injection, scope blast radius, input sinks, tenant isolation |
 | `devcheck` | Lint, format, typecheck, audit |
 | `polish-docs-meta` | Finalize docs, README, metadata, and agent protocol for shipping |
@@ -222,8 +222,9 @@ Available skills:
 | `api-errors` | McpError, JsonRpcErrorCode, error patterns |
 | `api-linter` | Definition lint rules — look here when devcheck reports a `format-parity`, `describe-on-fields`, `schema-*`, `name-*`, etc. diagnostic |
 | `api-services` | LLM, Speech, Graph services |
+| `api-telemetry` | OTel catalog: spans, metrics, completion logs, env config, cardinality rules |
 | `api-testing` | createMockContext, test patterns |
-| `api-utils` | Formatting, parsing, security, pagination, scheduling |
+| `api-utils` | Formatting, parsing, security, pagination, scheduling, telemetry helpers |
 | `api-workers` | Cloudflare Workers runtime |
 
 When you complete a skill's checklist, check the boxes and add a completion timestamp at the end (e.g., `Completed: 2026-03-11`).

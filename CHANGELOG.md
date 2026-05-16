@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.1.19] — 2026-05-16
+
+### Changed
+
+- **Dependencies** — bumped `@cyanheads/mcp-ts-core` `^0.8.15 → ^0.9.1` (spans the 0.9.0 cross-vendor portability/Workers release and the 0.9.1 follow-up):
+  - 0.9.0 — Workers boot under `nodejs_compat` (HTTP transport split, runtime detection switched to `navigator.userAgent`), spec `instructions` field on `createApp` / `createWorkerHandler`, new portability lint family (`schema-format-portability` default-on error, `schema-anyof-needs-type`, `schema-no-discriminator-keyword`, `schema-no-defs`, `schema-dialect-tag`), definition linting moved to build-time only (`createApp()` no longer runs `validateDefinitions` at startup), SSRF DNS validation now enforced in Workers, IPv6 SSRF blocklist broadened, `mcp.rate_limit.rejections_total` cardinality bounded
+  - 0.9.1 — `tasks` capability advertisement gated on actual task-tool registration (fixes strict-parsing clients pinned to MCP `2025-06-18`), new `Context.notifyPromptListChanged` / `notifyToolListChanged` notifiers, OTel `deployment.environment.name` uses the stable `ATTR_DEPLOYMENT_ENVIRONMENT_NAME` constant (semconv `^1.40 → ^1.41`), `fast-xml-parser` pinned to `5.7.3`, OTel exporter/SDK refresh, `bun outdated` parser fix in `devcheck.ts`
+- **Engine bumps** — `node >=22.0.0 → >=24.0.0`, `bun >=1.2.0 → >=1.3.0` (matches framework requirement)
+- **Dev dependencies** — `@biomejs/biome` `^2.4.14 → ^2.4.15`, `@types/node` `^25.6.0 → ^25.8.0`, `vitest` `^4.1.5 → ^4.1.6`
+- **`Dockerfile` base images** — `oven/bun:1 → oven/bun:1.3` (build + production stages) to align with the new engine floor
+
+### Added
+
+- **`createApp()` `instructions`** — wired the new spec field with a short orientation block that points the model at `pubchem_search_compounds` for identifier resolution, the per-CID detail/safety/image/xrefs/bioactivity tools, the `search_assays → get_bioactivity` chain for target-driven flows, and `pubchem_get_summary` for assay/gene/protein/taxonomy lookups. Spec-compliant clients forward it to the model on every `initialize` instead of duplicating it across tool descriptions
+- **`api-telemetry` skill** — added from `@cyanheads/mcp-ts-core@0.9.0` (OTel catalog: span names, metric names + attributes, completion log fields, env config, runtime support, cardinality rules)
+
+### Refactored
+
+- **`pubchem-client.ts` HTTP error classification** — replaced the custom `PubChemNotFoundError` class with `McpError` thrown from `httpStatusToErrorCode(response.status)`. `fetchJson` and `fetchBinary` now build `new McpError(code, message, { url, status })` directly; per-call sites switched from `instanceof PubChemNotFoundError` to a shared `isNotFound(error)` predicate that checks `error.code === JsonRpcErrorCode.NotFound`. Carries the upstream status/URL into `data` for observability and inherits the framework's classification table instead of maintaining a parallel one
+- **`PubChemNotFoundError` class removed** from `services/pubchem/types.ts` — superseded by the `McpError`-based predicate above
+
+### Fixed
+
+- **`pubchem_get_summary` HTTP 400 → null fallback** — the legacy `/PubChem HTTP 400/.test(error.message)` regex was dead after the `McpError` migration (error messages no longer carry the `PubChem HTTP N` prefix). Replaced with `error instanceof McpError && error.data?.status === 400` so PubChem's 400-on-nonexistent-entity-ID behavior continues to map to `null` instead of bubbling as an error to the caller
+
+### Skills
+
+- **Skills synced** from `@cyanheads/mcp-ts-core@0.9.1` — added `api-telemetry`; refreshed `api-auth`, `api-config`, `api-context`, `api-errors`, `api-linter`, `api-utils`, `api-workers`, `add-tool`, `design-mcp-server`, `field-test`, `maintenance`, `polish-docs-meta`, `report-issue-framework`, `report-issue-local`, `security-pass`, `setup`, `tool-defs-analysis`
+- **Framework scripts synced** — `scripts/build-changelog.ts` (`SUMMARY_MAX_LENGTH` 250 → 350 cap), `scripts/devcheck.ts` (`bun outdated` parser fix)
+- **`CLAUDE.md`** — `tool-defs-analysis` row expanded to call out the two new audit categories (mutator observability, unit-bearing numeric names; 12 categories total); added `api-telemetry` row; `api-utils` row notes the telemetry helpers
+
 ## [0.1.18] — 2026-05-05
 
 ### Changed

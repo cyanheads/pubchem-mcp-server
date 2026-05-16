@@ -4,6 +4,8 @@
  * @module services/pubchem/pubchem-client
  */
 
+import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
+import { httpStatusToErrorCode } from '@cyanheads/mcp-ts-core/utils';
 import type {
   AidListResponse,
   AssaySummaryTableResponse,
@@ -19,7 +21,9 @@ import type {
   SynonymResponse,
   XrefResponse,
 } from './types.js';
-import { PubChemNotFoundError } from './types.js';
+
+const isNotFound = (error: unknown): boolean =>
+  error instanceof McpError && error.code === JsonRpcErrorCode.NotFound;
 
 // ── Rate Limiter ─────────────────────────────────────────────────────
 
@@ -246,20 +250,17 @@ export class PubChemClient {
         const text = await response.text();
         const message = parseFaultMessage(text) ?? text.slice(0, 300);
 
-        if (response.status === 404) {
-          throw new PubChemNotFoundError(message);
-        }
-
         // Retry once on 5xx
         if (response.status >= 500 && attempt < 1) {
           await sleep(1000 * 2 ** attempt);
           continue;
         }
 
-        throw new Error(`PubChem HTTP ${response.status}: ${message}`);
+        const code = httpStatusToErrorCode(response.status) ?? JsonRpcErrorCode.InternalError;
+        throw new McpError(code, message, { url, status: response.status });
       } catch (error) {
-        if (error instanceof PubChemNotFoundError) throw error;
-        if (error instanceof Error && error.message.startsWith('PubChem HTTP 4')) throw error;
+        // HTTP errors are already classified — surface them, don't retry.
+        if (error instanceof McpError) throw error;
 
         // Retry once on network errors
         if (attempt < 1) {
@@ -289,8 +290,8 @@ export class PubChemClient {
       if (!response.ok) {
         const text = await response.text();
         const message = parseFaultMessage(text) ?? text.slice(0, 300);
-        if (response.status === 404) throw new PubChemNotFoundError(message);
-        throw new Error(`PubChem HTTP ${response.status}: ${message}`);
+        const code = httpStatusToErrorCode(response.status) ?? JsonRpcErrorCode.InternalError;
+        throw new McpError(code, message, { url, status: response.status });
       }
 
       return await response.arrayBuffer();
@@ -308,7 +309,7 @@ export class PubChemClient {
       if ('Waiting' in data) return this.pollListKey(data.Waiting.ListKey);
       return data.IdentifierList.CID;
     } catch (error) {
-      if (error instanceof PubChemNotFoundError) return [];
+      if (isNotFound(error)) return [];
       throw error;
     }
   }
@@ -323,7 +324,7 @@ export class PubChemClient {
         if ('Waiting' in data) continue;
         return data.IdentifierList.CID;
       } catch (error) {
-        if (error instanceof PubChemNotFoundError) return [];
+        if (isNotFound(error)) return [];
         throw error;
       }
     }
@@ -423,7 +424,7 @@ export class PubChemClient {
       );
       return data.InformationList.Information[0]?.Synonym ?? [];
     } catch (error) {
-      if (error instanceof PubChemNotFoundError) return [];
+      if (isNotFound(error)) return [];
       throw error;
     }
   }
@@ -443,7 +444,7 @@ export class PubChemClient {
       const values = info[xrefType];
       return Array.isArray(values) ? (values as (string | number)[]) : [];
     } catch (error) {
-      if (error instanceof PubChemNotFoundError) return [];
+      if (isNotFound(error)) return [];
       throw error;
     }
   }
@@ -475,7 +476,7 @@ export class PubChemClient {
         return source ? { source, text: item.text } : { text: item.text };
       });
     } catch (error) {
-      if (error instanceof PubChemNotFoundError) return [];
+      if (isNotFound(error)) return [];
       throw error;
     }
   }
@@ -539,7 +540,7 @@ export class PubChemClient {
         ? result
         : null;
     } catch (error) {
-      if (error instanceof PubChemNotFoundError) return null;
+      if (isNotFound(error)) return null;
       throw error;
     }
   }
@@ -609,7 +610,7 @@ export class PubChemClient {
         result.atcCodes.length > 0;
       return hasData ? result : null;
     } catch (error) {
-      if (error instanceof PubChemNotFoundError) return null;
+      if (isNotFound(error)) return null;
       throw error;
     }
   }
@@ -623,7 +624,7 @@ export class PubChemClient {
       );
       return this.parseAssayTable(data);
     } catch (error) {
-      if (error instanceof PubChemNotFoundError) return [];
+      if (isNotFound(error)) return [];
       throw error;
     }
   }
@@ -711,7 +712,7 @@ export class PubChemClient {
       );
       return data.IdentifierList.AID;
     } catch (error) {
-      if (error instanceof PubChemNotFoundError) return [];
+      if (isNotFound(error)) return [];
       throw error;
     }
   }
@@ -746,9 +747,11 @@ export class PubChemClient {
       const arr = summaries[summaryKey] as Record<string, unknown>[];
       return arr[0] ?? null;
     } catch (error) {
-      if (error instanceof PubChemNotFoundError) return null;
+      if (isNotFound(error)) return null;
       // PubChem returns HTTP 400 (not 404) for nonexistent entity IDs in some endpoints
-      if (error instanceof Error && /PubChem HTTP 400/.test(error.message)) return null;
+      if (error instanceof McpError && (error.data as { status?: number })?.status === 400) {
+        return null;
+      }
       throw error;
     }
   }

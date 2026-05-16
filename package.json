@@ -1,6 +1,6 @@
 {
   "name": "@cyanheads/pubchem-mcp-server",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "MCP server for the PubChem chemical database. Search compounds, fetch properties, safety data, bioactivity, cross-references, and entity summaries. STDIO & Streamable HTTP.",
   "mcpName": "io.github.cyanheads/pubchem-mcp-server",
   "type": "module",
@@ -52,24 +52,24 @@
     }
   ],
   "engines": {
-    "node": ">=22.0.0",
-    "bun": ">=1.2.0"
+    "node": ">=24.0.0",
+    "bun": ">=1.3.0"
   },
   "packageManager": "bun@1.3.2",
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@cyanheads/mcp-ts-core": "^0.8.15",
+    "@cyanheads/mcp-ts-core": "^0.9.1",
     "pino-pretty": "^13.1.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
-    "@types/node": "^25.6.0",
+    "@biomejs/biome": "^2.4.15",
+    "@types/node": "^25.8.0",
     "depcheck": "^1.4.7",
     "ignore": "^7.0.5",
     "tsc-alias": "^1.8.17",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.5"
+    "vitest": "^4.1.6"
   }
 }
