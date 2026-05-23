@@ -1,10 +1,29 @@
 # Agent Protocol
 
 **Server:** pubchem-mcp-server
-**Version:** 0.1.19
+**Version:** 0.1.20
 **Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core)
 
 > **Read the framework docs first:** `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` contains the full API reference — builders, Context, error codes, exports, patterns. This file covers server-specific conventions only.
+
+---
+
+## What's Next?
+
+When the user asks what's next or needs direction, suggest options based on the current project state. Common next steps:
+
+1. **Re-run the `setup` skill** — ensures CLAUDE.md, skills, structure, and metadata are populated and up to date with the current codebase
+2. **Run the `design-mcp-server` skill** — if the tool/resource surface hasn't been mapped yet, work through domain design
+3. **Add tools/resources/prompts** — scaffold new definitions using the `add-tool`, `add-app-tool`, `add-resource`, `add-prompt` skills
+4. **Add services** — scaffold domain service integrations using the `add-service` skill
+5. **Add tests** — scaffold tests for existing definitions using the `add-test` skill
+6. **Field-test definitions** — exercise tools/resources/prompts with real inputs using the `field-test` skill, get a report of issues and pain points
+7. **Run `devcheck`** — lint, format, typecheck, and security audit
+8. **Run the `security-pass` skill** — audit handlers for MCP-specific security gaps: output injection, scope blast radius, input sinks, tenant isolation
+9. **Run the `polish-docs-meta` skill** — finalize README, CHANGELOG, metadata, and agent protocol for shipping
+10. **Run the `maintenance` skill** — investigate changelogs, adopt upstream changes, and sync skills after `bun update --latest`
+
+Tailor suggestions to what's actually missing or stale — don't recite the full list every time.
 
 ---
 
@@ -12,6 +31,8 @@
 
 - **Logic throws, framework catches.** Tool/resource handlers are pure — throw on failure, no `try/catch`. Plain `Error` is fine; the framework catches, classifies, and formats. Use error factories (`notFound()`, `validationError()`, etc.) when the error code matters.
 - **Use `ctx.log`** for request-scoped logging. No `console` calls.
+- **Use `ctx.state`** for tenant-scoped storage. Never access persistence directly.
+- **Check `ctx.elicit` / `ctx.sample`** for presence before calling.
 - **Secrets in env vars only** — never hardcoded.
 - **No API keys required** — PubChem's API is freely accessible. No server config schema exists.
 
@@ -149,7 +170,7 @@ import { McpError, JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 throw new McpError(JsonRpcErrorCode.InternalError, 'Unexpected response', { url });
 ```
 
-See framework CLAUDE.md for the full auto-classification table and all available factories.
+See framework CLAUDE.md and the `api-errors` skill for the full auto-classification table, all available factories, and the contract reference.
 
 ---
 
@@ -238,9 +259,15 @@ When you complete a skill's checklist, check the boxes and add a completion time
 | `bun run build` | Compile TypeScript |
 | `bun run rebuild` | Clean + build |
 | `bun run clean` | Remove build artifacts |
-| `bun run devcheck` | Lint + format + typecheck + security |
+| `bun run devcheck` | Lint + format + typecheck + security + changelog sync |
+| `bun run audit:refresh` | Delete `bun.lock`, reinstall, re-audit. Use when `devcheck` flags a transitive advisory — stale lockfile can mask already-patched deps. If advisory survives, it's real. |
 | `bun run tree` | Generate directory structure doc |
+| `bun run list-skills` | Print skill index from project `skills/` |
 | `bun run format` | Auto-fix formatting |
+| `bun run lint:packaging` | Validate `manifest.json` / `server.json` env-var alignment |
+| `bun run bundle` | Build and pack as `.mcpb` for one-click Claude Desktop install |
+| `bun run changelog:build` | Regenerate `CHANGELOG.md` from `changelog/*.md` |
+| `bun run changelog:check` | Verify `CHANGELOG.md` is in sync (used by devcheck) |
 | `bun run test` | Run tests |
 | `bun run start:stdio` | Production mode (stdio) |
 | `bun run start:http` | Production mode (HTTP) |
@@ -259,6 +286,20 @@ import { McpError, JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 // Server's own code — via path alias
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 ```
+
+---
+
+## Bundling
+
+`bun run bundle` produces a `.mcpb` extension bundle for one-click install in Claude Desktop. MCPB is stdio-only — HTTP deployments are unaffected. `manifest.json` and `.mcpbignore` are required; `lint:packaging` (run by `devcheck`) validates env-var alignment between `manifest.json` `mcp_config.env`/`user_config` and `server.json` `environmentVariables[]`.
+
+**Adding an env var requires both files:** `server.json` (registry discovery) and `manifest.json` (bundle install UX). `lint:packaging` enforces that the names match.
+
+---
+
+## Changelog
+
+Directory-based, grouped by minor series. Source of truth: `changelog/<major.minor>.x/<version>.md` — one file per release. At release, author the per-version file with a concrete version and date, then run `bun run changelog:build` to regenerate the rollup. `CHANGELOG.md` is a navigation index regenerated by `changelog:build` — devcheck hard-fails on drift; never hand-edit it.
 
 ---
 
@@ -282,10 +323,14 @@ mcp-publisher publish
 ## Checklist
 
 - [ ] `format()` renders all data the LLM needs — different clients forward different surfaces (Claude Code → `structuredContent`, Claude Desktop → `content[]`); both must carry the same data. Enforced by the `format-parity` linter
-- [ ] Zod schemas: all fields have `.describe()`
+- [ ] Zod schemas: all fields have `.describe()`, only JSON-Schema-serializable types (no `z.custom()`, `z.date()`, `z.transform()`, `z.bigint()`, `z.symbol()`, `z.void()`, `z.map()`, `z.set()`, `z.function()`, `z.nan()`)
+- [ ] Optional nested objects: handler guards for empty inner values from form-based clients (`if (input.obj?.field && ...)`, not just `if (input.obj)`)
 - [ ] JSDoc `@fileoverview` + `@module` on every file
 - [ ] `ctx.log` for logging
 - [ ] Handlers throw on failure — error factories or plain `Error`, no try/catch
+- [ ] If wrapping external API: raw/domain/output schemas reviewed against real upstream sparsity/nullability before finalizing required vs optional fields
+- [ ] If wrapping external API: normalization and `format()` preserve uncertainty; do not fabricate facts from missing upstream data
+- [ ] If wrapping external API: tests include at least one sparse payload case with omitted upstream fields
 - [ ] Registered in `createApp()` arrays (directly or via barrel exports)
 - [ ] Tests use `createMockContext()` from `@cyanheads/mcp-ts-core/testing`
 - [ ] `bun run devcheck` passes

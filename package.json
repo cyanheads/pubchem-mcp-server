@@ -1,6 +1,6 @@
 {
   "name": "@cyanheads/pubchem-mcp-server",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "description": "MCP server for the PubChem chemical database. Search compounds, fetch properties, safety data, bioactivity, cross-references, and entity summaries. STDIO & Streamable HTTP.",
   "mcpName": "io.github.cyanheads/pubchem-mcp-server",
   "type": "module",
@@ -9,15 +9,22 @@
   "bin": {
     "pubchem-mcp-server": "dist/index.js"
   },
-  "files": ["dist/", "README.md", "LICENSE", "server.json", "Dockerfile"],
+  "files": ["dist/", "README.md", "LICENSE", "server.json", "manifest.json", "Dockerfile"],
   "scripts": {
     "build": "bun scripts/build.ts",
     "rebuild": "bun scripts/clean.ts && bun scripts/build.ts",
     "clean": "bun scripts/clean.ts",
     "devcheck": "bun scripts/devcheck.ts",
+    "audit:refresh": "rm -f bun.lock && bun install && bun audit",
     "tree": "bun scripts/tree.ts",
+    "list-skills": "bun scripts/list-skills.ts",
     "format": "biome check --write --unsafe .",
     "lint:mcp": "bun scripts/lint-mcp.ts",
+    "lint:packaging": "bun scripts/lint-packaging.ts",
+    "bundle": "bun run build && npx -y @anthropic-ai/mcpb pack . dist/pubchem-mcp-server.mcpb",
+    "changelog:build": "bun scripts/build-changelog.ts",
+    "changelog:check": "bun scripts/build-changelog.ts --check",
+    "publish-mcp": "mcp-publisher publish",
     "test": "vitest run",
     "start:stdio": "node dist/index.js",
     "start:http": "MCP_TRANSPORT_TYPE=http node dist/index.js"
@@ -60,16 +67,17 @@
     "access": "public"
   },
   "dependencies": {
-    "@cyanheads/mcp-ts-core": "^0.9.1",
-    "pino-pretty": "^13.1.3"
+    "@cyanheads/mcp-ts-core": "^0.9.6",
+    "pino-pretty": "^13.1.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
-    "@types/node": "^25.8.0",
+    "@types/node": "^25.9.1",
     "depcheck": "^1.4.7",
     "ignore": "^7.0.5",
     "tsc-alias": "^1.8.17",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.7"
   }
 }

@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.1.20] — 2026-05-23
+
+### Changed
+
+- **Dependencies** — bumped `@cyanheads/mcp-ts-core` `^0.9.1 → ^0.9.6`:
+  - 0.9.2 — `ctx.elicit` / `ctx.sample` optional-presence guards in handlers, toolset filter improvements
+  - 0.9.3 — `publish-mcp` script (`mcp-publisher publish`) added to framework scaffolding; `lint:packaging` script wired to `devcheck`
+  - 0.9.4 — `manifest.json` and `.mcpbignore` scaffolded for MCPB bundle support; `bundle` script in `package.json`; `list-skills` script; install badges in README scaffold
+  - 0.9.5 — `zod` externalized as a peer-range dependency; lockfile cleanup
+  - 0.9.6 — `devcheck` script updates, skill refreshes
+- **`zod` promoted to direct dependency** — `zod ^4.4.3` (previously transitive through mcp-ts-core; now explicit per framework externalization)
+- **`@types/node`** `^25.8.0 → ^25.9.1`, **`vitest`** `^4.1.6 → ^4.1.7`
+
+### Added
+
+- **`manifest.json`** — MCPB bundle manifest scaffolded; enables one-click install in Claude Desktop via `bun run bundle`
+- **`.mcpbignore`** — bundle exclusion rules for MCPB packing
+- **`scripts/lint-packaging.ts`** — validates env-var alignment between `manifest.json` and `server.json` (run by `devcheck`)
+- **`scripts/list-skills.ts`** — prints project skill index (used by `bun run list-skills`)
+- **Install badges** — README gains Claude Desktop, Cursor, and VS Code one-click install badges
+- **`publish-mcp` script** — `mcp-publisher publish` wired in `package.json` for MCP Registry submissions
+- **`bundle` script** — `bun run build && npx -y @anthropic-ai/mcpb pack` for producing `.mcpb` bundles
+
+### Skills
+
+- **Skills synced** from `@cyanheads/mcp-ts-core@0.9.6` — refreshed `field-test`, `maintenance`, `polish-docs-meta` (package-meta, readme, server-json references), `release-and-publish`
+
 ## [0.1.19] — 2026-05-16
 
 ### Changed
