@@ -1,9 +1,17 @@
 {
   "manifest_version": "0.3",
   "name": "pubchem-mcp-server",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "description": "Search PubChem compounds, properties, safety data, bioactivity, cross-references, and entity summaries via MCP.",
-  "author": { "name": "cyanheads" },
+  "author": {
+    "name": "cyanheads"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cyanheads/pubchem-mcp-server"
+  },
+  "homepage": "https://github.com/cyanheads/pubchem-mcp-server#readme",
+  "license": "Apache-2.0",
   "server": {
     "type": "node",
     "entry_point": "dist/index.js",
@@ -18,7 +26,9 @@
     }
   },
   "compatibility": {
-    "runtimes": { "node": ">=24.0.0" }
+    "runtimes": {
+      "node": ">=24.0.0"
+    }
   },
   "tools_generated": true,
   "prompts_generated": true,

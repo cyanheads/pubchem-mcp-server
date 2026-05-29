@@ -1,0 +1,9 @@
+{
+  "@cyanheads/pubchem-mcp-server": {
+    "command": "npx",
+    "args": ["-y", "@cyanheads/pubchem-mcp-server"],
+    "env": {
+      "MCP_TRANSPORT_TYPE": "stdio"
+    }
+  }
+}

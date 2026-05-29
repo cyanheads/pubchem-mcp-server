@@ -5,7 +5,7 @@
  */
 
 import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
-import { httpStatusToErrorCode } from '@cyanheads/mcp-ts-core/utils';
+import { httpErrorFromResponse } from '@cyanheads/mcp-ts-core/utils';
 import type {
   AidListResponse,
   AssaySummaryTableResponse,
@@ -248,7 +248,7 @@ export class PubChemClient {
         }
 
         const text = await response.text();
-        const message = parseFaultMessage(text) ?? text.slice(0, 300);
+        const fault = parseFaultMessage(text) ?? text.slice(0, 300);
 
         // Retry once on 5xx
         if (response.status >= 500 && attempt < 1) {
@@ -256,8 +256,11 @@ export class PubChemClient {
           continue;
         }
 
-        const code = httpStatusToErrorCode(response.status) ?? JsonRpcErrorCode.InternalError;
-        throw new McpError(code, message, { url, status: response.status });
+        throw await httpErrorFromResponse(response, {
+          captureBody: false,
+          service: 'PubChem',
+          data: { fault, url },
+        });
       } catch (error) {
         // HTTP errors are already classified — surface them, don't retry.
         if (error instanceof McpError) throw error;
@@ -289,9 +292,12 @@ export class PubChemClient {
 
       if (!response.ok) {
         const text = await response.text();
-        const message = parseFaultMessage(text) ?? text.slice(0, 300);
-        const code = httpStatusToErrorCode(response.status) ?? JsonRpcErrorCode.InternalError;
-        throw new McpError(code, message, { url, status: response.status });
+        const fault = parseFaultMessage(text) ?? text.slice(0, 300);
+        throw await httpErrorFromResponse(response, {
+          captureBody: false,
+          service: 'PubChem',
+          data: { fault, url },
+        });
       }
 
       return await response.arrayBuffer();

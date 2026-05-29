@@ -1,0 +1,25 @@
+{
+  "name": "@cyanheads/pubchem-mcp-server",
+  "version": "0.1.21",
+  "description": "MCP server for the PubChem chemical database. Search compounds, fetch properties, safety data, bioactivity, cross-references, and entity summaries. STDIO & Streamable HTTP.",
+  "author": {
+    "name": "cyanheads",
+    "email": "casey@caseyjhand.com",
+    "url": "https://caseyjhand.com"
+  },
+  "homepage": "https://github.com/cyanheads/pubchem-mcp-server#readme",
+  "repository": "https://github.com/cyanheads/pubchem-mcp-server",
+  "license": "Apache-2.0",
+  "keywords": ["mcp", "mcp-server", "model-context-protocol", "pubchem", "chemistry", "cheminformatics"],
+  "mcpServers": "./.codex-plugin/mcp.json",
+  "interface": {
+    "displayName": "@cyanheads/pubchem-mcp-server",
+    "shortDescription": "Search PubChem compounds, properties, safety data, bioactivity, cross-references, and entity summaries via MCP.",
+    "longDescription": "MCP server for the PubChem chemical database. Search by name, SMILES, InChIKey, formula, or substructure to find compound CIDs, then fetch molecular properties, GHS safety classifications, bioassay activity, external database cross-references, and entity summaries for assays, genes, proteins, and taxonomy. STDIO and Streamable HTTP transports. No API key required.",
+    "developerName": "cyanheads",
+    "category": "science",
+    "capabilities": ["Read"],
+    "websiteURL": "https://github.com/cyanheads/pubchem-mcp-server",
+    "defaultPrompt": []
+  }
+}
