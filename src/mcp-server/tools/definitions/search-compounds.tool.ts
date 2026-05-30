@@ -95,12 +95,6 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       ),
   }),
   output: z.object({
-    searchType: z
-      .string()
-      .describe(
-        'Search strategy used: identifier, formula, substructure, superstructure, or similarity.',
-      ),
-    totalFound: z.number().describe('Total CIDs found (before maxResults cap).'),
     results: z
       .array(
         z
@@ -121,6 +115,22 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       )
       .describe('Matching compounds.'),
   }),
+  // Agent-facing context — search strategy echo, total before cap, and an empty-result
+  // notice. Reaches structuredContent and content[] automatically; not in the domain return.
+  enrichment: {
+    searchType: z
+      .string()
+      .describe(
+        'Search strategy used: identifier, formula, substructure, superstructure, or similarity.',
+      ),
+    totalFound: z.number().describe('Total CIDs found before the maxResults cap.'),
+    notice: z
+      .string()
+      .optional()
+      .describe(
+        'Recovery guidance when no compounds matched — echoes search strategy and suggests how to broaden. Absent when results were returned.',
+      ),
+  },
   errors: [
     {
       reason: 'missing_identifier_args',
@@ -215,6 +225,14 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       returned: cappedCids.length,
     });
 
+    // Agent-facing context: search strategy echo, total, and empty-result notice.
+    ctx.enrich({ searchType: input.searchType, totalFound });
+    if (cappedCids.length === 0) {
+      ctx.enrich.notice(
+        `No compounds matched the ${input.searchType} search. Try a different identifier, broaden the formula, lower the similarity threshold, or verify the SMILES/CID.`,
+      );
+    }
+
     // Optionally hydrate with properties
     let propsMap: Map<number, Record<string, unknown>> | undefined;
     if (input.properties && input.properties.length > 0 && cappedCids.length > 0) {
@@ -239,18 +257,11 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       return result;
     });
 
-    return { searchType: input.searchType, totalFound, results };
+    return { results };
   },
 
   format(result) {
     const lines: string[] = [];
-    const count = result.results.length;
-    const truncated =
-      result.totalFound > count ? ` (showing ${count} of ${result.totalFound})` : '';
-    lines.push(
-      `Found ${result.totalFound} compound${result.totalFound !== 1 ? 's' : ''}${truncated} — ${result.searchType} search`,
-    );
-    lines.push('');
 
     if (result.results.length === 0) {
       lines.push('No results.');

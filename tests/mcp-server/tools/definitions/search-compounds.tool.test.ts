@@ -4,7 +4,7 @@
  */
 
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchCompounds } from '@/mcp-server/tools/definitions/search-compounds.tool.js';
 
@@ -35,9 +35,10 @@ describe('searchCompounds handler', () => {
       identifiers: ['aspirin', 'ibuprofen'],
     });
     const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
 
-    expect(result.searchType).toBe('identifier');
-    expect(result.totalFound).toBe(2);
+    expect(enrichment.searchType).toBe('identifier');
+    expect(enrichment.totalFound).toBe(2);
     expect(result.results).toHaveLength(2);
     expect(result.results[0]!).toEqual({ cid: 2244, identifier: 'aspirin' });
     expect(result.results[1]!).toEqual({ cid: 3672, identifier: 'ibuprofen' });
@@ -51,9 +52,10 @@ describe('searchCompounds handler', () => {
       identifierType: 'smiles',
       identifiers: ['CC(=O)OC1=CC=CC=C1C(=O)O'],
     });
-    const result = await searchCompounds.handler(input, ctx);
+    await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
 
-    expect(result.totalFound).toBe(1);
+    expect(enrichment.totalFound).toBe(1);
     expect(mockClient.searchBySmiles).toHaveBeenCalledWith('CC(=O)OC1=CC=CC=C1C(=O)O');
   });
 
@@ -65,9 +67,10 @@ describe('searchCompounds handler', () => {
       identifierType: 'inchikey',
       identifiers: ['BSYNRYMUTXBXSQ-UHFFFAOYSA-N'],
     });
-    const result = await searchCompounds.handler(input, ctx);
+    await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
 
-    expect(result.totalFound).toBe(1);
+    expect(enrichment.totalFound).toBe(1);
     expect(mockClient.searchByInchiKey).toHaveBeenCalledWith('BSYNRYMUTXBXSQ-UHFFFAOYSA-N');
   });
 
@@ -78,9 +81,10 @@ describe('searchCompounds handler', () => {
       searchType: 'formula',
       formula: 'C6H12O6',
     });
-    const result = await searchCompounds.handler(input, ctx);
+    await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
 
-    expect(result.totalFound).toBe(2);
+    expect(enrichment.totalFound).toBe(2);
     expect(mockClient.searchByFormula).toHaveBeenCalledWith('C6H12O6', false);
   });
 
@@ -106,9 +110,10 @@ describe('searchCompounds handler', () => {
       queryType: 'cid',
       threshold: 85,
     });
-    const result = await searchCompounds.handler(input, ctx);
+    await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
 
-    expect(result.totalFound).toBe(3);
+    expect(enrichment.totalFound).toBe(3);
     expect(mockClient.searchByStructure).toHaveBeenCalledWith('similarity', '2244', 'cid', 85);
   });
 
@@ -120,7 +125,8 @@ describe('searchCompounds handler', () => {
       query: 'c1ccccc1',
       queryType: 'smiles',
     });
-    const result = await searchCompounds.handler(input, ctx);
+    await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
 
     expect(mockClient.searchByStructure).toHaveBeenCalledWith(
       'substructure',
@@ -128,7 +134,7 @@ describe('searchCompounds handler', () => {
       'smiles',
       90,
     );
-    expect(result.totalFound).toBe(2);
+    expect(enrichment.totalFound).toBe(2);
   });
 
   it('deduplicates CIDs', async () => {
@@ -140,8 +146,9 @@ describe('searchCompounds handler', () => {
       identifiers: ['aspirin', 'acetylsalicylic acid'],
     });
     const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
 
-    expect(result.totalFound).toBe(1);
+    expect(enrichment.totalFound).toBe(1);
     expect(result.results).toHaveLength(1);
   });
 
@@ -154,9 +161,38 @@ describe('searchCompounds handler', () => {
       maxResults: 2,
     });
     const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
 
-    expect(result.totalFound).toBe(5);
+    expect(enrichment.totalFound).toBe(5);
     expect(result.results).toHaveLength(2);
+  });
+
+  it('populates notice enrichment when no results found', async () => {
+    mockClient.searchByFormula.mockResolvedValueOnce([]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'formula',
+      formula: 'XXXXXX',
+    });
+    await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.notice).toBeDefined();
+    expect(typeof enrichment.notice).toBe('string');
+    expect(enrichment.notice).toContain('formula');
+  });
+
+  it('does not populate notice when results found', async () => {
+    mockClient.searchByFormula.mockResolvedValueOnce([1, 2]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'formula',
+      formula: 'C6H12O6',
+    });
+    await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.notice).toBeUndefined();
   });
 
   it('hydrates results with properties', async () => {
@@ -228,8 +264,6 @@ describe('searchCompounds handler', () => {
 describe('searchCompounds format', () => {
   it('formats results without properties', () => {
     const blocks = searchCompounds.format!({
-      searchType: 'identifier',
-      totalFound: 2,
       results: [
         { cid: 2244, identifier: 'aspirin' },
         { cid: 3672, identifier: 'ibuprofen' },
@@ -238,14 +272,11 @@ describe('searchCompounds format', () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.type).toBe('text');
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('Found 2 compounds');
     expect(text).toContain('2244 (aspirin)');
   });
 
   it('formats results with properties', () => {
     const blocks = searchCompounds.format!({
-      searchType: 'formula',
-      totalFound: 1,
       results: [{ cid: 2244, properties: { MolecularFormula: 'C9H8O4' } }],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
@@ -255,21 +286,9 @@ describe('searchCompounds format', () => {
 
   it('formats empty results', () => {
     const blocks = searchCompounds.format!({
-      searchType: 'identifier',
-      totalFound: 0,
       results: [],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).toContain('No results');
-  });
-
-  it('shows truncation notice', () => {
-    const blocks = searchCompounds.format!({
-      searchType: 'formula',
-      totalFound: 100,
-      results: [{ cid: 1 }, { cid: 2 }],
-    });
-    const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('showing 2 of 100');
   });
 });

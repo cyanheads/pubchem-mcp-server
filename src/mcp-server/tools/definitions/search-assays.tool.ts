@@ -37,15 +37,25 @@ export const searchAssays = tool('pubchem_search_assays', {
       ),
   }),
   output: z.object({
+    aids: z.array(z.number()).describe('PubChem Assay IDs.'),
+  }),
+  // Agent-facing context — target echo, total before cap, and an empty-result notice.
+  // Reaches structuredContent and content[] automatically; not in the domain return.
+  enrichment: {
     targetType: z
       .string()
       .describe(
         'Target identifier type used: genesymbol, proteinname, geneid, or proteinaccession.',
       ),
     targetQuery: z.string().describe('Target identifier searched.'),
-    totalFound: z.number().describe('Total AIDs found.'),
-    aids: z.array(z.number()).describe('PubChem Assay IDs.'),
-  }),
+    totalFound: z.number().describe('Total AIDs found before the maxResults cap.'),
+    notice: z
+      .string()
+      .optional()
+      .describe(
+        'Recovery guidance when no assays matched — echoes the target and suggests alternative search types. Absent when assays were returned.',
+      ),
+  },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
@@ -61,31 +71,21 @@ export const searchAssays = tool('pubchem_search_assays', {
       returned: aids.length,
     });
 
-    return {
-      targetType: input.targetType,
-      targetQuery: input.targetQuery,
-      totalFound,
-      aids,
-    };
+    // Agent-facing context: target echo, total, and empty-result notice.
+    ctx.enrich({ targetType: input.targetType, targetQuery: input.targetQuery, totalFound });
+    if (aids.length === 0) {
+      ctx.enrich.notice(
+        `No assays found for "${input.targetQuery}" (${input.targetType}). Try a different targetType (e.g. switch from proteinname to genesymbol), verify the identifier spelling, or use pubchem_get_summary for gene/protein entity lookups.`,
+      );
+    }
+
+    return { aids };
   },
 
   format(result) {
-    const truncated =
-      result.totalFound > result.aids.length
-        ? ` (showing ${result.aids.length} of ${result.totalFound})`
-        : '';
-
-    const lines = [
-      `Found ${result.totalFound} assay${result.totalFound !== 1 ? 's' : ''} for "${result.targetQuery}" (${result.targetType})${truncated}`,
-      '',
-    ];
-
     if (result.aids.length > 0) {
-      lines.push(`AIDs: ${result.aids.join(', ')}`);
-    } else {
-      lines.push('No assays found.');
+      return [{ type: 'text', text: `AIDs: ${result.aids.join(', ')}` }];
     }
-
-    return [{ type: 'text', text: lines.join('\n') }];
+    return [{ type: 'text', text: 'No assays found.' }];
   },
 });
