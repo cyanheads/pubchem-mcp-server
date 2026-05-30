@@ -1,6 +1,6 @@
 {
   "name": "@cyanheads/pubchem-mcp-server",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "MCP server for the PubChem chemical database. Search compounds, fetch properties, safety data, bioactivity, cross-references, and entity summaries. STDIO & Streamable HTTP.",
   "mcpName": "io.github.cyanheads/pubchem-mcp-server",
   "type": "module",
@@ -18,7 +18,8 @@
     "audit:refresh": "rm -f bun.lock && bun install && bun audit",
     "tree": "bun scripts/tree.ts",
     "list-skills": "bun scripts/list-skills.ts",
-    "format": "biome check --write --unsafe .",
+    "format": "biome check --write .",
+    "format:unsafe": "biome check --write --unsafe .",
     "lint:mcp": "bun scripts/lint-mcp.ts",
     "lint:packaging": "bun scripts/lint-packaging.ts",
     "bundle": "bun run build && npx -y @anthropic-ai/mcpb pack . dist/pubchem-mcp-server.mcpb",
@@ -71,7 +72,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@cyanheads/mcp-ts-core": "^0.9.13",
+    "@cyanheads/mcp-ts-core": "^0.9.16",
     "pino-pretty": "^13.1.3",
     "zod": "^4.4.3"
   },

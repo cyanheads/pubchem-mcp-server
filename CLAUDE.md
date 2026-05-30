@@ -1,7 +1,7 @@
 # Agent Protocol
 
 **Server:** pubchem-mcp-server
-**Version:** 0.1.21
+**Version:** 0.1.22
 **Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core)
 
 > **Read the framework docs first:** `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` contains the full API reference — builders, Context, error codes, exports, patterns. This file covers server-specific conventions only.
@@ -61,11 +61,16 @@ export const searchAssays = tool('pubchem_search_assays', {
       .describe('Max AIDs to return (1-200). Default: 50.'),
   }),
   output: z.object({
-    targetType: z.string().describe('Target identifier type used.'),
-    targetQuery: z.string().describe('Target identifier searched.'),
-    totalFound: z.number().describe('Total AIDs found.'),
     aids: z.array(z.number()).describe('PubChem Assay IDs.'),
   }),
+  // Agent-facing context — echoed target, total before cap, and empty-result notice.
+  // Reaches structuredContent and content[] automatically; keys disjoint from output.
+  enrichment: {
+    targetType: z.string().describe('Target identifier type used.'),
+    targetQuery: z.string().describe('Target identifier searched.'),
+    totalFound: z.number().describe('Total AIDs found before the maxResults cap.'),
+    notice: z.string().optional().describe('Recovery guidance when no assays matched.'),
+  },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
@@ -78,7 +83,12 @@ export const searchAssays = tool('pubchem_search_assays', {
       returned: aids.length,
     });
 
-    return { targetType: input.targetType, targetQuery: input.targetQuery, totalFound: allAids.length, aids };
+    ctx.enrich({ targetType: input.targetType, targetQuery: input.targetQuery, totalFound: allAids.length });
+    if (aids.length === 0) {
+      ctx.enrich.notice(`No assays found for "${input.targetQuery}" (${input.targetType}). Try a different targetType or verify the identifier.`);
+    }
+
+    return { aids };
   },
 
   // format() populates content[] — the markdown twin of structuredContent.
@@ -86,20 +96,10 @@ export const searchAssays = tool('pubchem_search_assays', {
   // Claude Desktop → content[]); both must carry the same data.
   // Enforced at lint time: every field in `output` must appear in the rendered text.
   format(result) {
-    const truncated =
-      result.totalFound > result.aids.length
-        ? ` (showing ${result.aids.length} of ${result.totalFound})`
-        : '';
-    const lines = [
-      `Found ${result.totalFound} assay${result.totalFound !== 1 ? 's' : ''} for "${result.targetQuery}" (${result.targetType})${truncated}`,
-      '',
-    ];
     if (result.aids.length > 0) {
-      lines.push(`AIDs: ${result.aids.join(', ')}`);
-    } else {
-      lines.push('No assays found.');
+      return [{ type: 'text', text: `AIDs: ${result.aids.join(', ')}` }];
     }
-    return [{ type: 'text', text: lines.join('\\n') }];
+    return [{ type: 'text', text: 'No assays found.' }];
   },
 });
 ```
@@ -132,6 +132,7 @@ Handlers receive a unified `ctx` object. Properties used by this server:
 | `ctx.log` | Request-scoped logger — `.debug()`, `.info()`, `.notice()`, `.warning()`, `.error()`. Auto-correlates requestId, traceId, tenantId. |
 | `ctx.signal` | `AbortSignal` for cancellation. |
 | `ctx.requestId` | Unique request ID. |
+| `ctx.enrich` | Accumulates success-path agent-facing context (notices, query echo, totals) onto `structuredContent` and `content[]`. Always present. Kind-tagged helpers: `.notice()`, `.total()`, `.echo()`, `.delta()`. |
 
 ---
 
@@ -266,7 +267,8 @@ When you complete a skill's checklist, check the boxes and add a completion time
 | `bun run audit:refresh` | Delete `bun.lock`, reinstall, re-audit. Use when `devcheck` flags a transitive advisory — stale lockfile can mask already-patched deps. If advisory survives, it's real. |
 | `bun run tree` | Generate directory structure doc |
 | `bun run list-skills` | Print skill index from project `skills/` |
-| `bun run format` | Auto-fix formatting |
+| `bun run format` | Auto-fix formatting (safe autofixes only) |
+| `bun run format:unsafe` | Auto-fix formatting including unsafe rules (biome `--unsafe`) |
 | `bun run lint:packaging` | Validate `manifest.json` / `server.json` env-var alignment |
 | `bun run bundle` | Build and pack as `.mcpb` for one-click Claude Desktop install |
 | `bun run changelog:build` | Regenerate `CHANGELOG.md` from `changelog/*.md` |
@@ -326,6 +328,7 @@ mcp-publisher publish
 ## Checklist
 
 - [ ] `format()` renders all data the LLM needs — different clients forward different surfaces (Claude Code → `structuredContent`, Claude Desktop → `content[]`); both must carry the same data. Enforced by the `format-parity` linter
+- [ ] Agent-facing context (empty-result notices, query/filter echo, pagination totals) declared in an `enrichment` block and populated via `ctx.enrich(...)` — reaches both surfaces automatically. Enrichment keys must be disjoint from `output` keys (`enrichment-output-collision` lint rule)
 - [ ] Zod schemas: all fields have `.describe()`, only JSON-Schema-serializable types (no `z.custom()`, `z.date()`, `z.transform()`, `z.bigint()`, `z.symbol()`, `z.void()`, `z.map()`, `z.set()`, `z.function()`, `z.nan()`)
 - [ ] Optional nested objects: handler guards for empty inner values from form-based clients (`if (input.obj?.field && ...)`, not just `if (input.obj)`)
 - [ ] JSDoc `@fileoverview` + `@module` on every file
