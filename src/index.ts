@@ -6,13 +6,15 @@
  */
 
 import { createApp } from '@cyanheads/mcp-ts-core';
+import { allResourceDefinitions } from './mcp-server/resources/definitions/index.js';
 import { allToolDefinitions } from './mcp-server/tools/definitions/index.js';
 import { initPubChemClient } from './services/pubchem/pubchem-client.js';
 
 await createApp({
   tools: allToolDefinitions,
+  resources: allResourceDefinitions,
   instructions:
-    "Use the pubchem_* tools to query PubChem's chemical database. Compounds are addressed by CID, assays by AID. Most flows start at `pubchem_search_compounds` (name, SMILES, InChIKey, formula, substructure, superstructure, or 2D similarity → CIDs), then call per-CID tools for details, safety, image, cross-references, or bioactivity. For bioassays by biological target, chain `pubchem_search_assays` (gene/protein → AIDs) into `pubchem_get_bioactivity`. `pubchem_get_summary` covers assay/gene/protein/taxonomy entity lookups.",
+    "Use the pubchem_* tools to query PubChem's chemical database. Compounds are addressed by CID, assays by AID. Most flows start at `pubchem_search_compounds` (name, SMILES, InChIKey, formula, substructure, superstructure, or 2D similarity → CIDs), then call per-CID tools for details, safety, image, cross-references, bioactivity, interactions (drug-drug/drug-food/target), or 3D structure. For bioassays by biological target, chain `pubchem_search_assays` (gene/protein → AIDs) into `pubchem_get_bioactivity`. `pubchem_get_summary` covers assay/gene/protein/taxonomy entity lookups. Compound and assay records are also exposed as URI-addressable resources (e.g. `pubchem://compound/{cid}`, `pubchem://assay/{aid}`).",
   landing: {
     tagline:
       'Search PubChem for chemical compounds, properties, safety, bioactivity, and cross-references.',
