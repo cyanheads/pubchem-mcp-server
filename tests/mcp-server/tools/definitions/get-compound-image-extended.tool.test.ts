@@ -3,6 +3,7 @@
  * @module mcp-server/tools/definitions/get-compound-image-extended.test
  */
 
+import { JsonRpcErrorCode, notFound } from '@cyanheads/mcp-ts-core/errors';
 import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundImage } from '@/mcp-server/tools/definitions/get-compound-image.tool.js';
@@ -78,13 +79,24 @@ describe('getCompoundImage handler — output', () => {
     expect(result.height).toBe(300);
   });
 
-  it('propagates client errors for non-existent CIDs', async () => {
-    const notFoundError = new Error('Not found');
-    mockClient.getImage.mockRejectedValueOnce(notFoundError);
+  it('surfaces cid_not_found with reason and recovery hint for non-existent CIDs', async () => {
+    mockClient.getImage.mockRejectedValueOnce(
+      notFound('No PubChem compound found for CID 999999999.', {
+        cid: 999999999,
+        reason: 'cid_not_found',
+        recovery: { hint: 'Verify the CID with pubchem_search_compounds before retrying.' },
+      }),
+    );
     const ctx = createMockContext();
     const input = getCompoundImage.input.parse({ cid: 999999999 });
 
-    await expect(getCompoundImage.handler(input, ctx)).rejects.toThrow();
+    await expect(getCompoundImage.handler(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.NotFound,
+      data: {
+        reason: 'cid_not_found',
+        recovery: { hint: expect.stringContaining('pubchem_search_compounds') },
+      },
+    });
   });
 
   it('passes correct size parameter to client', async () => {

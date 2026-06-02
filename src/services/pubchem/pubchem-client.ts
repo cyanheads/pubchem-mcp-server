@@ -4,7 +4,7 @@
  * @module services/pubchem/pubchem-client
  */
 
-import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
+import { JsonRpcErrorCode, McpError, notFound } from '@cyanheads/mcp-ts-core/errors';
 import { httpErrorFromResponse } from '@cyanheads/mcp-ts-core/utils';
 import type {
   AidListResponse,
@@ -435,9 +435,22 @@ export class PubChemClient {
     }
   }
 
-  getImage(cid: number, size: 'small' | 'large' = 'large'): Promise<ArrayBuffer> {
+  async getImage(cid: number, size: 'small' | 'large' = 'large'): Promise<ArrayBuffer> {
     const sizeParam = size === 'small' ? '?image_size=small' : '?image_size=large';
-    return this.fetchBinary(`${this.pugBase}/compound/cid/${cid}/PNG${sizeParam}`);
+    try {
+      return await this.fetchBinary(`${this.pugBase}/compound/cid/${cid}/PNG${sizeParam}`);
+    } catch (error) {
+      // The image endpoint returns binary, so absence can't be a structured success like
+      // the other per-CID tools — surface a typed not-found with a recovery hint instead.
+      if (isNotFound(error)) {
+        throw notFound(`No PubChem compound found for CID ${cid}.`, {
+          cid,
+          reason: 'cid_not_found',
+          recovery: { hint: 'Verify the CID with pubchem_search_compounds before retrying.' },
+        });
+      }
+      throw error;
+    }
   }
 
   async getXrefs(cid: number, xrefType: string): Promise<(string | number)[]> {

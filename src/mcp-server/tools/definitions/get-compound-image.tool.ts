@@ -4,6 +4,7 @@
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 
 export const getCompoundImage = tool('pubchem_get_compound_image', {
@@ -32,6 +33,14 @@ export const getCompoundImage = tool('pubchem_get_compound_image', {
     width: z.number().describe('Image width in pixels.'),
     height: z.number().describe('Image height in pixels.'),
   }),
+  errors: [
+    {
+      reason: 'cid_not_found',
+      code: JsonRpcErrorCode.NotFound,
+      when: 'PubChem returned 404 for the requested CID',
+      recovery: 'Verify the CID with pubchem_search_compounds before retrying.',
+    },
+  ],
 
   async handler(input, ctx) {
     const client = getPubChemClient();

@@ -6,6 +6,7 @@
  * @module services/pubchem/pubchem-client-extended.test
  */
 
+import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PubChemClient } from '@/services/pubchem/pubchem-client.js';
 
@@ -713,5 +714,47 @@ describe('PubChemClient.getAssaySummary — additional parsing cases', () => {
 
     expect(rows[0]!.targetAccession).toBe('P35354');
     expect(rows[0]!.targetGeneId).toBe(5743);
+  });
+});
+
+// ── getImage — typed not-found contract (#17) ─────────────────────────
+
+describe('PubChemClient.getImage', () => {
+  it('returns the PNG bytes on success', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    fetchMock.mockResolvedValueOnce(
+      new Response(png, { status: 200, headers: { 'Content-Type': 'image/png' } }),
+    );
+
+    const client = new PubChemClient();
+    const buffer = await client.getImage(2244);
+
+    expect(new Uint8Array(buffer)).toEqual(png);
+  });
+
+  it('throws cid_not_found with a recovery hint on 404', async () => {
+    fetchMock.mockResolvedValueOnce(textResponse('Not Found', 404));
+
+    const client = new PubChemClient();
+
+    await expect(client.getImage(999999999)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.NotFound,
+      data: {
+        cid: 999999999,
+        reason: 'cid_not_found',
+        recovery: { hint: expect.stringContaining('pubchem_search_compounds') },
+      },
+    });
+  });
+
+  it('passes non-404 errors through without the cid_not_found wrapper', async () => {
+    fetchMock.mockResolvedValueOnce(textResponse('Service Unavailable', 503));
+
+    const client = new PubChemClient();
+    const err = (await client.getImage(2244).catch((e) => e)) as McpError;
+
+    expect(err).toBeInstanceOf(McpError);
+    expect(err.code).toBe(JsonRpcErrorCode.ServiceUnavailable);
+    expect((err.data as { reason?: string }).reason).toBeUndefined();
   });
 });
