@@ -3,7 +3,7 @@
  * @module mcp-server/tools/definitions/get-bioactivity-extended.test
  */
 
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBioactivity } from '@/mcp-server/tools/definitions/get-bioactivity.tool.js';
 import type { BioactivityRow } from '@/services/pubchem/types.js';
@@ -132,6 +132,88 @@ describe('getBioactivity handler — counting', () => {
 
     expect(result.results.every((r) => r.outcome === 'Inactive')).toBe(true);
     expect(result.totalAssays).toBe(3);
+  });
+});
+
+describe('getBioactivity handler — target filter (#9)', () => {
+  const cox2: BioactivityRow = {
+    aid: 1,
+    assayName: 'COX-2',
+    outcome: 'Active',
+    targetGeneId: 5743,
+    targetAccession: 'P35354',
+    activityValues: [],
+  };
+  const cox1: BioactivityRow = {
+    aid: 2,
+    assayName: 'COX-1',
+    outcome: 'Active',
+    targetGeneId: 5742,
+    targetAccession: 'P23219',
+    activityValues: [],
+  };
+  const noTarget: BioactivityRow = {
+    aid: 3,
+    assayName: 'Cytotox',
+    outcome: 'Active',
+    activityValues: [],
+  };
+
+  it('filters by targetGeneId; global counts are unaffected', async () => {
+    mockClient.getAssaySummary.mockResolvedValueOnce([cox2, cox1, noTarget]);
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({ cid: 2244, targetGeneId: 5743 });
+    const result = await getBioactivity.handler(input, ctx);
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]!.targetGeneId).toBe(5743);
+    expect(result.totalAssays).toBe(3);
+  });
+
+  it('filters by targetAccession', async () => {
+    mockClient.getAssaySummary.mockResolvedValueOnce([cox2, cox1, noTarget]);
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({ cid: 2244, targetAccession: 'P23219' });
+    const result = await getBioactivity.handler(input, ctx);
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]!.targetAccession).toBe('P23219');
+  });
+
+  it('combines outcome and target filters', async () => {
+    const inactiveCox2: BioactivityRow = { ...cox2, aid: 9, outcome: 'Inactive' };
+    mockClient.getAssaySummary.mockResolvedValueOnce([cox2, inactiveCox2]);
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({
+      cid: 2244,
+      outcomeFilter: 'active',
+      targetGeneId: 5743,
+    });
+    const result = await getBioactivity.handler(input, ctx);
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]!.aid).toBe(1);
+  });
+
+  it('echoes the target filter and notices when nothing matches', async () => {
+    mockClient.getAssaySummary.mockResolvedValueOnce([cox1, noTarget]);
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({ cid: 2244, targetGeneId: 99999 });
+    const result = await getBioactivity.handler(input, ctx);
+    const e = getEnrichment(ctx);
+
+    expect(result.results).toHaveLength(0);
+    expect(e.targetFilter).toBe('GeneID:99999');
+    expect(e.notice).toContain('target filter');
+  });
+
+  it('omits the targetFilter echo when no target filter is set', async () => {
+    mockClient.getAssaySummary.mockResolvedValueOnce([cox2]);
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({ cid: 2244 });
+    await getBioactivity.handler(input, ctx);
+
+    expect(getEnrichment(ctx).targetFilter).toBeUndefined();
   });
 });
 
