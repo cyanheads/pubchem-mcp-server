@@ -49,6 +49,13 @@ export interface AssaySummaryTableResponse {
   };
 }
 
+/** Conformer ID list for a compound */
+export interface ConformerListResponse {
+  InformationList: {
+    Information: Array<{ CID: number; ConformerID: string[] }>;
+  };
+}
+
 // ── PUG View response types ──────────────────────────────────────────
 
 export interface PugViewResponse {
@@ -106,6 +113,45 @@ export interface BioactivityRow {
   outcome: string;
   targetAccession?: string;
   targetGeneId?: number;
+}
+
+/** A single compound interaction entry (drug-drug, drug-food, or chemical-target). */
+export interface InteractionEntry {
+  /** Interaction category. */
+  kind: 'drug-drug' | 'drug-food' | 'target';
+  /** Interacting compound, food, or target name as the source reports it. Absent for food
+   * interactions and any entry where the source carries no distinct partner. */
+  partner?: string;
+  /** Raw severity as the source reports it. Not normalized across sources, and frequently
+   * unset — most sources embed severity in the statement text rather than a discrete field. */
+  severity?: string;
+  /** Originating source (e.g. "DrugBank", "BindingDB"). */
+  source: string;
+  /** The interaction statement. */
+  text: string;
+}
+
+/** A single atom in a 3D conformer (Cartesian coordinates, Angstroms). */
+export interface Sdf3DAtom {
+  element: string;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** A single bond in a 3D conformer (1-based atom indices). */
+export interface Sdf3DBond {
+  a1: number;
+  a2: number;
+  order: number;
+}
+
+/** Parsed atoms and bonds from a V2000 SDF connection table. */
+export interface Sdf3DStructure {
+  atomCount: number;
+  atoms: Sdf3DAtom[];
+  bondCount: number;
+  bonds: Sdf3DBond[];
 }
 
 /** Pharmacological classification from PUG View */

@@ -12,7 +12,9 @@ import type {
   BioactivityRow,
   CidListResponse,
   CompoundClassification,
+  ConformerListResponse,
   GHSClassification,
+  InteractionEntry,
   ListKeyResponse,
   PropertyTableResponse,
   PugViewInformation,
@@ -229,6 +231,7 @@ const activityKey = (v: { name?: string; value: number; unit?: string }) =>
 export class PubChemClient {
   private readonly pugBase = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug';
   private readonly viewBase = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug_view';
+  private readonly sdqBase = 'https://pubchem.ncbi.nlm.nih.gov/sdq/sdqagent.cgi';
   private readonly rateLimiter = new RateLimiter(5);
 
   // ── Core HTTP ────────────────────────────────────────────────────
@@ -301,6 +304,32 @@ export class PubChemClient {
       }
 
       return await response.arrayBuffer();
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /** Fetch a text/plain body (e.g. an SDF record). Non-2xx is classified and thrown. */
+  private async fetchText(url: string): Promise<string> {
+    await this.rateLimiter.acquire();
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+
+      if (!response.ok) {
+        const text = await response.text();
+        const fault = parseFaultMessage(text) ?? text.slice(0, 300);
+        throw await httpErrorFromResponse(response, {
+          captureBody: false,
+          service: 'PubChem',
+          data: { fault, url },
+        });
+      }
+
+      return await response.text();
     } finally {
       clearTimeout(timeoutId);
     }
@@ -771,6 +800,168 @@ export class PubChemClient {
       if (error instanceof McpError && (error.data as { status?: number })?.status === 400) {
         return null;
       }
+      throw error;
+    }
+  }
+
+  // ── Interactions ────────────────────────────────────────────────
+
+  /** Fetch drug-drug, drug-food, and/or chemical-target interactions for a compound.
+   * Drug-drug and target data live in PubChem SDQ external tables (drugbankddi,
+   * consolidatedcompoundtarget); drug-food is inline PUG View text. Each kind is capped
+   * at maxEntries; absent data for a kind contributes nothing rather than erroring. */
+  async getInteractions(
+    cid: number,
+    kinds: Array<'drug-drug' | 'drug-food' | 'target'>,
+    maxEntries: number,
+  ): Promise<InteractionEntry[]> {
+    const batches = await Promise.all(
+      kinds.map((kind) => this.getInteractionsForKind(cid, kind, maxEntries)),
+    );
+    return batches.flat();
+  }
+
+  private getInteractionsForKind(
+    cid: number,
+    kind: 'drug-drug' | 'drug-food' | 'target',
+    maxEntries: number,
+  ): Promise<InteractionEntry[]> {
+    switch (kind) {
+      case 'drug-drug':
+        return this.getDrugDrugInteractions(cid, maxEntries);
+      case 'drug-food':
+        return this.getDrugFoodInteractions(cid, maxEntries);
+      case 'target':
+        return this.getTargetInteractions(cid, maxEntries);
+    }
+  }
+
+  private async getDrugDrugInteractions(
+    cid: number,
+    maxEntries: number,
+  ): Promise<InteractionEntry[]> {
+    const rows = await this.fetchSdq('drugbankddi', cid, maxEntries);
+    const entries: InteractionEntry[] = [];
+    for (const row of rows) {
+      const text = typeof row.descr === 'string' ? row.descr : '';
+      if (!text) continue;
+      const entry: InteractionEntry = { kind: 'drug-drug', source: 'DrugBank', text };
+      if (typeof row.name2 === 'string' && row.name2) entry.partner = row.name2;
+      entries.push(entry);
+    }
+    return entries;
+  }
+
+  private async getTargetInteractions(
+    cid: number,
+    maxEntries: number,
+  ): Promise<InteractionEntry[]> {
+    const rows = await this.fetchSdq('consolidatedcompoundtarget', cid, maxEntries);
+    const entries: InteractionEntry[] = [];
+    for (const row of rows) {
+      const target =
+        (typeof row.protname === 'string' && row.protname) ||
+        (typeof row.srctargetname === 'string' && row.srctargetname) ||
+        (typeof row.genename === 'string' && row.genename) ||
+        '';
+      const activity = [row.actname, row.actvalue]
+        .filter((v): v is string => typeof v === 'string' && v.length > 0)
+        .join(': ');
+      const text = [target, activity].filter(Boolean).join(' — ');
+      if (!text) continue;
+      const entry: InteractionEntry = {
+        kind: 'target',
+        source: typeof row.dsn === 'string' && row.dsn ? row.dsn : 'PubChem',
+        text,
+      };
+      if (target) entry.partner = target;
+      entries.push(entry);
+    }
+    return entries;
+  }
+
+  private async getDrugFoodInteractions(
+    cid: number,
+    maxEntries: number,
+  ): Promise<InteractionEntry[]> {
+    try {
+      const data = await this.fetchJson<PugViewResponse>(
+        `${this.viewBase}/data/compound/${cid}/JSON?heading=Drug-Food+Interactions`,
+      );
+      const sections = data.Record.Section;
+      if (!sections) return [];
+      const section = findSection(sections, 'Drug-Food Interactions');
+      if (!section) return [];
+
+      const refToSource = new Map<number, string>();
+      for (const ref of data.Record.Reference ?? []) {
+        refToSource.set(ref.ReferenceNumber, ref.SourceName);
+      }
+
+      const items = dedupByKey(extractDescriptionItems(section), descriptionKey);
+      return items.slice(0, maxEntries).map((item) => {
+        const source = item.refNum != null ? refToSource.get(item.refNum) : undefined;
+        return { kind: 'drug-food', source: source ?? 'PubChem', text: item.text };
+      });
+    } catch (error) {
+      if (isNotFound(error)) return [];
+      throw error;
+    }
+  }
+
+  /** Query a PubChem SDQ external table for a single CID. Returns [] on not-found. */
+  private async fetchSdq(
+    collection: string,
+    cid: number,
+    limit: number,
+  ): Promise<Array<Record<string, unknown>>> {
+    const query = JSON.stringify({
+      download: '*',
+      collection,
+      where: { ands: [{ cid: String(cid) }] },
+      start: 1,
+      limit,
+    });
+    const url = `${this.sdqBase}?infmt=json&outfmt=json&query=${encodeURIComponent(query)}`;
+    try {
+      const data = await this.fetchJson<Array<Record<string, unknown>>>(url);
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      if (isNotFound(error)) return [];
+      throw error;
+    }
+  }
+
+  // ── 3D Structure ────────────────────────────────────────────────
+
+  /** Fetch the default 3D conformer as raw V2000 SDF text. Throws a typed not-found when
+   * PubChem has no computed 3D coordinates (large molecules, mixtures, undefined salts). */
+  async getSdf3d(cid: number): Promise<string> {
+    try {
+      return await this.fetchText(`${this.pugBase}/compound/cid/${cid}/record/SDF?record_type=3d`);
+    } catch (error) {
+      if (isNotFound(error)) {
+        throw notFound(`No 3D conformer available for CID ${cid}.`, {
+          cid,
+          reason: 'no_3d_structure',
+          recovery: {
+            hint: 'PubChem has no computed 3D coordinates for this compound (common for very large molecules, mixtures, and undefined salts). Use pubchem_get_compound_image for the 2D structure.',
+          },
+        });
+      }
+      throw error;
+    }
+  }
+
+  /** List the conformer IDs PubChem has computed for a compound. Returns [] on not-found. */
+  async getConformerIds(cid: number): Promise<string[]> {
+    try {
+      const data = await this.fetchJson<ConformerListResponse>(
+        `${this.pugBase}/compound/cid/${cid}/conformers/JSON`,
+      );
+      return data.InformationList.Information[0]?.ConformerID ?? [];
+    } catch (error) {
+      if (isNotFound(error)) return [];
       throw error;
     }
   }

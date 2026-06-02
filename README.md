@@ -1,13 +1,13 @@
 <div align="center">
   <h1>@cyanheads/pubchem-mcp-server</h1>
   <p><b>MCP server for the PubChem chemical database. Search compounds, fetch properties, safety data, bioactivity, cross-references, and entity summaries. STDIO & Streamable HTTP.</b>
-  <div>8 Tools</div>
+  <div>10 Tools • 6 Resources</div>
   </p>
 </div>
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.1.23-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/pubchem-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.29.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/pubchem-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/pubchem-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^6.0.3-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.3.0-f472b6.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.2.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/pubchem-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.29.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/pubchem-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/pubchem-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^6.0.3-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.3.0-f472b6.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -29,16 +29,18 @@
 
 ## Tools
 
-Eight tools for querying PubChem's chemical information database:
+Ten tools for querying PubChem's chemical information database:
 
 | Tool Name | Description |
 |:----------|:------------|
 | `pubchem_search_compounds` | Search for compounds by name, SMILES, InChIKey, formula, substructure, superstructure, or 2D similarity. |
 | `pubchem_get_compound_details` | Get physicochemical properties, descriptions, synonyms, drug-likeness, and classification for compounds by CID. |
 | `pubchem_get_compound_image` | Fetch a 2D structure diagram (PNG) for a compound by CID. |
-| `pubchem_get_compound_safety` | Get GHS hazard classification and safety data for a compound. |
+| `pubchem_get_compound_3d_structure` | Fetch a 3D conformer (atomic coordinates and bonds) for a compound by CID, as parsed JSON or raw SDF. |
 | `pubchem_get_compound_xrefs` | Get external database cross-references (PubMed, patents, genes, proteins, etc.). |
-| `pubchem_get_bioactivity` | Get a compound's bioactivity profile: assay results, targets, and activity values. |
+| `pubchem_get_compound_safety` | Get GHS hazard classification and safety data for one or more compounds by CID (batch). |
+| `pubchem_get_bioactivity` | Get a compound's bioactivity profile: assay results, targets, and activity values; filter by outcome or molecular target. |
+| `pubchem_get_compound_interactions` | Get drug-drug, drug-food, and chemical-target interactions for a compound by CID. |
 | `pubchem_search_assays` | Find bioassays by biological target (gene symbol, protein, Gene ID, UniProt accession). |
 | `pubchem_get_summary` | Get summaries for PubChem entities: assays, genes, proteins, taxonomy. |
 
@@ -72,7 +74,7 @@ Get detailed compound information by CID.
 Get a compound's bioactivity profile from PubChem BioAssay.
 
 - Returns assay outcomes (Active/Inactive/Inconclusive), target info (protein accessions, NCBI Gene IDs), and quantitative values (IC50, EC50, Ki)
-- Filter by outcome to focus on active results
+- Filter by outcome and/or a specific molecular target (NCBI Gene ID or protein accession)
 - Caps at 100 results per request (well-studied compounds may have thousands)
 
 ---
@@ -84,6 +86,39 @@ Get descriptive summaries for four PubChem entity types.
 - Assays (AID), genes (Gene ID), proteins (UniProt accession), taxonomy (Tax ID)
 - Up to 10 entities per call
 - Type-specific field extraction for clean, structured output
+
+---
+
+### `pubchem_get_compound_interactions`
+
+Get a compound's interaction data by CID.
+
+- Drug-drug interactions (DrugBank), drug-food interactions, and chemical-target binding/activity (BindingDB, ChEMBL, and others)
+- Select which interaction kinds to fetch and cap entries per kind
+- Each entry carries its originating source — coverage is richest for approved drugs
+
+---
+
+### `pubchem_get_compound_3d_structure`
+
+Get a compound's default 3D conformer by CID.
+
+- `format="json"` returns parsed atoms (element + x/y/z) and bonds for direct reasoning; `format="sdf"` returns raw V2000 SDF for passthrough to docking or rendering
+- Optionally lists alternate conformer IDs
+- Returns a typed not-found when PubChem has no computed 3D coordinates (large molecules, mixtures, some salts)
+
+## Resources
+
+Compound and assay records are also exposed as URI-templated MCP resources, backed by the same client methods as the tools:
+
+| URI Template | Returns |
+|:-------------|:--------|
+| `pubchem://compound/{cid}` | Core physicochemical properties (JSON). |
+| `pubchem://compound/{cid}/safety` | GHS hazard classification (JSON). |
+| `pubchem://compound/{cid}/image` | 2D structure diagram (PNG). |
+| `pubchem://compound/{cid}/xrefs` | External cross-references (JSON). |
+| `pubchem://compound/{cid}/bioactivity` | Bioassay activity profile (JSON). |
+| `pubchem://assay/{aid}` | BioAssay summary (JSON). |
 
 ## Features
 
@@ -111,7 +146,7 @@ A public instance is available at `https://pubchem.caseyjhand.com/mcp` — no in
 ```json
 {
   "mcpServers": {
-    "pubchem": {
+    "pubchem-mcp-server": {
       "type": "streamable-http",
       "url": "https://pubchem.caseyjhand.com/mcp"
     }
@@ -126,7 +161,7 @@ Add to your MCP client config (e.g., `claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
-    "pubchem": {
+    "pubchem-mcp-server": {
       "type": "stdio",
       "command": "bunx",
       "args": ["@cyanheads/pubchem-mcp-server@latest"],

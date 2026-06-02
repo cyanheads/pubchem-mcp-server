@@ -1,10 +1,15 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-05-23 12:23:36
+Generated on: 2026-06-02 06:53:42
 
 ```text
 pubchem-mcp-server/
 ├── .claude/
+├── .claude-plugin/
+│   └── plugin.json
+├── .codex-plugin/
+│   ├── mcp.json
+│   └── plugin.json
 ├── .github/
 │   └── ISSUE_TEMPLATE/
 │       ├── bug_report.yml
@@ -13,6 +18,10 @@ pubchem-mcp-server/
 ├── .vscode/
 │   ├── extensions.json
 │   └── settings.json
+├── changelog/
+│   ├── 0.1.x/
+│   ├── 0.2.x/
+│   └── template.md
 ├── claude-plans/
 ├── docs/
 ├── scripts/
@@ -71,15 +80,17 @@ pubchem-mcp-server/
 │   │   └── SKILL.md
 │   ├── api-workers/
 │   │   └── SKILL.md
+│   ├── code-simplifier/
+│   │   └── SKILL.md
 │   ├── design-mcp-server/
 │   │   └── SKILL.md
 │   ├── devcheck/
 │   │   └── SKILL.md
 │   ├── field-test/
 │   │   └── SKILL.md
-│   ├── maintenance/
+│   ├── git-wrapup/
 │   │   └── SKILL.md
-│   ├── migrate-mcp-ts-template/
+│   ├── maintenance/
 │   │   └── SKILL.md
 │   ├── polish-docs-meta/
 │   │   ├── references/
@@ -102,11 +113,22 @@ pubchem-mcp-server/
 │       └── SKILL.md
 ├── src/
 │   ├── mcp-server/
+│   │   ├── resources/
+│   │   │   └── definitions/
+│   │   │       ├── assay.resource.ts
+│   │   │       ├── compound-bioactivity.resource.ts
+│   │   │       ├── compound-image.resource.ts
+│   │   │       ├── compound-safety.resource.ts
+│   │   │       ├── compound-xrefs.resource.ts
+│   │   │       ├── compound.resource.ts
+│   │   │       └── index.ts
 │   │   └── tools/
 │   │       └── definitions/
 │   │           ├── get-bioactivity.tool.ts
+│   │           ├── get-compound-3d-structure.tool.ts
 │   │           ├── get-compound-details.tool.ts
 │   │           ├── get-compound-image.tool.ts
+│   │           ├── get-compound-interactions.tool.ts
 │   │           ├── get-compound-safety.tool.ts
 │   │           ├── get-compound-xrefs.tool.ts
 │   │           ├── get-summary.tool.ts
@@ -116,23 +138,42 @@ pubchem-mcp-server/
 │   ├── services/
 │   │   └── pubchem/
 │   │       ├── pubchem-client.ts
+│   │       ├── sdf-parser.ts
 │   │       └── types.ts
 │   └── index.ts
 ├── tests/
 │   ├── mcp-server/
+│   │   ├── resources/
+│   │   │   └── definitions/
+│   │   │       ├── assay.resource.test.ts
+│   │   │       ├── compound-image.resource.test.ts
+│   │   │       └── compound.resource.test.ts
 │   │   └── tools/
 │   │       └── definitions/
+│   │           ├── get-bioactivity-extended.tool.test.ts
 │   │           ├── get-bioactivity.tool.test.ts
+│   │           ├── get-compound-3d-structure.tool.test.ts
+│   │           ├── get-compound-details-extended.tool.test.ts
 │   │           ├── get-compound-details.tool.test.ts
+│   │           ├── get-compound-image-extended.tool.test.ts
 │   │           ├── get-compound-image.tool.test.ts
+│   │           ├── get-compound-interactions.tool.test.ts
+│   │           ├── get-compound-safety-extended.tool.test.ts
 │   │           ├── get-compound-safety.tool.test.ts
+│   │           ├── get-compound-xrefs-extended.tool.test.ts
 │   │           ├── get-compound-xrefs.tool.test.ts
+│   │           ├── get-summary-extended.tool.test.ts
 │   │           ├── get-summary.tool.test.ts
+│   │           ├── search-assays-extended.tool.test.ts
 │   │           ├── search-assays.tool.test.ts
+│   │           ├── search-compounds-extended.tool.test.ts
 │   │           └── search-compounds.tool.test.ts
 │   └── services/
 │       └── pubchem/
-│           └── pubchem-client.test.ts
+│           ├── pubchem-client-extended.test.ts
+│           ├── pubchem-client-interactions.test.ts
+│           ├── pubchem-client.test.ts
+│           └── sdf-parser.test.ts
 ├── .dockerignore
 ├── .env.example
 ├── .gitignore
