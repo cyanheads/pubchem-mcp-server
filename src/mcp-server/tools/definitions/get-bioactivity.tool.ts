@@ -80,6 +80,22 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       )
       .describe('Assay results matching the filter.'),
   }),
+  // Agent-facing context — filter echo, the filtered/returned cap boundary, and a notice
+  // distinguishing "no data" from "filter excluded everything". Reaches structuredContent
+  // and content[]; keys disjoint from output (cid/totalAssays live there).
+  enrichment: {
+    outcomeFilter: z.string().describe('Outcome filter applied: active, inactive, or all.'),
+    filteredCount: z
+      .number()
+      .describe('Assays matching the outcome filter, before the maxResults cap.'),
+    returnedCount: z.number().describe('Assays returned after the maxResults cap.'),
+    notice: z
+      .string()
+      .optional()
+      .describe(
+        'Recovery guidance when the filter yields no results or the compound has no bioactivity data.',
+      ),
+  },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
@@ -104,6 +120,21 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       active: activeCount,
       returned: results.length,
     });
+
+    ctx.enrich({
+      outcomeFilter: input.outcomeFilter,
+      filteredCount: filtered.length,
+      returnedCount: results.length,
+    });
+    if (allRows.length === 0) {
+      ctx.enrich.notice(
+        `No bioactivity data found for CID ${input.cid}. The compound may be uncharacterized, or verify the CID with pubchem_search_compounds.`,
+      );
+    } else if (filtered.length === 0) {
+      ctx.enrich.notice(
+        `CID ${input.cid} has ${allRows.length} assay(s) but none match outcomeFilter="${input.outcomeFilter}". Use outcomeFilter="all" to see them.`,
+      );
+    }
 
     return {
       cid: input.cid,

@@ -3,7 +3,7 @@
  * @module mcp-server/tools/definitions/get-bioactivity.test
  */
 
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBioactivity } from '@/mcp-server/tools/definitions/get-bioactivity.tool.js';
 import type { BioactivityRow } from '@/services/pubchem/types.js';
@@ -102,6 +102,51 @@ describe('getBioactivity handler', () => {
     expect(result.activeCount).toBe(0);
     expect(result.inactiveCount).toBe(0);
     expect(result.results).toEqual([]);
+  });
+});
+
+describe('getBioactivity handler — enrichment', () => {
+  it('echoes outcomeFilter and the filtered/returned cap boundary', async () => {
+    const manyRows = Array.from({ length: 30 }, (_, i) => ({ ...activeRow, aid: i + 1 }));
+    mockClient.getAssaySummary.mockResolvedValueOnce(manyRows);
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({
+      cid: 2244,
+      outcomeFilter: 'active',
+      maxResults: 10,
+    });
+    await getBioactivity.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.outcomeFilter).toBe('active');
+    expect(enrichment.filteredCount).toBe(30);
+    expect(enrichment.returnedCount).toBe(10);
+    expect(enrichment.notice).toBeUndefined();
+  });
+
+  it('adds a notice when the compound has no bioactivity data', async () => {
+    mockClient.getAssaySummary.mockResolvedValueOnce([]);
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({ cid: 999 });
+    await getBioactivity.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.filteredCount).toBe(0);
+    expect(enrichment.returnedCount).toBe(0);
+    expect(enrichment.notice).toBeDefined();
+    expect(enrichment.notice).toContain('No bioactivity data');
+  });
+
+  it('adds a notice when the filter excludes every assay', async () => {
+    mockClient.getAssaySummary.mockResolvedValueOnce([inactiveRow, inconclusiveRow]);
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'active' });
+    await getBioactivity.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.filteredCount).toBe(0);
+    expect(enrichment.notice).toBeDefined();
+    expect(enrichment.notice).toContain('outcomeFilter="active"');
   });
 });
 

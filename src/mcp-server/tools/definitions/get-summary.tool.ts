@@ -84,6 +84,16 @@ export const getSummary = tool('pubchem_get_summary', {
       )
       .describe('Summary results.'),
   }),
+  // Agent-facing context — requested/found counts and a notice when any identifier missed.
+  // Reaches structuredContent and content[]; keys disjoint from output.
+  enrichment: {
+    requestedCount: z.number().describe('Identifiers requested.'),
+    foundCount: z.number().describe('Identifiers resolved to a summary.'),
+    notice: z
+      .string()
+      .optional()
+      .describe('Recovery guidance when one or more identifiers were not found.'),
+  },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
@@ -98,11 +108,20 @@ export const getSummary = tool('pubchem_get_summary', {
       }),
     );
 
+    const foundCount = summaries.filter((s) => s.found).length;
+
     ctx.log.info('Summaries fetched', {
       entityType: input.entityType,
       requested: input.identifiers.length,
-      found: summaries.filter((s) => s.found).length,
+      found: foundCount,
     });
+
+    ctx.enrich({ requestedCount: input.identifiers.length, foundCount });
+    if (foundCount < input.identifiers.length) {
+      ctx.enrich.notice(
+        `${input.identifiers.length - foundCount} of ${input.identifiers.length} ${input.entityType} identifier(s) not found. Verify the ID type matches entityType="${input.entityType}" (assay: AID, gene: Gene ID, protein: UniProt accession, taxonomy: Tax ID).`,
+      );
+    }
 
     return { entityType: input.entityType, summaries };
   },

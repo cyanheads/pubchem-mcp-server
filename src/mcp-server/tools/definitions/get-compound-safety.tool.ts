@@ -56,6 +56,16 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
       .describe('GHS classification data.'),
     source: z.string().optional().describe('Data source attribution.'),
   }),
+  // Agent-facing context — a cross-tool notice when no GHS data exists, pointing to an
+  // alternative source. Reaches structuredContent and content[]; disjoint from output.
+  enrichment: {
+    notice: z
+      .string()
+      .optional()
+      .describe(
+        'Cross-tool guidance when no GHS data is available, pointing to an alternative source.',
+      ),
+  },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
@@ -64,6 +74,9 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
     ctx.log.info('Safety data fetched', { cid: input.cid, hasData: data !== null });
 
     if (!data) {
+      ctx.enrich.notice(
+        `No GHS classification on file for CID ${input.cid}. Try pubchem_get_compound_details with includeDescription for hazard context, or the compound may simply lack deposited safety data.`,
+      );
       return { cid: input.cid, hasData: false };
     }
 

@@ -3,7 +3,7 @@
  * @module mcp-server/tools/definitions/get-summary.test
  */
 
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSummary } from '@/mcp-server/tools/definitions/get-summary.tool.js';
 
@@ -109,6 +109,35 @@ describe('getSummary handler', () => {
     expect(data.scientificName).toBe('Homo sapiens');
     expect(data.commonName).toBe('human');
     expect(data.rank).toBe('species');
+  });
+});
+
+describe('getSummary handler — enrichment', () => {
+  it('echoes requested and found counts with no notice when all resolve', async () => {
+    mockClient.getEntitySummary.mockResolvedValueOnce({ AID: 1000, Name: 'Found assay' });
+    const ctx = createMockContext();
+    const input = getSummary.input.parse({ entityType: 'assay', identifiers: [1000] });
+    await getSummary.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.requestedCount).toBe(1);
+    expect(enrichment.foundCount).toBe(1);
+    expect(enrichment.notice).toBeUndefined();
+  });
+
+  it('adds a notice when at least one identifier is not found', async () => {
+    mockClient.getEntitySummary
+      .mockResolvedValueOnce({ AID: 1000, Name: 'Found assay' })
+      .mockResolvedValueOnce(null);
+    const ctx = createMockContext();
+    const input = getSummary.input.parse({ entityType: 'assay', identifiers: [1000, 9999] });
+    await getSummary.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.requestedCount).toBe(2);
+    expect(enrichment.foundCount).toBe(1);
+    expect(enrichment.notice).toBeDefined();
+    expect(enrichment.notice).toContain('not found');
   });
 });
 

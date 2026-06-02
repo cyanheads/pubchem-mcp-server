@@ -3,7 +3,7 @@
  * @module mcp-server/tools/definitions/get-compound-safety.test
  */
 
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundSafety } from '@/mcp-server/tools/definitions/get-compound-safety.tool.js';
 
@@ -50,6 +50,34 @@ describe('getCompoundSafety handler', () => {
     expect(result.cid).toBe(999999);
     expect(result.hasData).toBe(false);
     expect(result.ghs).toBeUndefined();
+  });
+});
+
+describe('getCompoundSafety handler — enrichment', () => {
+  it('adds a cross-tool notice when no GHS data is available', async () => {
+    mockClient.getSafetyData.mockResolvedValueOnce(null);
+    const ctx = createMockContext();
+    const input = getCompoundSafety.input.parse({ cid: 999999 });
+    await getCompoundSafety.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.notice).toBeDefined();
+    expect(enrichment.notice).toContain('pubchem_get_compound_details');
+  });
+
+  it('does not add a notice when GHS data is present', async () => {
+    mockClient.getSafetyData.mockResolvedValueOnce({
+      signalWord: 'Danger',
+      pictograms: ['Flammable'],
+      hazardStatements: [{ code: 'H225', statement: 'Highly flammable liquid and vapour' }],
+      precautionaryStatements: [],
+    });
+    const ctx = createMockContext();
+    const input = getCompoundSafety.input.parse({ cid: 702 });
+    await getCompoundSafety.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.notice).toBeUndefined();
   });
 });
 
