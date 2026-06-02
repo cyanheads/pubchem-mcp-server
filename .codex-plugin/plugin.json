@@ -1,7 +1,7 @@
 {
   "name": "@cyanheads/pubchem-mcp-server",
-  "version": "0.2.1",
-  "description": "MCP server for the PubChem chemical database. Search compounds, fetch properties, safety data, bioactivity, cross-references, and entity summaries. STDIO & Streamable HTTP.",
+  "version": "0.2.2",
+  "description": "Search the PubChem chemical database for compounds, properties, safety data, bioactivity, cross-references, and entity summaries via MCP. STDIO or Streamable HTTP.",
   "author": {
     "name": "cyanheads",
     "email": "casey@caseyjhand.com",
@@ -14,8 +14,8 @@
   "mcpServers": "./.codex-plugin/mcp.json",
   "interface": {
     "displayName": "@cyanheads/pubchem-mcp-server",
-    "shortDescription": "Search PubChem compounds, properties, safety data, bioactivity, cross-references, and entity summaries via MCP.",
-    "longDescription": "MCP server for the PubChem chemical database. Search by name, SMILES, InChIKey, formula, or substructure to find compound CIDs, then fetch molecular properties, GHS safety classifications, bioassay activity, external database cross-references, and entity summaries for assays, genes, proteins, and taxonomy. STDIO and Streamable HTTP transports. No API key required.",
+    "shortDescription": "Search PubChem compounds, properties, safety data, bioactivity, cross-references, and entity summaries.",
+    "longDescription": "Search the PubChem chemical database by name, SMILES, InChIKey, formula, or substructure to find compound CIDs, then fetch molecular properties, GHS safety classifications, bioassay activity, external database cross-references, and entity summaries for assays, genes, proteins, and taxonomy. STDIO and Streamable HTTP transports. No API key required.",
     "developerName": "cyanheads",
     "category": "science",
     "capabilities": ["Read"],

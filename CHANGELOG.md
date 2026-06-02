@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.2.2](changelog/0.2.x/0.2.2.md) — 2026-06-02
+
+adopt @cyanheads/mcp-ts-core 0.9.21 — per-request log context fix, secret scrubbing in fetch errors, fail-fast retries
+
 ## [0.2.1](changelog/0.2.x/0.2.1.md) — 2026-06-02
 
 interactions target source, per-kind isolation, fetch resilience for image and 3D structure

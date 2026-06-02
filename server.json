@@ -1,12 +1,12 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.cyanheads/pubchem-mcp-server",
-  "description": "MCP server for PubChem. Search compounds, properties, safety, bioactivity, xrefs, and summaries.",
+  "description": "Search PubChem compounds, properties, safety data, bioactivity, and cross-references.",
   "repository": {
     "url": "https://github.com/cyanheads/pubchem-mcp-server",
     "source": "github"
   },
-  "version": "0.2.1",
+  "version": "0.2.2",
   "remotes": [
     {
       "type": "streamable-http",
@@ -19,7 +19,7 @@
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@cyanheads/pubchem-mcp-server",
       "runtimeHint": "bun",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "packageArguments": [
         { "type": "positional", "value": "run" },
         { "type": "positional", "value": "start:stdio" }
@@ -42,7 +42,7 @@
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@cyanheads/pubchem-mcp-server",
       "runtimeHint": "bun",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "packageArguments": [
         { "type": "positional", "value": "run" },
         { "type": "positional", "value": "start:http" }

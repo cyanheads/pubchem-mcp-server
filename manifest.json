@@ -1,8 +1,8 @@
 {
   "manifest_version": "0.3",
   "name": "pubchem-mcp-server",
-  "version": "0.2.1",
-  "description": "Search PubChem compounds, properties, safety data, bioactivity, cross-references, and entity summaries via MCP.",
+  "version": "0.2.2",
+  "description": "Search the PubChem chemical database for compounds, properties, safety data, bioactivity, cross-references, and entity summaries via MCP. STDIO or Streamable HTTP.",
   "author": {
     "name": "cyanheads"
   },
