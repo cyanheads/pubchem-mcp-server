@@ -1,5 +1,5 @@
 /**
- * @fileoverview Tests for get-compound-safety tool.
+ * @fileoverview Tests for get-compound-safety tool (batched CIDs).
  * @module mcp-server/tools/definitions/get-compound-safety.test
  */
 
@@ -19,96 +19,104 @@ beforeEach(() => {
   vi.resetAllMocks();
 });
 
-describe('getCompoundSafety handler', () => {
-  it('returns GHS data when available', async () => {
-    mockClient.getSafetyData.mockResolvedValueOnce({
-      signalWord: 'Danger',
-      pictograms: ['Flammable', 'Irritant'],
-      hazardStatements: [{ code: 'H225', statement: 'Highly flammable liquid and vapour' }],
-      precautionaryStatements: [{ code: 'P210', statement: 'Keep away from heat' }],
-      source: 'European Chemicals Agency',
-    });
+const ghs = {
+  signalWord: 'Danger',
+  pictograms: ['Flammable', 'Irritant'],
+  hazardStatements: [{ code: 'H225', statement: 'Highly flammable liquid and vapour' }],
+  precautionaryStatements: [{ code: 'P210', statement: 'Keep away from heat' }],
+  source: 'European Chemicals Agency',
+};
+
+describe('getCompoundSafety handler — batch', () => {
+  it('returns one result per CID, preserving input order', async () => {
+    mockClient.getSafetyData.mockImplementation(async (cid: number) => (cid === 702 ? ghs : null));
     const ctx = createMockContext();
-    const input = getCompoundSafety.input.parse({ cid: 702 });
+    const input = getCompoundSafety.input.parse({ cids: [702, 999999] });
     const result = await getCompoundSafety.handler(input, ctx);
 
-    expect(result.cid).toBe(702);
-    expect(result.hasData).toBe(true);
-    expect(result.ghs?.signalWord).toBe('Danger');
-    expect(result.ghs?.pictograms).toEqual(['Flammable', 'Irritant']);
-    expect(result.ghs?.hazardStatements).toHaveLength(1);
-    expect(result.ghs?.precautionaryStatements).toHaveLength(1);
-    expect(result.source).toBe('European Chemicals Agency');
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0]).toMatchObject({ cid: 702, hasData: true });
+    expect(result.results[0]!.ghs?.signalWord).toBe('Danger');
+    expect(result.results[0]!.source).toBe('European Chemicals Agency');
+    expect(result.results[1]).toEqual({ cid: 999999, hasData: false });
   });
 
-  it('returns hasData false when no safety data', async () => {
-    mockClient.getSafetyData.mockResolvedValueOnce(null);
+  it('fans out one getSafetyData call per CID', async () => {
+    mockClient.getSafetyData.mockResolvedValue(ghs);
     const ctx = createMockContext();
-    const input = getCompoundSafety.input.parse({ cid: 999999 });
-    const result = await getCompoundSafety.handler(input, ctx);
+    const input = getCompoundSafety.input.parse({ cids: [1, 2, 3] });
+    await getCompoundSafety.handler(input, ctx);
 
-    expect(result.cid).toBe(999999);
-    expect(result.hasData).toBe(false);
-    expect(result.ghs).toBeUndefined();
+    expect(mockClient.getSafetyData).toHaveBeenCalledTimes(3);
   });
 });
 
 describe('getCompoundSafety handler — enrichment', () => {
-  it('adds a cross-tool notice when no GHS data is available', async () => {
-    mockClient.getSafetyData.mockResolvedValueOnce(null);
+  it('counts requested vs with-data and notices the missing CIDs', async () => {
+    mockClient.getSafetyData.mockImplementation(async (cid: number) => (cid === 702 ? ghs : null));
     const ctx = createMockContext();
-    const input = getCompoundSafety.input.parse({ cid: 999999 });
+    const input = getCompoundSafety.input.parse({ cids: [702, 999999] });
     await getCompoundSafety.handler(input, ctx);
-    const enrichment = getEnrichment(ctx);
+    const e = getEnrichment(ctx);
 
-    expect(enrichment.notice).toBeDefined();
-    expect(enrichment.notice).toContain('pubchem_get_compound_details');
+    expect(e.requestedCount).toBe(2);
+    expect(e.withDataCount).toBe(1);
+    expect(e.notice).toContain('999999');
+    expect(e.notice).toContain('pubchem_get_compound_details');
   });
 
-  it('does not add a notice when GHS data is present', async () => {
-    mockClient.getSafetyData.mockResolvedValueOnce({
-      signalWord: 'Danger',
-      pictograms: ['Flammable'],
-      hazardStatements: [{ code: 'H225', statement: 'Highly flammable liquid and vapour' }],
-      precautionaryStatements: [],
-    });
+  it('adds no notice when every CID has data', async () => {
+    mockClient.getSafetyData.mockResolvedValue(ghs);
     const ctx = createMockContext();
-    const input = getCompoundSafety.input.parse({ cid: 702 });
+    const input = getCompoundSafety.input.parse({ cids: [702] });
     await getCompoundSafety.handler(input, ctx);
-    const enrichment = getEnrichment(ctx);
 
-    expect(enrichment.notice).toBeUndefined();
+    expect(getEnrichment(ctx).notice).toBeUndefined();
+  });
+});
+
+describe('getCompoundSafety input validation', () => {
+  it('rejects an empty cids array', () => {
+    expect(() => getCompoundSafety.input.parse({ cids: [] })).toThrow();
+  });
+
+  it('rejects more than 25 CIDs', () => {
+    expect(() =>
+      getCompoundSafety.input.parse({ cids: Array.from({ length: 26 }, (_, i) => i + 1) }),
+    ).toThrow();
+  });
+
+  it('rejects a non-positive CID', () => {
+    expect(() => getCompoundSafety.input.parse({ cids: [0] })).toThrow();
   });
 });
 
 describe('getCompoundSafety format', () => {
-  it('formats GHS data', () => {
+  it('renders a per-CID GHS block and a no-data block', () => {
     const blocks = getCompoundSafety.format!({
-      cid: 702,
-      hasData: true,
-      ghs: {
-        signalWord: 'Danger',
-        pictograms: ['Flammable'],
-        hazardStatements: [{ code: 'H225', statement: 'Highly flammable liquid and vapour' }],
-        precautionaryStatements: [{ code: 'P210', statement: 'Keep away from heat' }],
-      },
-      source: 'ECHA',
+      results: [
+        {
+          cid: 702,
+          hasData: true,
+          ghs: {
+            signalWord: 'Danger',
+            pictograms: ['Flammable'],
+            hazardStatements: [{ code: 'H225', statement: 'Highly flammable' }],
+            precautionaryStatements: [{ code: 'P210', statement: 'Keep away' }],
+          },
+          source: 'ECHA',
+        },
+        { cid: 999, hasData: false },
+      ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('GHS Safety');
+
+    expect(text).toContain('CID 702');
     expect(text).toContain('Danger');
     expect(text).toContain('Flammable');
     expect(text).toContain('H225');
     expect(text).toContain('P210');
     expect(text).toContain('ECHA');
-  });
-
-  it('formats no-data response', () => {
-    const blocks = getCompoundSafety.format!({
-      cid: 999,
-      hasData: false,
-    });
-    const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('No GHS safety data');
+    expect(text).toContain('CID 999 — no GHS safety data');
   });
 });
