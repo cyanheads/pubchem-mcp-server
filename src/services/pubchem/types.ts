@@ -131,6 +131,15 @@ export interface InteractionEntry {
   text: string;
 }
 
+/** Result of a multi-kind interaction fetch. Kinds are fetched independently so a failure in
+ * one (upstream parse error, timeout, network) never discards the kinds that succeeded. */
+export interface InteractionsResult {
+  /** Interaction entries across the kinds that resolved successfully. */
+  entries: InteractionEntry[];
+  /** Kinds whose fetch failed, with the failure message. Empty when every kind resolved. */
+  failedKinds: Array<{ kind: string; message: string }>;
+}
+
 /** A single atom in a 3D conformer (Cartesian coordinates, Angstroms). */
 export interface Sdf3DAtom {
   element: string;

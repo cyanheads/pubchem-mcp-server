@@ -748,7 +748,10 @@ describe('PubChemClient.getImage', () => {
   });
 
   it('passes non-404 errors through without the cid_not_found wrapper', async () => {
-    fetchMock.mockResolvedValueOnce(textResponse('Service Unavailable', 503));
+    // fetchBinary retries 5xx once (#16), so a persistent failure needs two responses.
+    fetchMock
+      .mockResolvedValueOnce(textResponse('Service Unavailable', 503))
+      .mockResolvedValueOnce(textResponse('Service Unavailable', 503));
 
     const client = new PubChemClient();
     const err = (await client.getImage(2244).catch((e) => e)) as McpError;
@@ -756,5 +759,28 @@ describe('PubChemClient.getImage', () => {
     expect(err).toBeInstanceOf(McpError);
     expect(err.code).toBe(JsonRpcErrorCode.ServiceUnavailable);
     expect((err.data as { reason?: string }).reason).toBeUndefined();
-  });
+  }, 10_000);
+
+  it('retries once on 5xx then returns the PNG bytes (#16)', async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    fetchMock
+      .mockResolvedValueOnce(textResponse('Service Unavailable', 503))
+      .mockResolvedValueOnce(
+        new Response(png, { status: 200, headers: { 'Content-Type': 'image/png' } }),
+      );
+
+    const client = new PubChemClient();
+    const buffer = await client.getImage(2244);
+
+    expect(new Uint8Array(buffer)).toEqual(png);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  }, 10_000);
+
+  it('maps an AbortError timeout to a clean message instead of the raw error (#16)', async () => {
+    fetchMock.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+
+    const client = new PubChemClient();
+
+    await expect(client.getImage(2244)).rejects.toThrow('PubChem request timed out (30s)');
+  }, 10_000);
 });

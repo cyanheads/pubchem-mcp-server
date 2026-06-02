@@ -35,7 +35,7 @@ const target: InteractionEntry = {
 
 describe('getCompoundInteractions handler', () => {
   it('returns entries and echoes kinds + count', async () => {
-    mockClient.getInteractions.mockResolvedValueOnce([ddi, target]);
+    mockClient.getInteractions.mockResolvedValueOnce({ entries: [ddi, target], failedKinds: [] });
     const ctx = createMockContext();
     const input = getCompoundInteractions.input.parse({
       cid: 54678486,
@@ -52,7 +52,7 @@ describe('getCompoundInteractions handler', () => {
   });
 
   it('defaults kinds to drug-drug and maxEntries to 10', async () => {
-    mockClient.getInteractions.mockResolvedValueOnce([ddi]);
+    mockClient.getInteractions.mockResolvedValueOnce({ entries: [ddi], failedKinds: [] });
     const ctx = createMockContext();
     const input = getCompoundInteractions.input.parse({ cid: 2244 });
     await getCompoundInteractions.handler(input, ctx);
@@ -61,13 +61,32 @@ describe('getCompoundInteractions handler', () => {
   });
 
   it('notices when no interactions are found', async () => {
-    mockClient.getInteractions.mockResolvedValueOnce([]);
+    mockClient.getInteractions.mockResolvedValueOnce({ entries: [], failedKinds: [] });
     const ctx = createMockContext();
     const input = getCompoundInteractions.input.parse({ cid: 962 });
     const result = await getCompoundInteractions.handler(input, ctx);
 
     expect(result.entries).toEqual([]);
     expect(getEnrichment(ctx).notice).toContain('No drug-drug interaction data');
+  });
+
+  it('surfaces failed kinds and returns the kinds that succeeded (#21)', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [ddi],
+      failedKinds: [{ kind: 'target', message: 'PubChem SDQ returned unparseable JSON' }],
+    });
+    const ctx = createMockContext();
+    const input = getCompoundInteractions.input.parse({
+      cid: 5291,
+      kinds: ['drug-drug', 'target'],
+    });
+    const result = await getCompoundInteractions.handler(input, ctx);
+
+    expect(result.entries).toEqual([ddi]);
+    const e = getEnrichment(ctx);
+    expect(e.returnedCount).toBe(1);
+    expect(e.failedKinds).toBe('target');
+    expect(e.notice).toContain('target');
   });
 
   it('rejects an empty kinds array and out-of-range maxEntries', () => {

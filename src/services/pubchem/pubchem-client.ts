@@ -15,6 +15,7 @@ import type {
   ConformerListResponse,
   GHSClassification,
   InteractionEntry,
+  InteractionsResult,
   ListKeyResponse,
   PropertyTableResponse,
   PugViewInformation,
@@ -236,7 +237,12 @@ export class PubChemClient {
 
   // ── Core HTTP ────────────────────────────────────────────────────
 
-  private async fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  /** Shared HTTP core: rate-limit, 30s timeout, retry once on 5xx and once on a transient
+   * network error, and surface a clean timeout message. Returns the ok Response; callers
+   * extract the body (JSON, bytes, or text). Centralizing this keeps every fetch variant on
+   * one resilience contract — the divergence that left fetchBinary without retry or a clean
+   * timeout message (#16) cannot recur. */
+  private async fetchResponse(url: string, init?: RequestInit): Promise<Response> {
     for (let attempt = 0; ; attempt++) {
       await this.rateLimiter.acquire();
 
@@ -246,9 +252,7 @@ export class PubChemClient {
       try {
         const response = await fetch(url, { ...init, signal: controller.signal });
 
-        if (response.ok) {
-          return (await response.json()) as T;
-        }
+        if (response.ok) return response;
 
         const text = await response.text();
         const fault = parseFaultMessage(text) ?? text.slice(0, 300);
@@ -284,55 +288,20 @@ export class PubChemClient {
     }
   }
 
+  private async fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+    const response = await this.fetchResponse(url, init);
+    return (await response.json()) as T;
+  }
+
   private async fetchBinary(url: string): Promise<ArrayBuffer> {
-    await this.rateLimiter.acquire();
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30_000);
-
-    try {
-      const response = await fetch(url, { signal: controller.signal });
-
-      if (!response.ok) {
-        const text = await response.text();
-        const fault = parseFaultMessage(text) ?? text.slice(0, 300);
-        throw await httpErrorFromResponse(response, {
-          captureBody: false,
-          service: 'PubChem',
-          data: { fault, url },
-        });
-      }
-
-      return await response.arrayBuffer();
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    const response = await this.fetchResponse(url);
+    return response.arrayBuffer();
   }
 
   /** Fetch a text/plain body (e.g. an SDF record). Non-2xx is classified and thrown. */
   private async fetchText(url: string): Promise<string> {
-    await this.rateLimiter.acquire();
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30_000);
-
-    try {
-      const response = await fetch(url, { signal: controller.signal });
-
-      if (!response.ok) {
-        const text = await response.text();
-        const fault = parseFaultMessage(text) ?? text.slice(0, 300);
-        throw await httpErrorFromResponse(response, {
-          captureBody: false,
-          service: 'PubChem',
-          data: { fault, url },
-        });
-      }
-
-      return await response.text();
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    const response = await this.fetchResponse(url);
+    return response.text();
   }
 
   // ── CID Resolution ──────────────────────────────────────────────
@@ -814,11 +783,27 @@ export class PubChemClient {
     cid: number,
     kinds: Array<'drug-drug' | 'drug-food' | 'target'>,
     maxEntries: number,
-  ): Promise<InteractionEntry[]> {
-    const batches = await Promise.all(
+  ): Promise<InteractionsResult> {
+    // Per-kind isolation: a failure in one source (upstream parse error, timeout, network)
+    // must not discard the kinds that succeeded. Failures are reported, not thrown (#21).
+    const settled = await Promise.allSettled(
       kinds.map((kind) => this.getInteractionsForKind(cid, kind, maxEntries)),
     );
-    return batches.flat();
+    const entries: InteractionEntry[] = [];
+    const failedKinds: Array<{ kind: string; message: string }> = [];
+    kinds.forEach((kind, i) => {
+      const result = settled[i];
+      if (result?.status === 'fulfilled') {
+        entries.push(...result.value);
+      } else if (result?.status === 'rejected') {
+        const reason = result.reason;
+        failedKinds.push({
+          kind,
+          message: reason instanceof Error ? reason.message : String(reason),
+        });
+      }
+    });
+    return { entries, failedKinds };
   }
 
   private getInteractionsForKind(
@@ -840,7 +825,7 @@ export class PubChemClient {
     cid: number,
     maxEntries: number,
   ): Promise<InteractionEntry[]> {
-    const rows = await this.fetchSdq('drugbankddi', cid, maxEntries);
+    const rows = await this.fetchSdq('drugbankddi', cid, ['cid', 'name2', 'descr'], maxEntries);
     const entries: InteractionEntry[] = [];
     for (const row of rows) {
       const text = typeof row.descr === 'string' ? row.descr : '';
@@ -852,32 +837,46 @@ export class PubChemClient {
     return entries;
   }
 
+  /** Chemical-target binding/activity from PubChem's `bioactivity` SDQ collection (BindingDB,
+   * ChEMBL, and others). That collection is cid-keyed and scopes correctly to the requested
+   * compound; the `consolidatedcompoundtarget` collection used previously is gene-indexed, so
+   * its `cid` filter was silently ignored — every CID returned the same default compound (#20).
+   * Only rows naming a molecular target are returned; untargeted assay outcomes are the domain
+   * of pubchem_get_bioactivity. */
   private async getTargetInteractions(
     cid: number,
     maxEntries: number,
   ): Promise<InteractionEntry[]> {
-    const rows = await this.fetchSdq('consolidatedcompoundtarget', cid, maxEntries);
+    // `targetname` is sparse (most rows are untargeted assay outcomes), so oversample and keep
+    // the target-bearing rows, most-potent-first.
+    const window = Math.min(Math.max(maxEntries * 4, 20), 100);
+    const rows = await this.fetchSdq(
+      'bioactivity',
+      cid,
+      ['cid', 'targetname', 'acname', 'acqualifier', 'acvalue', 'aidsrcname'],
+      window,
+      ['acvalue,asc'],
+    );
     const entries: InteractionEntry[] = [];
     for (const row of rows) {
-      const target =
-        (typeof row.protname === 'string' && row.protname) ||
-        (typeof row.srctargetname === 'string' && row.srctargetname) ||
-        (typeof row.genename === 'string' && row.genename) ||
-        '';
-      const activity = [row.actname, row.actvalue]
-        .filter((v): v is string => typeof v === 'string' && v.length > 0)
-        .join(': ');
-      const text = [target, activity].filter(Boolean).join(' — ');
-      if (!text) continue;
-      const entry: InteractionEntry = {
+      const target = typeof row.targetname === 'string' ? row.targetname.trim() : '';
+      if (!target) continue;
+      const acname = typeof row.acname === 'string' ? row.acname : '';
+      const qualifier = typeof row.acqualifier === 'string' ? row.acqualifier : '';
+      const acvalue = row.acvalue == null ? '' : String(row.acvalue).trim();
+      // Faithful to the source: the bioactivity collection carries no unit column, so the raw
+      // activity value is surfaced without an asserted unit.
+      const activity =
+        acname && acvalue ? `${acname} ${qualifier} ${acvalue}`.replace(/\s+/g, ' ').trim() : '';
+      entries.push({
         kind: 'target',
-        source: typeof row.dsn === 'string' && row.dsn ? row.dsn : 'PubChem',
-        text,
-      };
-      if (target) entry.partner = target;
-      entries.push(entry);
+        source: typeof row.aidsrcname === 'string' && row.aidsrcname ? row.aidsrcname : 'PubChem',
+        partner: target,
+        text: activity || 'Activity reported',
+      });
     }
-    return entries;
+    // Collapse duplicate measurements of the same target/value reported across assays.
+    return dedupByKey(entries, (e) => `${e.partner ?? ''}|${e.text}`).slice(0, maxEntries);
   }
 
   private async getDrugFoodInteractions(
@@ -909,26 +908,45 @@ export class PubChemClient {
     }
   }
 
-  /** Query a PubChem SDQ external table for a single CID. Returns [] on not-found. */
+  /** Query a PubChem SDQ external table for a single CID, projecting only the columns the
+   * caller maps. Projection keeps payloads small and excludes the free-text `citations` column
+   * whose unescaped quotes make PubChem emit invalid JSON (#20). Returns [] on not-found; on an
+   * unparseable body throws a contextful error rather than the bare `Failed to parse JSON`, so
+   * the caller and per-kind isolation can report it cleanly. */
   private async fetchSdq(
     collection: string,
     cid: number,
+    columns: string[],
     limit: number,
+    order?: string[],
   ): Promise<Array<Record<string, unknown>>> {
     const query = JSON.stringify({
-      download: '*',
+      download: columns,
       collection,
       where: { ands: [{ cid: String(cid) }] },
+      ...(order ? { order } : {}),
       start: 1,
       limit,
     });
     const url = `${this.sdqBase}?infmt=json&outfmt=json&query=${encodeURIComponent(query)}`;
+
+    let body: string;
     try {
-      const data = await this.fetchJson<Array<Record<string, unknown>>>(url);
-      return Array.isArray(data) ? data : [];
+      body = await this.fetchText(url);
     } catch (error) {
       if (isNotFound(error)) return [];
       throw error;
+    }
+
+    try {
+      const data = JSON.parse(body) as unknown;
+      return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+    } catch {
+      throw new McpError(
+        JsonRpcErrorCode.ServiceUnavailable,
+        `PubChem SDQ returned unparseable JSON for collection "${collection}"`,
+        { collection, cid, snippet: body.slice(0, 200) },
+      );
     }
   }
 
