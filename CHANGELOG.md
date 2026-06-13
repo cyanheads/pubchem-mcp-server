@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.2.3](changelog/0.2.x/0.2.3.md) — 2026-06-12
+
+adopt @cyanheads/mcp-ts-core ^0.10.6 — truncation disclosure on capped searches, explicit createApp identity, MCPB bundle-content hardening
+
 ## [0.2.2](changelog/0.2.x/0.2.2.md) — 2026-06-02
 
 adopt @cyanheads/mcp-ts-core 0.9.21 — per-request log context fix, secret scrubbing in fetch errors, fail-fast retries

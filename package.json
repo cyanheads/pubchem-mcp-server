@@ -1,6 +1,6 @@
 {
   "name": "@cyanheads/pubchem-mcp-server",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Search the PubChem chemical database for compounds, properties, safety data, bioactivity, cross-references, and entity summaries via MCP. STDIO or Streamable HTTP.",
   "mcpName": "io.github.cyanheads/pubchem-mcp-server",
   "type": "module",
@@ -22,7 +22,7 @@
     "format:unsafe": "biome check --write --unsafe .",
     "lint:mcp": "bun scripts/lint-mcp.ts",
     "lint:packaging": "bun scripts/lint-packaging.ts",
-    "bundle": "bun run build && npx -y @anthropic-ai/mcpb pack . dist/pubchem-mcp-server.mcpb",
+    "bundle": "bun run build && npx -y @anthropic-ai/mcpb pack . dist/pubchem-mcp-server.mcpb && bun run scripts/clean-mcpb.ts dist/pubchem-mcp-server.mcpb",
     "changelog:build": "bun scripts/build-changelog.ts",
     "changelog:check": "bun scripts/build-changelog.ts --check",
     "publish-mcp": "mcp-publisher publish",
@@ -68,18 +68,18 @@
     "node": ">=24.0.0",
     "bun": ">=1.3.0"
   },
-  "packageManager": "bun@1.3.2",
+  "packageManager": "bun@1.3.11",
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@cyanheads/mcp-ts-core": "^0.9.21",
+    "@cyanheads/mcp-ts-core": "^0.10.6",
     "pino-pretty": "^13.1.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.16",
-    "@types/node": "^25.9.1",
+    "@biomejs/biome": "^2.5.0",
+    "@types/node": "^25.9.3",
     "depcheck": "^1.4.7",
     "ignore": "^7.0.5",
     "tsc-alias": "^1.8.17",
