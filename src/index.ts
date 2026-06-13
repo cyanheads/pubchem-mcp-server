@@ -11,6 +11,8 @@ import { allToolDefinitions } from './mcp-server/tools/definitions/index.js';
 import { initPubChemClient } from './services/pubchem/pubchem-client.js';
 
 await createApp({
+  name: 'pubchem-mcp-server',
+  title: 'pubchem-mcp-server',
   tools: allToolDefinitions,
   resources: allResourceDefinitions,
   instructions:
