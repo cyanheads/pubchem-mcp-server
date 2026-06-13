@@ -124,6 +124,12 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         'Search strategy used: identifier, formula, substructure, superstructure, or similarity.',
       ),
     totalFound: z.number().describe('Total CIDs found before the maxResults cap.'),
+    truncated: z
+      .boolean()
+      .optional()
+      .describe('True when CIDs were capped at maxResults — more matches exist than returned.'),
+    shown: z.number().optional().describe('CIDs returned after the maxResults cap.'),
+    cap: z.number().optional().describe('The maxResults cap that was applied.'),
     notice: z
       .string()
       .optional()
@@ -231,6 +237,8 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       ctx.enrich.notice(
         `No compounds matched the ${input.searchType} search. Try a different identifier, broaden the formula, lower the similarity threshold, or verify the SMILES/CID.`,
       );
+    } else if (totalFound > cappedCids.length) {
+      ctx.enrich.truncated({ shown: cappedCids.length, cap: input.maxResults });
     }
 
     // Optionally hydrate with properties

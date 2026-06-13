@@ -121,7 +121,9 @@ describe('getBioactivity handler — enrichment', () => {
     expect(enrichment.outcomeFilter).toBe('active');
     expect(enrichment.filteredCount).toBe(30);
     expect(enrichment.returnedCount).toBe(10);
-    expect(enrichment.notice).toBeUndefined();
+    expect(enrichment.truncated).toBe(true);
+    expect(enrichment.shown).toBe(10);
+    expect(enrichment.cap).toBe(10);
   });
 
   it('adds a notice when the compound has no bioactivity data', async () => {

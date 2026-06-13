@@ -49,6 +49,12 @@ export const searchAssays = tool('pubchem_search_assays', {
       ),
     targetQuery: z.string().describe('Target identifier searched.'),
     totalFound: z.number().describe('Total AIDs found before the maxResults cap.'),
+    truncated: z
+      .boolean()
+      .optional()
+      .describe('True when AIDs were capped at maxResults — more assays exist than returned.'),
+    shown: z.number().optional().describe('AIDs returned after the maxResults cap.'),
+    cap: z.number().optional().describe('The maxResults cap that was applied.'),
     notice: z
       .string()
       .optional()
@@ -77,6 +83,8 @@ export const searchAssays = tool('pubchem_search_assays', {
       ctx.enrich.notice(
         `No assays found for "${input.targetQuery}" (${input.targetType}). Try a different targetType (e.g. switch from proteinname to genesymbol), verify the identifier spelling, or use pubchem_get_summary for gene/protein entity lookups.`,
       );
+    } else if (totalFound > aids.length) {
+      ctx.enrich.truncated({ shown: aids.length, cap: input.maxResults });
     }
 
     return { aids };

@@ -107,6 +107,12 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       .number()
       .describe('Assays matching the outcome and target filters, before the maxResults cap.'),
     returnedCount: z.number().describe('Assays returned after the maxResults cap.'),
+    truncated: z
+      .boolean()
+      .optional()
+      .describe('True when results were capped at maxResults — more matching assays exist.'),
+    shown: z.number().optional().describe('Assays returned after the maxResults cap.'),
+    cap: z.number().optional().describe('The maxResults cap that was applied.'),
     notice: z
       .string()
       .optional()
@@ -170,6 +176,8 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
           ? `CID ${input.cid} has ${allRows.length} assay(s) but none match the target filter (${targetLabel})${input.outcomeFilter !== 'all' ? ` with outcomeFilter="${input.outcomeFilter}"` : ''}. Verify the target identifier appears in this compound's assays, or widen the filter.`
           : `CID ${input.cid} has ${allRows.length} assay(s) but none match outcomeFilter="${input.outcomeFilter}". Use outcomeFilter="all" to see them.`,
       );
+    } else if (filtered.length > results.length) {
+      ctx.enrich.truncated({ shown: results.length, cap: input.maxResults });
     }
 
     return {
