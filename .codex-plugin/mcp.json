@@ -1,5 +1,5 @@
 {
-  "@cyanheads/pubchem-mcp-server": {
+  "pubchem-mcp-server": {
     "command": "npx",
     "args": ["-y", "@cyanheads/pubchem-mcp-server"],
     "env": {

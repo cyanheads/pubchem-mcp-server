@@ -1,5 +1,5 @@
 {
-  "name": "@cyanheads/pubchem-mcp-server",
+  "name": "pubchem-mcp-server",
   "version": "0.2.3",
   "description": "Search the PubChem chemical database for compounds, properties, safety data, bioactivity, cross-references, and entity summaries via MCP. STDIO or Streamable HTTP.",
   "author": {
@@ -9,7 +9,7 @@
   "repository": "https://github.com/cyanheads/pubchem-mcp-server",
   "license": "Apache-2.0",
   "mcpServers": {
-    "@cyanheads/pubchem-mcp-server": {
+    "pubchem-mcp-server": {
       "command": "npx",
       "args": ["-y", "@cyanheads/pubchem-mcp-server"],
       "env": {
