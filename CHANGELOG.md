@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.2.4](changelog/0.2.x/0.2.4.md) — 2026-06-20
+
+adopt @cyanheads/mcp-ts-core ^0.10.9 — check-dependency-specifiers devcheck step, plugin-manifest packaging lint, fresh-scaffold devcheck guards, vendored skill re-sync
+
 ## [0.2.3](changelog/0.2.x/0.2.3.md) — 2026-06-12
 
 adopt @cyanheads/mcp-ts-core ^0.10.6 — truncation disclosure on capped searches, explicit createApp identity, MCPB bundle-content hardening

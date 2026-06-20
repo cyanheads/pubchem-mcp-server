@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-06-13 03:58:15
+Generated on: 2026-06-20 18:02:25
 
 ```text
 pubchem-mcp-server/
@@ -27,6 +27,7 @@ pubchem-mcp-server/
 ├── scripts/
 │   ├── build-changelog.ts
 │   ├── build.ts
+│   ├── check-dependency-specifiers.ts
 │   ├── check-docs-sync.ts
 │   ├── check-framework-antipatterns.ts
 │   ├── check-skill-versions.ts
@@ -111,10 +112,6 @@ pubchem-mcp-server/
 │   │   │   ├── readme.md
 │   │   │   └── server-json.md
 │   │   └── SKILL.md
-│   ├── references/
-│   │   ├── formatting.md
-│   │   ├── parsing.md
-│   │   └── security.md
 │   ├── release-and-publish/
 │   │   └── SKILL.md
 │   ├── report-issue-framework/
