@@ -156,7 +156,9 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
 
       if (g.precautionaryStatements.length > 0) {
         lines.push('', '**Precautionary Statements:**');
-        for (const p of g.precautionaryStatements) lines.push(`  ${p.code}: ${p.statement}`);
+        for (const p of g.precautionaryStatements) {
+          lines.push(p.statement ? `  ${p.code}: ${p.statement}` : `  ${p.code}`);
+        }
       }
 
       if (r.source) lines.push('', `*Source: ${r.source}*`);

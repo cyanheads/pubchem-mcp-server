@@ -74,9 +74,16 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
                       },
                     },
                     {
+                      // PubChem's real shape: a single comma-separated code list (codes
+                      // only, no text), with combined `+` codes and a terminal Oxford "and".
                       Name: 'Precautionary Statement Codes',
                       Value: {
-                        StringWithMarkup: [{ String: 'P210: Keep away from heat and open flames' }],
+                        StringWithMarkup: [
+                          {
+                            String:
+                              'P261, P264, P264+P265, P270, P280, P301+P317, P305+P351+P338, P405, and P501',
+                          },
+                        ],
                       },
                     },
                   ],
@@ -102,10 +109,17 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
       code: 'H319',
       statement: 'Causes serious eye irritation',
     });
+    // Precautionary statements parse to code-only entries (no fabricated text).
+    expect(result!.precautionaryStatements).toContainEqual({ code: 'P261', statement: '' });
+    // Combined `+` codes (pairs and triples) are preserved as single entries.
+    expect(result!.precautionaryStatements).toContainEqual({ code: 'P264+P265', statement: '' });
     expect(result!.precautionaryStatements).toContainEqual({
-      code: 'P210',
-      statement: 'Keep away from heat and open flames',
+      code: 'P305+P351+P338',
+      statement: '',
     });
+    // The terminal "and P501" is parsed without the leading conjunction.
+    expect(result!.precautionaryStatements).toContainEqual({ code: 'P501', statement: '' });
+    expect(result!.precautionaryStatements.map((p) => p.code)).not.toContain('and P501');
     expect(result!.source).toBe('European Chemicals Agency');
   });
 
@@ -224,14 +238,28 @@ describe('PubChemClient.getClassification — pharmacology parsing', () => {
               TOCHeading: 'Pharmacology and Biochemistry',
               Section: [
                 {
+                  // PubChem's real shapes — individual ("<Type> [TAG] - <Name>") and
+                  // combined ("<Name> [TAG]; …"); either alone covers all classes.
                   TOCHeading: 'FDA Pharmacological Classification',
                   Information: [
                     {
                       Value: {
                         StringWithMarkup: [
+                          { String: 'Mechanisms of Action [MoA] - Cyclooxygenase Inhibitors' },
                           {
                             String:
-                              'Pharmacological Classes: Nonsteroidal Anti-inflammatory Drug [EPC]; Anti-Inflammatory Agents, Non-Steroidal [CS]; Cyclooxygenase Inhibitors [MoA]',
+                              'Established Pharmacologic Class [EPC] - Nonsteroidal Anti-inflammatory Drug',
+                          },
+                          {
+                            String: 'Physiologic Effects [PE] - Decreased Prostaglandin Production',
+                          },
+                          {
+                            String:
+                              'Chemical Structure [CS] - Anti-Inflammatory Agents, Non-Steroidal',
+                          },
+                          {
+                            String:
+                              'Anti-Inflammatory Agents, Non-Steroidal [CS]; Nonsteroidal Anti-inflammatory Drug [EPC]; Cyclooxygenase Inhibitors [MoA]; Platelet Aggregation Inhibitor [EPC]; Decreased Prostaglandin Production [PE]',
                           },
                         ],
                       },
@@ -276,8 +304,15 @@ describe('PubChemClient.getClassification — pharmacology parsing', () => {
     const result = await client.getClassification(2244);
 
     expect(result).not.toBeNull();
+    // EPC → fdaClasses (the "Platelet Aggregation Inhibitor" class only appears in the
+    // combined shape, proving both parses land); MoA → fdaMechanisms.
     expect(result!.fdaClasses).toContain('Nonsteroidal Anti-inflammatory Drug');
+    expect(result!.fdaClasses).toContain('Platelet Aggregation Inhibitor');
     expect(result!.fdaMechanisms).toContain('Cyclooxygenase Inhibitors');
+    // CS and PE have no output field — they must not leak into fdaClasses or fdaMechanisms.
+    expect(result!.fdaClasses).not.toContain('Anti-Inflammatory Agents, Non-Steroidal');
+    expect(result!.fdaClasses).not.toContain('Decreased Prostaglandin Production');
+    expect(result!.fdaMechanisms).not.toContain('Decreased Prostaglandin Production');
     expect(result!.meshClasses).toContain('Anti-Inflammatory Agents, Non-Steroidal');
     expect(result!.meshClasses).toContain('Platelet Aggregation Inhibitors');
     expect(result!.atcCodes.map((a) => a.code)).toContain('N02BA01');
@@ -324,8 +359,7 @@ describe('PubChemClient.getClassification — pharmacology parsing', () => {
                   Value: {
                     StringWithMarkup: [
                       {
-                        String:
-                          'Pharmacological Classes: NSAID [EPC]; NSAID [EPC]; COX Inhibitor [MoA]',
+                        String: 'NSAID [EPC]; NSAID [EPC]; COX Inhibitor [MoA]',
                       },
                     ],
                   },

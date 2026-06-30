@@ -203,6 +203,21 @@ function parseCodedStatement(text: string): { code: string; statement: string } 
   return;
 }
 
+/** Parse PubChem's comma-separated precautionary code list — e.g.
+ * "P261, P264+P265, P305+P351+P338, P405, and P501" — into code-only entries.
+ * PubChem deposits precautionary statements as codes without descriptive text, so
+ * `statement` is always empty; we don't fabricate the standard P-statement text.
+ * Handles the terminal Oxford "and", combined (`Pxxx+Pyyy`) and triple codes, and
+ * skips any token that isn't a P-code. */
+function parsePrecautionaryCodes(text: string): Array<{ code: string; statement: string }> {
+  const entries: Array<{ code: string; statement: string }> = [];
+  for (const token of text.split(',')) {
+    const code = token.trim().replace(/^and\s+/i, '');
+    if (/^P\d{3}(?:\+P\d{3})*$/.test(code)) entries.push({ code, statement: '' });
+  }
+  return entries;
+}
+
 /** Map PubChem pictogram markup strings to human labels */
 const PICTOGRAM_LABELS: Record<string, string> = {
   GHS01: 'Explosive',
@@ -535,9 +550,11 @@ export class PubChemClient {
             if (parsed) result.hazardStatements.push(parsed);
           }
         } else if (name.includes('precautionary') && name.includes('statement')) {
+          // PubChem deposits precautionary statements as a single comma-separated code
+          // list (codes only, no text) — not the "Pxxx: text" shape parseCodedStatement
+          // expects. Split each list into individual code entries.
           for (const s of strings) {
-            const parsed = parseCodedStatement(s);
-            if (parsed) result.precautionaryStatements.push(parsed);
+            result.precautionaryStatements.push(...parsePrecautionaryCodes(s));
           }
         }
       }
@@ -578,21 +595,24 @@ export class PubChemClient {
         meshClasses: [],
       };
 
-      // FDA Pharmacological Classification
+      // FDA Pharmacological Classification — PubChem emits two redundant shapes
+      // (either alone covers all classes):
+      //   individual: "<Type> [TAG] - <Name>"        (name after the dash)
+      //   combined:   "<Name> [TAG]; <Name> [TAG]; …" (name before the tag)
+      // Bucket EPC → fdaClasses, MoA → fdaMechanisms; CS/PE have no output field.
       const fdaSection = findSection(sections, 'FDA Pharmacological Classification');
       if (fdaSection) {
-        const strings = extractStrings(fdaSection);
-        for (const s of strings) {
-          if (!s.startsWith('Pharmacological Classes:')) continue;
-          const classes = s.slice('Pharmacological Classes:'.length).trim();
-          for (const entry of classes.split(';')) {
+        for (const s of extractStrings(fdaSection)) {
+          for (const entry of s.split(';')) {
             const trimmed = entry.trim();
-            const tagMatch = trimmed.match(/^(.+?)\s*\[(\w+)\]$/);
-            if (!tagMatch) continue;
-            const [, name, tag] = tagMatch;
-            if (!name) continue;
-            if (tag === 'EPC' || tag === 'CS') result.fdaClasses.push(name.trim());
-            else if (tag === 'MoA') result.fdaMechanisms.push(name.trim());
+            if (!trimmed) continue;
+            const individual = trimmed.match(/^.+\[(\w+)\]\s*-\s*(.+)$/);
+            const tagAtEnd = individual ? null : trimmed.match(/^(.+?)\s*\[(\w+)\]$/);
+            const tag = individual?.[1] ?? tagAtEnd?.[2];
+            const name = (individual?.[2] ?? tagAtEnd?.[1])?.trim();
+            if (!tag || !name) continue;
+            if (tag === 'EPC') result.fdaClasses.push(name);
+            else if (tag === 'MoA') result.fdaMechanisms.push(name);
           }
         }
         result.fdaClasses = [...new Set(result.fdaClasses)];
