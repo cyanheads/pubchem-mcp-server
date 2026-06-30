@@ -194,6 +194,25 @@ describe('getCompoundDetails handler', () => {
     const result = await getCompoundDetails.handler(input, ctx);
 
     expect(result.compounds[0]!.synonyms).toEqual(['Aspirin', 'ASA', 'Acetylsalicylic acid']);
+    expect(result.compounds[0]!.synonymsTotal).toBe(3);
+  });
+
+  it('caps synonyms at maxSynonyms and reports total (#24)', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+    const allSyns = Array.from({ length: 697 }, (_, i) => `Synonym ${i}`);
+    mockClient.getSynonyms.mockResolvedValueOnce(allSyns);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244],
+      includeSynonyms: true,
+      maxSynonyms: 5,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+
+    expect(result.compounds[0]!.synonyms).toHaveLength(5);
+    // Head-of-list cap preserves PubChem's relevance ordering.
+    expect(result.compounds[0]!.synonyms![0]).toBe('Synonym 0');
+    expect(result.compounds[0]!.synonymsTotal).toBe(697);
   });
 
   it('strips CID from properties', async () => {

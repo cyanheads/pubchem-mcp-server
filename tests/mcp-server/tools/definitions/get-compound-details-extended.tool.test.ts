@@ -254,8 +254,9 @@ describe('getCompoundDetails format — additional cases', () => {
     expect(text).toContain('2/2 violations');
   });
 
-  it('renders synonyms with truncation when more than 20', () => {
-    const synonyms = Array.from({ length: 25 }, (_, i) => `Synonym-${i}`);
+  it('renders synonyms with the total and a truncation marker (#24)', () => {
+    // The handler caps `synonyms` to maxSynonyms and reports the full count via synonymsTotal.
+    const synonyms = Array.from({ length: 20 }, (_, i) => `Synonym-${i}`);
     const blocks = getCompoundDetails.format!({
       compounds: [
         {
@@ -263,11 +264,13 @@ describe('getCompoundDetails format — additional cases', () => {
           found: true,
           properties: {},
           synonyms,
+          synonymsTotal: 25,
         },
       ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).toContain('Synonym-0');
+    expect(text).toContain('25 total');
     expect(text).toContain('+5 more');
   });
 

@@ -155,6 +155,15 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .describe(
         'Fetch all known names and synonyms (trade names, systematic names, registry numbers). One API call per CID — slower than the property batch for large CID lists.',
       ),
+    maxSynonyms: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .default(20)
+      .describe(
+        'Max synonyms returned per compound (1-100). PubChem lists hundreds for common drugs; capped to keep the response focused. Default: 20.',
+      ),
     includeDrugLikeness: z
       .boolean()
       .default(false)
@@ -207,6 +216,12 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
                 'Total distinct descriptions available before truncation. Larger than descriptions.length when more sources exist — increase maxDescriptions to see them.',
               ),
             synonyms: z.array(z.string()).optional().describe('Known names and synonyms.'),
+            synonymsTotal: z
+              .number()
+              .optional()
+              .describe(
+                'Total synonyms available before truncation. Larger than synonyms.length when more exist — increase maxSynonyms to see them.',
+              ),
             drugLikeness: drugLikenessSchema
               .optional()
               .describe(
@@ -308,6 +323,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         found: boolean;
         properties: Record<string, unknown>;
         synonyms?: string[];
+        synonymsTotal?: number;
       } = { cid, found, properties };
 
       // Skip enrichment for CIDs not in PubChem — properties is already empty.
@@ -319,7 +335,10 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         compound.descriptionsTotal = allDescs.length;
       }
       const syns = synMap?.get(cid);
-      if (syns) compound.synonyms = syns;
+      if (syns) {
+        compound.synonyms = syns.slice(0, input.maxSynonyms);
+        compound.synonymsTotal = syns.length;
+      }
       if (input.includeDrugLikeness) compound.drugLikeness = computeDrugLikeness(properties);
       const cls = classMap?.get(cid);
       if (cls) compound.classification = cls;
@@ -467,11 +486,12 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         blocks.push(descLines.join('\n\n'));
       }
 
-      // Synonyms
+      // Synonyms (capped at maxSynonyms in the handler; total reported)
       if (c.synonyms && c.synonyms.length > 0) {
-        const synShown = c.synonyms.slice(0, 20);
-        const more = c.synonyms.length > 20 ? ` (+${c.synonyms.length - 20} more)` : '';
-        blocks.push(`\n**Synonyms:** ${synShown.join(', ')}${more}`);
+        const total = c.synonymsTotal ?? c.synonyms.length;
+        const more = total - c.synonyms.length;
+        const suffix = more > 0 ? ` (+${more} more)` : '';
+        blocks.push(`\n**Synonyms** (${total} total): ${c.synonyms.join(', ')}${suffix}`);
       }
 
       blocks.push('');
