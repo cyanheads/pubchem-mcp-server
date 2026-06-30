@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.3.0](changelog/0.3.x/0.3.0.md) — 2026-06-30
+
+Fix silent data loss in pubchem_get_compound_safety (precautionary statements) and pubchem_get_compound_details (FDA pharmacological classification), both parsing PubChem's real shapes; add a maxSynonyms cap; correct the server assay-routing instructions; adopt mcp-ts-core ^0.10.10
+
 ## [0.2.4](changelog/0.2.x/0.2.4.md) — 2026-06-20
 
 adopt @cyanheads/mcp-ts-core ^0.10.9 — check-dependency-specifiers devcheck step, plugin-manifest packaging lint, fresh-scaffold devcheck guards, vendored skill re-sync
