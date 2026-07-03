@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.4.0](changelog/0.4.x/0.4.0.md) — 2026-07-03
+
+Add maxAtoms/maxBonds/includeRawSdf output controls with truncation disclosure to pubchem_get_compound_3d_structure; frame upstream free text (descriptions, synonyms, interaction statements, GHS text, raw SDF) as delimited data in content[] to neutralize markdown-structure injection across six tools
+
 ## [0.3.1](changelog/0.3.x/0.3.1.md) — 2026-07-03
 
 Validate CID-shaped structure queries and blank/non-numeric target queries in pubchem_search_compounds and pubchem_search_assays before the upstream call; surface identifier-mode partial-batch misses and CID collisions via a new unresolvedIdentifiers field; add an empty-result notice to pubchem_get_compound_xrefs
