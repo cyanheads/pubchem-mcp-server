@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.4.1](changelog/0.4.x/0.4.1.md) — 2026-07-03
+
+Decode GHS precautionary (P-code) statements to standard text via a new lookup table in pubchem_get_compound_safety; append the asserted uM unit to target-kind activity values in pubchem_get_compound_interactions
+
 ## [0.4.0](changelog/0.4.x/0.4.0.md) — 2026-07-03
 
 Add maxAtoms/maxBonds/includeRawSdf output controls with truncation disclosure to pubchem_get_compound_3d_structure; frame upstream free text (descriptions, synonyms, interaction statements, GHS text, raw SDF) as delimited data in content[] to neutralize markdown-structure injection across six tools
