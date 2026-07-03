@@ -81,7 +81,7 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
                         StringWithMarkup: [
                           {
                             String:
-                              'P261, P264, P264+P265, P270, P280, P301+P317, P305+P351+P338, P405, and P501',
+                              'P261, P264, P264+P265, P270, P280, P301+P312, P301+P317, P305+P351+P338, P318, P405, and P501',
                           },
                         ],
                       },
@@ -109,16 +109,38 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
       code: 'H319',
       statement: 'Causes serious eye irritation',
     });
-    // Precautionary statements parse to code-only entries (no fabricated text).
-    expect(result!.precautionaryStatements).toContainEqual({ code: 'P261', statement: '' });
-    // Combined `+` codes (pairs and triples) are preserved as single entries.
-    expect(result!.precautionaryStatements).toContainEqual({ code: 'P264+P265', statement: '' });
+    // Precautionary codes decode to their exact UN GHS Rev. 10 Annex 3 text via the table.
+    expect(result!.precautionaryStatements).toContainEqual({
+      code: 'P261',
+      statement: 'Avoid breathing dust/fume/gas/mist/vapours/spray.',
+    });
+    // P280 carries the current Rev. 10 form — adds hearing protection and the trailing "/…".
+    expect(result!.precautionaryStatements).toContainEqual({
+      code: 'P280',
+      statement:
+        'Wear protective gloves/protective clothing/eye protection/face protection/hearing protection/…',
+    });
+    // A P316-family code (Rev. 8+, actively deposited by PubChem) decodes to its Rev. 10 text.
+    expect(result!.precautionaryStatements).toContainEqual({
+      code: 'P318',
+      statement: 'IF exposed or concerned, get medical advice.',
+    });
+    // Combined `+` codes (pairs and triples) are preserved as single entries and decoded
+    // from their own combined-key text, not a runtime join of individual codes.
+    expect(result!.precautionaryStatements).toContainEqual({
+      code: 'P264+P265',
+      statement: 'Wash hands thoroughly after handling. Do not touch eyes.',
+    });
     expect(result!.precautionaryStatements).toContainEqual({
       code: 'P305+P351+P338',
-      statement: '',
+      statement:
+        'IF IN EYES: Rinse cautiously with water for several minutes. Remove contact lenses, if present and easy to do. Continue rinsing.',
     });
-    // The terminal "and P501" is parsed without the leading conjunction.
+    // Codes with no Rev. 10 text fall back to "": P501 (free-fill disposal method) and
+    // P301+P312 (P312 was deleted in Rev. 10, superseded by the P316–P319 family).
     expect(result!.precautionaryStatements).toContainEqual({ code: 'P501', statement: '' });
+    expect(result!.precautionaryStatements).toContainEqual({ code: 'P301+P312', statement: '' });
+    // The terminal "and P501" is parsed without the leading conjunction.
     expect(result!.precautionaryStatements.map((p) => p.code)).not.toContain('and P501');
     expect(result!.source).toBe('European Chemicals Agency');
   });

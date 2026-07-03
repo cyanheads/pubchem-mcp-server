@@ -82,18 +82,20 @@ describe('PubChemClient.getInteractions (#12)', () => {
     const client = new PubChemClient();
     const { entries } = await client.getInteractions(5291, ['target'], 10);
 
+    // acvalue is PubChem's normalized micromolar figure — the asserted `uM` unit rides the
+    // text, and the numeric value is preserved (including the no-qualifier row).
     expect(entries).toEqual([
       {
         kind: 'target',
         source: 'ChEMBL',
         partner: 'ABL1 - ABL proto-oncogene 1, non-receptor tyrosine kinase (human)',
-        text: 'Kd = 0.001',
+        text: 'Kd = 0.001 uM',
       },
       {
         kind: 'target',
         source: 'ChEMBL',
         partner: 'KIT proto-oncogene (human)',
-        text: 'GI50 0.001',
+        text: 'GI50 0.001 uM',
       },
     ]);
 

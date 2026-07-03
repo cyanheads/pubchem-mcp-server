@@ -203,17 +203,146 @@ function parseCodedStatement(text: string): { code: string; statement: string } 
   return;
 }
 
+/** Standard GHS precautionary statement text, keyed by P-code exactly as
+ * `parsePrecautionaryCodes` emits it — individual codes ("P261") and combined codes
+ * ("P305+P351+P338") alike. Decoding a standardized code to its official text is a lookup,
+ * not fabrication — the same static-table decode already applied to pictogram codes.
+ * Primary reference: UN GHS Rev. 10 Annex 3 (2023) — the revision PubChem's GHS depositors
+ * follow — transcribed verbatim (British-English "vapours", consistent with the H-code text).
+ * Combined-code text is assembled from its component single statements, exactly as Annex 3
+ * §A3.2.5.2 prescribes. Codes carrying a free-fill "…" the label author must supply (P501
+ * disposal method, P411 temperature, P320/P321 first-aid reference) and codes deleted in
+ * Rev. 10 (P201, P202, and the P310–P315 family superseded by P316–P319) are omitted — they
+ * fall back to "". The one placeholder resolved rather than omitted is P264, rendered with its
+ * near-universal "hands" body-part fill ("Wash hands thoroughly after handling.") in place of
+ * the bare "Wash [and …] …" template — a decode a reader can act on. */
+const PRECAUTIONARY_STATEMENTS: Record<string, string> = {
+  // General (P1xx)
+  P101: 'If medical advice is needed, have product container or label at hand.',
+  P102: 'Keep out of reach of children.',
+  P103: 'Read carefully and follow all instructions.',
+  // Prevention (P2xx) — P201/P202 deleted in Rev. 10 (see docstring), omitted → "".
+  P203: 'Obtain, read and follow all safety instructions before use.',
+  P210: 'Keep away from heat, hot surfaces, sparks, open flames and other ignition sources. No smoking.',
+  P211: 'Do not spray on an open flame or other ignition source.',
+  P220: 'Keep away from clothing and other combustible materials.',
+  P222: 'Do not allow contact with air.',
+  P223: 'Do not allow contact with water.',
+  P232: 'Protect from moisture.',
+  P233: 'Keep container tightly closed.',
+  P234: 'Keep only in original packaging.',
+  P235: 'Keep cool.',
+  P240: 'Ground and bond container and receiving equipment.',
+  P242: 'Use non-sparking tools.',
+  P243: 'Take action to prevent static discharges.',
+  P244: 'Keep valves and fittings free from oil and grease.',
+  P251: 'Do not pierce or burn, even after use.',
+  P260: 'Do not breathe dust/fume/gas/mist/vapours/spray.',
+  P261: 'Avoid breathing dust/fume/gas/mist/vapours/spray.',
+  P262: 'Do not get in eyes, on skin, or on clothing.',
+  P263: 'Avoid contact during pregnancy and while nursing.',
+  P264: 'Wash hands thoroughly after handling.',
+  'P264+P265': 'Wash hands thoroughly after handling. Do not touch eyes.',
+  P265: 'Do not touch eyes.',
+  P270: 'Do not eat, drink or smoke when using this product.',
+  P271: 'Use only outdoors or with adequate ventilation.',
+  P272: 'Contaminated work clothing should not be allowed out of the workplace.',
+  P273: 'Avoid release to the environment.',
+  P280: 'Wear protective gloves/protective clothing/eye protection/face protection/hearing protection/…',
+  P282: 'Wear cold insulating gloves and either face shield or eye protection.',
+  P283: 'Wear fire resistant or flame-retardant clothing.',
+  P284: 'In case of inadequate ventilation wear respiratory protection.',
+  // Response (P3xx)
+  P301: 'IF SWALLOWED:',
+  'P301+P316': 'IF SWALLOWED: Get emergency medical help immediately.',
+  'P301+P317': 'IF SWALLOWED: Get medical help.',
+  'P301+P330+P331': 'IF SWALLOWED: Rinse mouth. Do NOT induce vomiting.',
+  P302: 'IF ON SKIN:',
+  'P302+P334': 'IF ON SKIN: Immerse in cool water [or wrap in wet bandages].',
+  'P302+P352': 'IF ON SKIN: Wash with plenty of water/…',
+  P303: 'IF ON SKIN (or hair):',
+  'P303+P361+P353':
+    'IF ON SKIN (or hair): Take off immediately all contaminated clothing. Rinse affected areas with water [or shower].',
+  P304: 'IF INHALED:',
+  'P304+P340': 'IF INHALED: Remove person to fresh air and keep comfortable for breathing.',
+  P305: 'IF IN EYES:',
+  'P305+P351+P338':
+    'IF IN EYES: Rinse cautiously with water for several minutes. Remove contact lenses, if present and easy to do. Continue rinsing.',
+  'P305+P354+P338':
+    'IF IN EYES: Immediately rinse with water for several minutes. Remove contact lenses, if present and easy to do. Continue rinsing.',
+  P306: 'IF ON CLOTHING:',
+  P308: 'IF exposed or concerned:',
+  'P308+P316': 'IF exposed or concerned: Get emergency medical help immediately.',
+  P316: 'Get emergency medical help immediately.',
+  P317: 'Get medical help.',
+  P318: 'IF exposed or concerned, get medical advice.',
+  P319: 'Get medical help if you feel unwell.',
+  // P320/P321 omitted — free-fill "(see … on this label)" first-aid reference, → "".
+  P330: 'Rinse mouth.',
+  P331: 'Do NOT induce vomiting.',
+  P332: 'If skin irritation occurs:',
+  'P332+P317': 'If skin irritation occurs: Get medical help.',
+  P333: 'If skin irritation or rash occurs:',
+  'P333+P317': 'If skin irritation or rash occurs: Get medical help.',
+  P334: 'Immerse in cool water [or wrap in wet bandages].',
+  P335: 'Brush off loose particles from skin.',
+  P337: 'If eye irritation persists:',
+  'P337+P317': 'If eye irritation persists: Get medical help.',
+  P338: 'Remove contact lenses, if present and easy to do. Continue rinsing.',
+  P340: 'Remove person to fresh air and keep comfortable for breathing.',
+  P342: 'If experiencing respiratory symptoms:',
+  'P342+P316': 'If experiencing respiratory symptoms: Get emergency medical help immediately.',
+  P351: 'Rinse cautiously with water for several minutes.',
+  P352: 'Wash with plenty of water/…',
+  P353: 'Rinse affected areas with water [or shower].',
+  P354: 'Immediately rinse with water for several minutes.',
+  P360: 'Rinse immediately contaminated clothing and skin with plenty of water before removing clothes.',
+  P361: 'Take off immediately all contaminated clothing.',
+  'P361+P364': 'Take off immediately all contaminated clothing and wash it before reuse.',
+  P362: 'Take off contaminated clothing.',
+  'P362+P364': 'Take off contaminated clothing and wash it before reuse.',
+  P363: 'Wash contaminated clothing before reuse.',
+  P364: 'And wash it before reuse.',
+  P370: 'In case of fire:',
+  P372: 'Explosion risk.',
+  P373: 'DO NOT fight fire when fire reaches explosives.',
+  P375: 'Fight fire remotely due to the risk of explosion.',
+  P376: 'Stop leak if safe to do so.',
+  P377: 'Leaking gas fire: Do not extinguish, unless leak can be stopped safely.',
+  P380: 'Evacuate area.',
+  P381: 'In case of leakage, eliminate all ignition sources.',
+  P390: 'Absorb spillage to prevent material damage.',
+  P391: 'Collect spillage.',
+  // Storage (P4xx)
+  P402: 'Store in a dry place.',
+  'P402+P404': 'Store in a dry place. Store in a closed container.',
+  P403: 'Store in a well-ventilated place.',
+  'P403+P233': 'Store in a well-ventilated place. Keep container tightly closed.',
+  'P403+P235': 'Store in a well-ventilated place. Keep cool.',
+  P404: 'Store in a closed container.',
+  P405: 'Store locked up.',
+  P407: 'Maintain air gap between stacks or pallets.',
+  P410: 'Protect from sunlight.',
+  'P410+P403': 'Protect from sunlight. Store in a well-ventilated place.',
+  P420: 'Store separately.',
+  // Disposal (P5xx)
+  P502: 'Refer to manufacturer or supplier for information on recovery or recycling.',
+};
+
 /** Parse PubChem's comma-separated precautionary code list — e.g.
- * "P261, P264+P265, P305+P351+P338, P405, and P501" — into code-only entries.
- * PubChem deposits precautionary statements as codes without descriptive text, so
- * `statement` is always empty; we don't fabricate the standard P-statement text.
- * Handles the terminal Oxford "and", combined (`Pxxx+Pyyy`) and triple codes, and
- * skips any token that isn't a P-code. */
+ * "P261, P264+P265, P305+P351+P338, P405, and P501" — into { code, statement } entries.
+ * PubChem deposits precautionary statements as bare codes (no text), so each code is decoded
+ * to its standard UN GHS statement via PRECAUTIONARY_STATEMENTS, falling back to "" for any
+ * code not in the table (free-fill placeholder or Rev. 10-deleted codes). Handles the terminal
+ * Oxford "and", combined (`Pxxx+Pyyy`) and triple codes, and skips any token that isn't a
+ * P-code. */
 function parsePrecautionaryCodes(text: string): Array<{ code: string; statement: string }> {
   const entries: Array<{ code: string; statement: string }> = [];
   for (const token of text.split(',')) {
     const code = token.trim().replace(/^and\s+/i, '');
-    if (/^P\d{3}(?:\+P\d{3})*$/.test(code)) entries.push({ code, statement: '' });
+    if (/^P\d{3}(?:\+P\d{3})*$/.test(code)) {
+      entries.push({ code, statement: PRECAUTIONARY_STATEMENTS[code] ?? '' });
+    }
   }
   return entries;
 }
@@ -884,10 +1013,13 @@ export class PubChemClient {
       const acname = typeof row.acname === 'string' ? row.acname : '';
       const qualifier = typeof row.acqualifier === 'string' ? row.acqualifier : '';
       const acvalue = row.acvalue == null ? '' : String(row.acvalue).trim();
-      // Faithful to the source: the bioactivity collection carries no unit column, so the raw
-      // activity value is surfaced without an asserted unit.
+      // The bioactivity collection exposes no unit column, but its acvalue is PubChem's
+      // normalized micromolar figure: depositors must submit AC-summary metrics (IC50/EC50/
+      // AC50/Ki/Potency) in µM, and these values cross-validate exactly against the
+      // assaysummary endpoint's "Activity Value [uM]" column. We assert that documented µM
+      // convention here — it is not a per-row unit fetched from SDQ (none exists to fetch).
       const activity =
-        acname && acvalue ? `${acname} ${qualifier} ${acvalue}`.replace(/\s+/g, ' ').trim() : '';
+        acname && acvalue ? `${acname} ${qualifier} ${acvalue} uM`.replace(/\s+/g, ' ').trim() : '';
       entries.push({
         kind: 'target',
         source: typeof row.aidsrcname === 'string' && row.aidsrcname ? row.aidsrcname : 'PubChem',
