@@ -6,6 +6,7 @@
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import type { GHSClassification } from '@/services/pubchem/types.js';
+import { inlineData } from './untrusted-text.js';
 
 const ghsSchema = z
   .object({
@@ -151,17 +152,17 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
 
       if (g.hazardStatements.length > 0) {
         lines.push('', '**Hazard Statements:**');
-        for (const h of g.hazardStatements) lines.push(`  ${h.code}: ${h.statement}`);
+        for (const h of g.hazardStatements) lines.push(`  ${h.code}: ${inlineData(h.statement)}`);
       }
 
       if (g.precautionaryStatements.length > 0) {
         lines.push('', '**Precautionary Statements:**');
         for (const p of g.precautionaryStatements) {
-          lines.push(p.statement ? `  ${p.code}: ${p.statement}` : `  ${p.code}`);
+          lines.push(p.statement ? `  ${p.code}: ${inlineData(p.statement)}` : `  ${p.code}`);
         }
       }
 
-      if (r.source) lines.push('', `*Source: ${r.source}*`);
+      if (r.source) lines.push('', `*Source: ${inlineData(r.source)}*`);
 
       blocks.push(lines.join('\n'), '');
     }

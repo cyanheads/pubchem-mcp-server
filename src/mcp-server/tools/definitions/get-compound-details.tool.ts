@@ -12,6 +12,7 @@ import type {
   DrugLikenessRule,
 } from '@/services/pubchem/types.js';
 import { COMPOUND_PROPERTIES, DEFAULT_PROPERTIES } from '@/services/pubchem/types.js';
+import { inlineData, quoteData } from './untrusted-text.js';
 
 const propertyEnum = z.enum(COMPOUND_PROPERTIES as unknown as [string, ...string[]]);
 
@@ -360,7 +361,9 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
 
       const p = c.properties as Record<string, unknown>;
       const name = (p.IUPACName as string) ?? (p.Title as string) ?? '';
-      const header = name ? `## CID ${c.cid} — ${name} (found)` : `## CID ${c.cid} (found)`;
+      const header = name
+        ? `## CID ${c.cid} — ${inlineData(name)} (found)`
+        : `## CID ${c.cid} (found)`;
       blocks.push(header);
 
       const lines: string[] = ['**Properties:**'];
@@ -474,8 +477,12 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
             : `\n**Descriptions** (${total} total)`;
         const descLines: string[] = [header];
         for (const d of c.descriptions) {
-          const label = d.source ? `**Description (${d.source}):**` : '**Description:**';
-          descLines.push(`${label} ${d.text}`);
+          // Upstream free text — render the statement as a blockquote data block
+          // so it reads as retrieved data, not server instructions.
+          const label = d.source
+            ? `**Description (${inlineData(d.source)}):**`
+            : '**Description:**';
+          descLines.push(`${label}\n${quoteData(d.text)}`);
         }
         const more = total - shown;
         if (more > 0) {
@@ -491,7 +498,8 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         const total = c.synonymsTotal ?? c.synonyms.length;
         const more = total - c.synonyms.length;
         const suffix = more > 0 ? ` (+${more} more)` : '';
-        blocks.push(`\n**Synonyms** (${total} total): ${c.synonyms.join(', ')}${suffix}`);
+        const syns = c.synonyms.map(inlineData).join(', ');
+        blocks.push(`\n**Synonyms** (${total} total): ${syns}${suffix}`);
       }
 
       blocks.push('');

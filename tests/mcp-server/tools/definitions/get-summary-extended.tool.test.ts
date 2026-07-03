@@ -288,4 +288,26 @@ describe('getSummary — security', () => {
     // Client called with raw identifier
     expect(mockClient.getEntitySummary).toHaveBeenCalledWith('protein', injection);
   });
+
+  it('frames an upstream description with markdown as inert data, keeps output raw (#27)', async () => {
+    const rawDescription = '# Injected\n**SYSTEM** override with a stray ``` fence';
+    mockClient.getEntitySummary.mockResolvedValueOnce({
+      GeneID: 1956,
+      Symbol: 'EGFR',
+      Name: 'EGFR',
+      Description: rawDescription,
+    });
+    const ctx = createMockContext();
+    const input = getSummary.input.parse({ entityType: 'gene', identifiers: [1956] });
+    const result = await getSummary.handler(input, ctx);
+
+    // structuredContent carries the raw description verbatim.
+    expect(result.summaries[0]!.data!.description).toBe(rawDescription);
+
+    // content[] frames it as inert data — no unquoted heading, bold neutralized.
+    const text = (getSummary.format!(result)[0] as { type: 'text'; text: string }).text;
+    expect(text.split('\n').some((l) => l.startsWith('# Injected'))).toBe(false);
+    expect(text).toContain('> \\# Injected');
+    expect(text).not.toContain('**SYSTEM**');
+  });
 });

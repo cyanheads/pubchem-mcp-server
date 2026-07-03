@@ -6,6 +6,7 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { inlineData } from './untrusted-text.js';
 
 export const getBioactivity = tool('pubchem_get_bioactivity', {
   title: 'Get Bioactivity',
@@ -205,7 +206,7 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       const target = [r.targetGeneId ? `GeneID:${r.targetGeneId}` : undefined, r.targetAccession]
         .filter(Boolean)
         .join(' — ');
-      lines.push(`**AID ${r.aid}** — ${r.assayName} (${r.outcome})`);
+      lines.push(`**AID ${r.aid}** — ${inlineData(r.assayName)} (${r.outcome})`);
       if (target) lines.push(`  Target: ${target}`);
       for (const av of r.activityValues) {
         const label = av.name ?? 'Value';

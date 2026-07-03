@@ -3,7 +3,7 @@
  * @module mcp-server/tools/definitions/get-compound-3d-structure.test
  */
 
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompound3dStructure } from '@/mcp-server/tools/definitions/get-compound-3d-structure.tool.js';
 
@@ -115,5 +115,117 @@ describe('getCompound3dStructure format', () => {
       sdf: 'RAWSDFBODY',
     });
     expect((blocks[0]! as { type: 'text'; text: string }).text).toContain('RAWSDFBODY');
+  });
+
+  it('wraps the SDF in an injection-safe fence so a stray ``` cannot break out (#27)', () => {
+    const blocks = getCompound3dStructure.format!({
+      cid: 2244,
+      atomCount: 0,
+      bondCount: 0,
+      sdf: 'header\n```\nmalicious markdown',
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    // The fence is lengthened past the 3-backtick run in the payload.
+    expect(text).toContain('````');
+    // Content is preserved verbatim inside the fence.
+    expect(text).toContain('header\n```\nmalicious markdown');
+  });
+});
+
+// A 3-header + counts + 600 atom lines + terminators SDF: > DEFAULT_SDF_LINE_CAP (500).
+const bigSdf = [
+  'big',
+  '  -OEChem-fixture',
+  '',
+  '600  0  0     0  0  0  0  0  0999 V2000',
+  ...Array.from({ length: 600 }, () => atomLine(0, 0, 0, 'C')),
+  'M  END',
+  '$$$$',
+].join('\n');
+
+describe('getCompound3dStructure — output controls (#28)', () => {
+  it('default output is full for a small compound — no caps hit, no truncation disclosure', async () => {
+    mockClient.getSdf3d.mockResolvedValueOnce(SDF);
+    const ctx = createMockContext();
+    const input = getCompound3dStructure.input.parse({ cid: 2244 });
+    const result = await getCompound3dStructure.handler(input, ctx);
+
+    expect(result.atoms).toHaveLength(3);
+    expect(result.bonds).toHaveLength(2);
+    expect(getEnrichment(ctx).truncated).toBeUndefined();
+  });
+
+  it('caps atoms and bonds, discloses truncation, and preserves the totals', async () => {
+    mockClient.getSdf3d.mockResolvedValueOnce(SDF);
+    const ctx = createMockContext();
+    const input = getCompound3dStructure.input.parse({ cid: 2244, maxAtoms: 2, maxBonds: 1 });
+    const result = await getCompound3dStructure.handler(input, ctx);
+
+    // Preview is bounded...
+    expect(result.atoms).toHaveLength(2);
+    expect(result.bonds).toHaveLength(1);
+    // ...but atomCount/bondCount still report the full totals.
+    expect(result.atomCount).toBe(3);
+    expect(result.bondCount).toBe(2);
+
+    const e = getEnrichment(ctx);
+    expect(e.truncated).toBe(true);
+    expect(e.shownAtoms).toBe(2);
+    expect(e.shownBonds).toBe(1);
+    expect(e.atomCap).toBe(2);
+    expect(e.bondCap).toBe(1);
+    expect(e.notice).toContain('maxAtoms');
+    expect(e.notice).toContain('maxBonds');
+  });
+
+  it('renders a truncation note in content[] when the preview is capped', () => {
+    const blocks = getCompound3dStructure.format!({
+      cid: 2244,
+      atomCount: 3,
+      bondCount: 2,
+      atoms: [{ element: 'O', x: 1, y: 2, z: 3 }],
+      bonds: [{ a1: 1, a2: 2, order: 1 }],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(text).toContain('Showing 1 of 3 atoms');
+    expect(text).toContain('Showing 1 of 2 bonds');
+  });
+
+  it('line-caps a large raw SDF by default and discloses it', async () => {
+    mockClient.getSdf3d.mockResolvedValueOnce(bigSdf);
+    const ctx = createMockContext();
+    const input = getCompound3dStructure.input.parse({ cid: 2244, format: 'sdf' });
+    const result = await getCompound3dStructure.handler(input, ctx);
+
+    expect(result.sdf!.split('\n')).toHaveLength(500);
+    expect(result.sdf!.length).toBeLessThan(bigSdf.length);
+    const e = getEnrichment(ctx);
+    expect(e.truncated).toBe(true);
+    expect(e.shownSdfLines).toBe(500);
+    expect(e.notice).toContain('includeRawSdf');
+  });
+
+  it('returns the full raw SDF when includeRawSdf is set', async () => {
+    mockClient.getSdf3d.mockResolvedValueOnce(bigSdf);
+    const ctx = createMockContext();
+    const input = getCompound3dStructure.input.parse({
+      cid: 2244,
+      format: 'sdf',
+      includeRawSdf: true,
+    });
+    const result = await getCompound3dStructure.handler(input, ctx);
+
+    expect(result.sdf).toBe(bigSdf);
+    expect(getEnrichment(ctx).truncated).toBeUndefined();
+  });
+
+  it('leaves a small raw SDF unchanged by default (under the line cap)', async () => {
+    mockClient.getSdf3d.mockResolvedValueOnce(SDF);
+    const ctx = createMockContext();
+    const input = getCompound3dStructure.input.parse({ cid: 2244, format: 'sdf' });
+    const result = await getCompound3dStructure.handler(input, ctx);
+
+    expect(result.sdf).toBe(SDF);
+    expect(getEnrichment(ctx).truncated).toBeUndefined();
   });
 });

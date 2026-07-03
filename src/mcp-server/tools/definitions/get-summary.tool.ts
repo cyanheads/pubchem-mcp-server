@@ -5,6 +5,7 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { inlineData, quoteData } from './untrusted-text.js';
 
 const entityTypeEnum = z.enum(['assay', 'gene', 'protein', 'taxonomy']);
 
@@ -138,17 +139,27 @@ export const getSummary = tool('pubchem_get_summary', {
 
       const d = s.data;
       const displayName = d.name ?? d.symbol ?? String(s.identifier);
-      lines.push(`**${displayName}** (identifier: ${s.identifier}, found)`);
+      lines.push(`**${inlineData(displayName)}** (identifier: ${s.identifier}, found)`);
 
       for (const [key, value] of Object.entries(d)) {
         if (value == null || key === 'name') continue;
+        // description is upstream prose — frame it as a blockquote data block.
+        if (key === 'description' && typeof value === 'string') {
+          lines.push(`  ${formatKey(key)}:`);
+          for (const q of quoteData(value).split('\n')) lines.push(`  ${q}`);
+          continue;
+        }
         if (Array.isArray(value)) {
           if (value.length === 0) continue;
+          // synonyms / lineage — upstream free text; escape each element inline.
+          const items = value.map((v) => inlineData(String(v)));
           const display =
-            value.length > 10
-              ? `${value.slice(0, 10).join(', ')} (+${value.length - 10} more)`
-              : value.join(', ');
+            items.length > 10
+              ? `${items.slice(0, 10).join(', ')} (+${items.length - 10} more)`
+              : items.join(', ');
           lines.push(`  ${formatKey(key)}: ${display}`);
+        } else if (typeof value === 'string') {
+          lines.push(`  ${formatKey(key)}: ${inlineData(value)}`);
         } else {
           lines.push(`  ${formatKey(key)}: ${value}`);
         }

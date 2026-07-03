@@ -469,7 +469,9 @@ describe('getCompoundDetails format', () => {
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).not.toContain('more description');
-    expect(text).toContain('**Description:** only one');
+    // Description text is framed as a blockquote data block under the label (#27).
+    expect(text).toContain('**Description:**');
+    expect(text).toContain('> only one');
   });
 
   it('renders not-found header for missing CIDs (#5 regression)', () => {

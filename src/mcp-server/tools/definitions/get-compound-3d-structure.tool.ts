@@ -7,6 +7,16 @@ import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { parseSdfV2000 } from '@/services/pubchem/sdf-parser.js';
+import { fencedData } from './untrusted-text.js';
+
+/**
+ * Safe-default ceilings applied when the caller sets no explicit cap. Sized to
+ * pass small drug-like conformers (aspirin: 21 atoms/bonds, ~60 SDF lines)
+ * through unchanged while bounding pathologically large records.
+ */
+const DEFAULT_ATOM_CAP = 200;
+const DEFAULT_BOND_CAP = 200;
+const DEFAULT_SDF_LINE_CAP = 500;
 
 export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', {
   title: 'Get Compound 3D Structure',
@@ -34,6 +44,28 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       .default(false)
       .describe(
         'List the IDs of additional computed conformers beyond the default. Adds one extra API call. Default: false.',
+      ),
+    maxAtoms: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Cap the atoms returned in the format="json" preview. atomCount always reports the full total; omitted rows are disclosed via the truncated/shownAtoms enrichment. Defaults to the first 200 atoms.',
+      ),
+    maxBonds: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe(
+        'Cap the bonds returned in the format="json" preview. bondCount always reports the full total; omitted rows are disclosed via the truncated/shownBonds enrichment. Defaults to the first 200 bonds.',
+      ),
+    includeRawSdf: z
+      .boolean()
+      .default(false)
+      .describe(
+        'For format="sdf", return the complete raw V2000 SDF even when it exceeds the safe line cap. Default false: an SDF longer than 500 lines is line-capped with disclosure. No effect when format="json".',
       ),
   }),
   output: z.object({
@@ -79,6 +111,53 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
         'Conformer IDs beyond the default. Present when includeAlternateConformerIds is set and alternates exist.',
       ),
   }),
+  // Agent-facing context — truncation disclosure when a preview is capped below
+  // the total. Reaches structuredContent and content[]; keys disjoint from output
+  // (atomCount/bondCount always report the full totals). Follows the sibling
+  // truncated/shown/cap convention, split per-list because atoms, bonds, and the
+  // raw SDF cap independently.
+  enrichment: {
+    truncated: z
+      .boolean()
+      .optional()
+      .describe(
+        'True when the atom list, bond list, or raw SDF was capped below its total. atomCount/bondCount always report the full totals.',
+      ),
+    shownAtoms: z
+      .number()
+      .optional()
+      .describe(
+        'Atoms returned after the cap, when fewer than atomCount. Raise maxAtoms for more.',
+      ),
+    shownBonds: z
+      .number()
+      .optional()
+      .describe(
+        'Bonds returned after the cap, when fewer than bondCount. Raise maxBonds for more.',
+      ),
+    atomCap: z
+      .number()
+      .optional()
+      .describe(
+        'The atom cap applied (explicit maxAtoms or the safe default), when the atom list was capped.',
+      ),
+    bondCap: z
+      .number()
+      .optional()
+      .describe(
+        'The bond cap applied (explicit maxBonds or the safe default), when the bond list was capped.',
+      ),
+    shownSdfLines: z
+      .number()
+      .optional()
+      .describe(
+        'SDF lines returned when format="sdf" and the raw text was line-capped. Set includeRawSdf for the full record.',
+      ),
+    notice: z
+      .string()
+      .optional()
+      .describe('Guidance naming which lists were capped and how to widen them.'),
+  },
   errors: [
     {
       reason: 'no_3d_structure',
@@ -107,11 +186,24 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       alternateConformerIds?: string[];
     } = { cid: input.cid, atomCount: parsed.atomCount, bondCount: parsed.bondCount };
 
+    const atomCap = input.maxAtoms ?? DEFAULT_ATOM_CAP;
+    const bondCap = input.maxBonds ?? DEFAULT_BOND_CAP;
+
+    let sdfTruncated = false;
+    let shownSdfLines = 0;
+
     if (input.format === 'json') {
-      out.atoms = parsed.atoms;
-      out.bonds = parsed.bonds;
+      out.atoms = parsed.atoms.slice(0, atomCap);
+      out.bonds = parsed.bonds.slice(0, bondCap);
     } else {
-      out.sdf = sdf;
+      const sdfLines = sdf.split(/\r\n?|\n/);
+      if (input.includeRawSdf || sdfLines.length <= DEFAULT_SDF_LINE_CAP) {
+        out.sdf = sdf;
+      } else {
+        out.sdf = sdfLines.slice(0, DEFAULT_SDF_LINE_CAP).join('\n');
+        sdfTruncated = true;
+        shownSdfLines = DEFAULT_SDF_LINE_CAP;
+      }
     }
 
     if (input.includeAlternateConformerIds) {
@@ -129,6 +221,29 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       atoms: parsed.atomCount,
       bonds: parsed.bondCount,
     });
+
+    // Truncation disclosure — atoms, bonds, and SDF each cap independently.
+    const atomsTruncated = out.atoms !== undefined && parsed.atomCount > out.atoms.length;
+    const bondsTruncated = out.bonds !== undefined && parsed.bondCount > out.bonds.length;
+    if (atomsTruncated || bondsTruncated || sdfTruncated) {
+      ctx.enrich({
+        truncated: true,
+        ...(atomsTruncated ? { shownAtoms: out.atoms?.length, atomCap } : {}),
+        ...(bondsTruncated ? { shownBonds: out.bonds?.length, bondCap } : {}),
+        ...(sdfTruncated ? { shownSdfLines } : {}),
+      });
+      const parts: string[] = [];
+      if (atomsTruncated) {
+        parts.push(`atoms (${out.atoms?.length} of ${parsed.atomCount}; raise maxAtoms)`);
+      }
+      if (bondsTruncated) {
+        parts.push(`bonds (${out.bonds?.length} of ${parsed.bondCount}; raise maxBonds)`);
+      }
+      if (sdfTruncated) {
+        parts.push(`SDF (first ${shownSdfLines} lines; set includeRawSdf for the full record)`);
+      }
+      ctx.enrich.notice(`Output capped — ${parts.join('; ')}.`);
+    }
 
     return out;
   },
@@ -149,6 +264,11 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       for (const a of result.atoms) {
         lines.push(`  ${a.element}: ${a.x}, ${a.y}, ${a.z}`);
       }
+      if (result.atomCount > result.atoms.length) {
+        lines.push(
+          `  _Showing ${result.atoms.length} of ${result.atomCount} atoms — raise maxAtoms for the rest._`,
+        );
+      }
     }
 
     if (result.bonds && result.bonds.length > 0) {
@@ -156,10 +276,17 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       for (const b of result.bonds) {
         lines.push(`  ${b.a1}–${b.a2}, order ${b.order}`);
       }
+      if (result.bondCount > result.bonds.length) {
+        lines.push(
+          `  _Showing ${result.bonds.length} of ${result.bondCount} bonds — raise maxBonds for the rest._`,
+        );
+      }
     }
 
     if (result.sdf) {
-      lines.push('', '**SDF (V2000):**', '```', result.sdf.trimEnd(), '```');
+      // fencedData lengthens the fence past any backtick run in the payload so a
+      // stray ``` in the SDF cannot break out of the code block.
+      lines.push('', '**SDF (V2000):**', fencedData(result.sdf.trimEnd()));
     }
 
     return [{ type: 'text', text: lines.join('\n') }];

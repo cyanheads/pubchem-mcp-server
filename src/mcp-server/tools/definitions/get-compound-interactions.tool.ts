@@ -5,6 +5,7 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { inlineData, quoteData } from './untrusted-text.js';
 
 export const getCompoundInteractions = tool('pubchem_get_compound_interactions', {
   title: 'Get Compound Interactions',
@@ -130,9 +131,12 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
     }
 
     for (const e of result.entries) {
-      const partner = e.partner ? ` **${e.partner}**` : '';
-      const severity = e.severity ? ` [severity: ${e.severity}]` : '';
-      lines.push(`- (${e.kind})${partner}${severity} ${e.text} _(source: ${e.source})_`);
+      const partner = e.partner ? ` **${inlineData(e.partner)}**` : '';
+      const severity = e.severity ? ` [severity: ${inlineData(e.severity)}]` : '';
+      lines.push(`- (${e.kind})${partner}${severity} _(source: ${inlineData(e.source)})_`);
+      // The interaction statement is upstream free text — render it as an
+      // indented blockquote so the data/instruction boundary is explicit.
+      for (const q of quoteData(e.text).split('\n')) lines.push(`  ${q}`);
     }
 
     return [{ type: 'text', text: lines.join('\n') }];
