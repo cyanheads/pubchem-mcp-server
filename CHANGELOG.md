@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.3.1](changelog/0.3.x/0.3.1.md) — 2026-07-03
+
+Validate CID-shaped structure queries and blank/non-numeric target queries in pubchem_search_compounds and pubchem_search_assays before the upstream call; surface identifier-mode partial-batch misses and CID collisions via a new unresolvedIdentifiers field; add an empty-result notice to pubchem_get_compound_xrefs
+
 ## [0.3.0](changelog/0.3.x/0.3.0.md) — 2026-06-30 · 🛡️ Security
 
 Fix silent data loss in pubchem_get_compound_safety (precautionary statements) and pubchem_get_compound_details (FDA pharmacological classification), both parsing PubChem's real shapes; add a maxSynonyms cap; correct the server assay-routing instructions; adopt mcp-ts-core ^0.10.10; clear 8 transitive security advisories
