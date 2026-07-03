@@ -93,6 +93,66 @@ describe('searchCompounds handler — identifier batch edge cases', () => {
     expect(result.results).toHaveLength(3);
   });
 
+  it('surfaces unresolvedIdentifiers and a partial-miss notice (#29)', async () => {
+    // water → 962, notreal1zzz → [], caffeine → 2519, notreal2zzz → []
+    mockClient.searchByName
+      .mockResolvedValueOnce([962])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([2519])
+      .mockResolvedValueOnce([]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['water', 'notreal1zzz', 'caffeine', 'notreal2zzz'],
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.results).toHaveLength(2);
+    expect(result.unresolvedIdentifiers).toEqual(['notreal1zzz', 'notreal2zzz']);
+    expect(enrichment.notice).toBeDefined();
+    expect(enrichment.notice).toContain('2 of 4');
+    expect(enrichment.notice).toContain('notreal1zzz');
+    expect(enrichment.notice).toContain('notreal2zzz');
+  });
+
+  it('omits unresolvedIdentifiers when every identifier resolves (#29)', async () => {
+    mockClient.searchByName.mockResolvedValueOnce([962]).mockResolvedValueOnce([2519]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['water', 'caffeine'],
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.unresolvedIdentifiers).toBeUndefined();
+    expect(enrichment.notice).toBeUndefined();
+  });
+
+  it('signals a CID collision when two distinct identifiers resolve to the same CID (#29)', async () => {
+    // Both names resolve to CID 2244 — the result row can echo only one.
+    mockClient.searchByName.mockResolvedValueOnce([2244]).mockResolvedValueOnce([2244]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin', 'acetylsalicylic acid'],
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.results).toHaveLength(1);
+    // First requester in input order deterministically wins the echo.
+    expect(result.results[0]!.identifier).toBe('aspirin');
+    expect(enrichment.notice).toBeDefined();
+    expect(enrichment.notice).toContain('CID 2244');
+    expect(enrichment.notice).toContain('aspirin');
+    expect(enrichment.notice).toContain('acetylsalicylic acid');
+  });
+
   it('accepts maximum 25 identifiers', () => {
     const ids = Array.from({ length: 25 }, (_, i) => `compound${i}`);
     expect(() =>
@@ -174,6 +234,70 @@ describe('searchCompounds handler — boundary values', () => {
         threshold: 69,
       }),
     ).toThrow();
+  });
+});
+
+describe('searchCompounds handler — cid-query validation (#26)', () => {
+  it('throws invalid_cid_query when queryType "cid" query is not a CID', async () => {
+    const ctx = createMockContext({ errors: searchCompounds.errors });
+    const input = searchCompounds.input.parse({
+      searchType: 'similarity',
+      query: 'not-a-cid',
+      queryType: 'cid',
+      maxResults: 3,
+    });
+    await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.ValidationError,
+      data: { reason: 'invalid_cid_query' },
+    });
+    // Rejected before the upstream call — no raw PubChem 400.
+    expect(mockClient.searchByStructure).not.toHaveBeenCalled();
+  });
+
+  it('throws invalid_cid_query when queryType "cid" query is "0"', async () => {
+    const ctx = createMockContext({ errors: searchCompounds.errors });
+    const input = searchCompounds.input.parse({
+      searchType: 'substructure',
+      query: '0',
+      queryType: 'cid',
+    });
+    await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
+      data: { reason: 'invalid_cid_query' },
+    });
+    expect(mockClient.searchByStructure).not.toHaveBeenCalled();
+  });
+
+  it('accepts a positive-integer CID query with queryType "cid"', async () => {
+    mockClient.searchByStructure.mockResolvedValueOnce([1, 2]);
+    const ctx = createMockContext({ errors: searchCompounds.errors });
+    const input = searchCompounds.input.parse({
+      searchType: 'similarity',
+      query: '2244',
+      queryType: 'cid',
+    });
+    const result = await searchCompounds.handler(input, ctx);
+
+    expect(result.results).toHaveLength(2);
+    expect(mockClient.searchByStructure).toHaveBeenCalledWith('similarity', '2244', 'cid', 90);
+  });
+
+  it('does not apply the CID shape check to smiles queries', async () => {
+    mockClient.searchByStructure.mockResolvedValueOnce([100]);
+    const ctx = createMockContext({ errors: searchCompounds.errors });
+    const input = searchCompounds.input.parse({
+      searchType: 'substructure',
+      query: 'not-a-cid-but-a-smiles',
+      queryType: 'smiles',
+    });
+    const result = await searchCompounds.handler(input, ctx);
+
+    expect(result.results).toHaveLength(1);
+    expect(mockClient.searchByStructure).toHaveBeenCalledWith(
+      'substructure',
+      'not-a-cid-but-a-smiles',
+      'smiles',
+      90,
+    );
   });
 });
 
@@ -289,6 +413,28 @@ describe('searchCompounds handler — properties hydration edge cases', () => {
 });
 
 describe('searchCompounds format — additional cases', () => {
+  it('renders unresolvedIdentifiers alongside results (#29)', () => {
+    const blocks = searchCompounds.format!({
+      results: [{ cid: 962, identifier: 'water' }],
+      unresolvedIdentifiers: ['notreal1zzz', 'notreal2zzz'],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(text).toContain('water');
+    expect(text).toContain('Unresolved identifiers');
+    expect(text).toContain('notreal1zzz');
+    expect(text).toContain('notreal2zzz');
+  });
+
+  it('renders unresolvedIdentifiers even when all identifiers missed (#29)', () => {
+    const blocks = searchCompounds.format!({
+      results: [],
+      unresolvedIdentifiers: ['notreal1zzz'],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(text).toContain('No results');
+    expect(text).toContain('notreal1zzz');
+  });
+
   it('formats single CID without identifier', () => {
     const blocks = searchCompounds.format!({
       results: [{ cid: 5988 }],

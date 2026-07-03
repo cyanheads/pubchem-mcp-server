@@ -3,6 +3,7 @@
  * @module mcp-server/tools/definitions/search-assays-extended.test
  */
 
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchAssays } from '@/mcp-server/tools/definitions/search-assays.tool.js';
@@ -63,6 +64,69 @@ describe('searchAssays handler — all target types', () => {
 
     expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith('geneid', '5743');
     expect(result.aids).toEqual([600]);
+  });
+});
+
+describe('searchAssays handler — target query validation (#26)', () => {
+  it('throws blank_target_query for an empty targetQuery', async () => {
+    const ctx = createMockContext({ errors: searchAssays.errors });
+    const input = searchAssays.input.parse({ targetType: 'genesymbol', targetQuery: '' });
+    await expect(searchAssays.handler(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.ValidationError,
+      data: { reason: 'blank_target_query' },
+    });
+    expect(mockClient.searchAssaysByTarget).not.toHaveBeenCalled();
+  });
+
+  it('throws blank_target_query for a whitespace-only targetQuery', async () => {
+    const ctx = createMockContext({ errors: searchAssays.errors });
+    const input = searchAssays.input.parse({ targetType: 'genesymbol', targetQuery: '   ' });
+    await expect(searchAssays.handler(input, ctx)).rejects.toMatchObject({
+      data: { reason: 'blank_target_query' },
+    });
+    expect(mockClient.searchAssaysByTarget).not.toHaveBeenCalled();
+  });
+
+  it('throws invalid_geneid_query for a non-numeric geneid targetQuery', async () => {
+    const ctx = createMockContext({ errors: searchAssays.errors });
+    const input = searchAssays.input.parse({ targetType: 'geneid', targetQuery: 'not-a-number' });
+    await expect(searchAssays.handler(input, ctx)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.ValidationError,
+      data: { reason: 'invalid_geneid_query' },
+    });
+    // Rejected before the upstream call — no raw PubChem 400.
+    expect(mockClient.searchAssaysByTarget).not.toHaveBeenCalled();
+  });
+
+  it('accepts a numeric geneid targetQuery', async () => {
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([600]);
+    const ctx = createMockContext({ errors: searchAssays.errors });
+    const input = searchAssays.input.parse({ targetType: 'geneid', targetQuery: '1956' });
+    const result = await searchAssays.handler(input, ctx);
+
+    expect(result.aids).toEqual([600]);
+    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith('geneid', '1956');
+  });
+
+  it('does not apply the geneid shape check to text target types', async () => {
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([1]);
+    const ctx = createMockContext({ errors: searchAssays.errors });
+    const input = searchAssays.input.parse({ targetType: 'genesymbol', targetQuery: 'EGFR' });
+    const result = await searchAssays.handler(input, ctx);
+
+    expect(result.aids).toEqual([1]);
+  });
+
+  it('trims surrounding whitespace before searching', async () => {
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([7]);
+    const ctx = createMockContext({ errors: searchAssays.errors });
+    const input = searchAssays.input.parse({ targetType: 'genesymbol', targetQuery: '  EGFR  ' });
+    const result = await searchAssays.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.aids).toEqual([7]);
+    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith('genesymbol', 'EGFR');
+    expect(enrichment.targetQuery).toBe('EGFR');
   });
 });
 
