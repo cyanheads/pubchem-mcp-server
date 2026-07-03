@@ -69,6 +69,17 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       )
       .describe('Cross-references grouped by type.'),
   }),
+  // Agent-facing context — an empty-result notice distinguishing a nonexistent CID from a
+  // real compound that simply has none of the requested xref types. Reaches structuredContent
+  // and content[]; keys disjoint from output (cid/xrefs live there).
+  enrichment: {
+    notice: z
+      .string()
+      .optional()
+      .describe(
+        'Recovery guidance when every requested xref type returned zero IDs — hints to verify the CID. Absent when any cross-references were found.',
+      ),
+  },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
@@ -99,6 +110,14 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       types: input.xrefTypes,
       totalIds: xrefs.reduce((sum, x) => sum + x.ids.length, 0),
     });
+
+    // Empty-result signal (#30): every requested type came back empty — either the CID
+    // doesn't exist or it genuinely has none of these xref types. Point at CID verification.
+    if (xrefs.every((x) => x.totalAvailable === 0)) {
+      ctx.enrich.notice(
+        `No cross-references found for CID ${input.cid} across the requested type(s): ${input.xrefTypes.join(', ')}. The compound may have none of these xref types, or verify the CID with pubchem_search_compounds.`,
+      );
+    }
 
     return { cid: input.cid, xrefs };
   },

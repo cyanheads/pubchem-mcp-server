@@ -3,7 +3,7 @@
  * @module mcp-server/tools/definitions/get-compound-xrefs-extended.test
  */
 
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundXrefs } from '@/mcp-server/tools/definitions/get-compound-xrefs.tool.js';
 
@@ -99,6 +99,38 @@ describe('getCompoundXrefs handler — sequential fetching', () => {
     expect(result.xrefs[0]!.ids).toHaveLength(0);
     expect(result.xrefs[0]!.truncated).toBe(false);
     expect(result.xrefs[1]!.ids).toEqual(['50-78-2']);
+  });
+});
+
+describe('getCompoundXrefs handler — empty-result notice (#30)', () => {
+  it('emits a notice when every requested type returns zero IDs', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const ctx = createMockContext();
+    const input = getCompoundXrefs.input.parse({
+      cid: 999999999,
+      xrefTypes: ['RN', 'PubMedID'],
+    });
+    const result = await getCompoundXrefs.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.xrefs.every((x) => x.totalAvailable === 0)).toBe(true);
+    expect(enrichment.notice).toBeDefined();
+    expect(typeof enrichment.notice).toBe('string');
+    expect(enrichment.notice).toContain('999999999');
+    expect(enrichment.notice).toContain('pubchem_search_compounds');
+  });
+
+  it('does not emit a notice when at least one type has results', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce([]).mockResolvedValueOnce([12345]);
+    const ctx = createMockContext();
+    const input = getCompoundXrefs.input.parse({
+      cid: 2244,
+      xrefTypes: ['GeneID', 'PubMedID'],
+    });
+    await getCompoundXrefs.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.notice).toBeUndefined();
   });
 });
 
