@@ -33,7 +33,12 @@ const entitySummaryDataSchema = z.object({
   scientificName: z.string().optional().describe('Scientific name (taxonomy summaries).'),
   commonName: z.string().optional().describe('Common name (taxonomy summaries).'),
   rank: z.string().optional().describe('Taxonomic rank (taxonomy summaries).'),
-  lineage: z.array(z.string()).optional().describe('Parent taxonomy lineage (taxonomy summaries).'),
+  lineage: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Taxonomic lineage ordered from the most inclusive rank to the most specific, e.g. ["Eukaryota", "Metazoa", "Chordata"] (taxonomy summaries). Ranks that do not apply to the entity are omitted.',
+    ),
 });
 
 type EntitySummaryData = z.infer<typeof entitySummaryDataSchema>;
@@ -151,13 +156,15 @@ export const getSummary = tool('pubchem_get_summary', {
         }
         if (Array.isArray(value)) {
           if (value.length === 0) continue;
-          // synonyms / lineage — upstream free text; escape each element inline.
+          /**
+           * synonyms / lineage — upstream free text; escape each element inline.
+           * Rendered in full: structuredContent carries the whole array, so capping
+           * here would hide values the structured surface already returned.
+           * Pipe-separated because synonyms carry their own commas ("Homo sapiens
+           * Linnaeus, 1758"), which would split one entry into two.
+           */
           const items = value.map((v) => inlineData(String(v)));
-          const display =
-            items.length > 10
-              ? `${items.slice(0, 10).join(', ')} (+${items.length - 10} more)`
-              : items.join(', ');
-          lines.push(`  ${formatKey(key)}: ${display}`);
+          lines.push(`  ${formatKey(key)}: ${items.join(' | ')}`);
         } else if (typeof value === 'string') {
           lines.push(`  ${formatKey(key)}: ${inlineData(value)}`);
         } else {
@@ -201,6 +208,32 @@ function toStrArr(v: unknown): string[] | undefined {
   return;
 }
 
+/**
+ * Ranks of PubChem's `RankedLineage`, ordered most-inclusive-first. The upstream
+ * object keys run the other way (Species first) and carry empty strings for ranks
+ * that do not apply, so the flat lineage is rebuilt in this order with blanks dropped.
+ */
+const LINEAGE_RANKS = [
+  'Superkingdom',
+  'Kingdom',
+  'Phylum',
+  'Class',
+  'Order',
+  'Family',
+  'Genus',
+  'Species',
+] as const;
+
+/** Flatten a `RankedLineage` object into an ordered list of taxon names. */
+function toLineage(v: unknown): string[] | undefined {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return;
+  const ranked = v as Record<string, unknown>;
+  const names = LINEAGE_RANKS.map((rank) => ranked[rank]).filter(
+    (name): name is string => typeof name === 'string' && name.length > 0,
+  );
+  return names.length > 0 ? names : undefined;
+}
+
 /** Assign `value` to `target[key]` only when defined — keeps unknowns off the output. */
 function put<K extends keyof EntitySummaryData>(
   target: EntitySummaryData,
@@ -218,8 +251,8 @@ function extractSummary(entityType: EntityType, raw: Record<string, unknown>): E
       put(data, 'name', toStr(raw.Name ?? raw.AssayName));
       put(data, 'description', toStr(raw.Description));
       put(data, 'sourceName', toStr(raw.SourceName));
-      put(data, 'numSubstances', toNum(raw.NumberOfSubstances ?? raw.TotalSIDCount));
-      put(data, 'numActive', toNum(raw.ActiveSidCount ?? raw.ActiveCount));
+      put(data, 'numSubstances', toNum(raw.SIDCountAll));
+      put(data, 'numActive', toNum(raw.SIDCountActive));
       return data;
     case 'gene':
       put(data, 'geneId', toNum(raw.GeneID));
@@ -242,7 +275,8 @@ function extractSummary(entityType: EntityType, raw: Record<string, unknown>): E
       put(data, 'scientificName', toStr(raw.ScientificName));
       put(data, 'commonName', toStr(raw.CommonName));
       put(data, 'rank', toStr(raw.Rank));
-      put(data, 'lineage', toStrArr(raw.Lineage ?? raw.ParentTaxList));
+      put(data, 'lineage', toLineage(raw.RankedLineage));
+      put(data, 'synonyms', toStrArr(raw.Synonym));
       return data;
   }
 }

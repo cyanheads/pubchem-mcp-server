@@ -20,13 +20,17 @@ beforeEach(() => {
 });
 
 describe('getSummary handler', () => {
-  it('fetches assay summary', async () => {
+  it('fetches assay summary and maps the SIDCount substance counts (#39)', async () => {
+    // Key names mirror the live /assay/aid/{aid}/summary/JSON payload for AID 1000.
     mockClient.getEntitySummary.mockResolvedValueOnce({
       AID: 1000,
-      Name: 'COX-2 inhibitor screen',
-      SourceName: 'ChEMBL',
-      NumberOfSubstances: 500,
-      ActiveSidCount: 42,
+      Name: 'Screening for Inhibitors of the Mevalonate Pathway in Streptococcus Pneumoniae',
+      SourceName: 'SRMLSC',
+      SIDCountAll: 57,
+      SIDCountActive: 36,
+      SIDCountInactive: 21,
+      CIDCountAll: 57,
+      CIDCountActive: 36,
     });
     const ctx = createMockContext();
     const input = getSummary.input.parse({
@@ -38,8 +42,26 @@ describe('getSummary handler', () => {
     expect(result.entityType).toBe('assay');
     expect(result.summaries).toHaveLength(1);
     expect(result.summaries[0]!.found).toBe(true);
-    expect(result.summaries[0]!.data?.name).toBe('COX-2 inhibitor screen');
-    expect(result.summaries[0]!.data?.aid).toBe(1000);
+    const data = result.summaries[0]!.data!;
+    expect(data.aid).toBe(1000);
+    expect(data.sourceName).toBe('SRMLSC');
+    // Substance counts, not the parallel CIDCount* compound counts.
+    expect(data.numSubstances).toBe(57);
+    expect(data.numActive).toBe(36);
+  });
+
+  it('omits assay counts when upstream carries none', async () => {
+    mockClient.getEntitySummary.mockResolvedValueOnce({
+      AID: 4242,
+      Name: 'Assay without deposited counts',
+    });
+    const ctx = createMockContext();
+    const input = getSummary.input.parse({ entityType: 'assay', identifiers: [4242] });
+    const result = await getSummary.handler(input, ctx);
+
+    const data = result.summaries[0]!.data!;
+    expect(data.numSubstances).toBeUndefined();
+    expect(data.numActive).toBeUndefined();
   });
 
   it('fetches gene summary', async () => {
@@ -174,7 +196,7 @@ describe('getSummary format', () => {
     expect(text).toContain('not found');
   });
 
-  it('truncates long arrays in display', () => {
+  it('renders every array element structuredContent carries (#37)', () => {
     const synonyms = Array.from({ length: 15 }, (_, i) => `Synonym-${i}`);
     const blocks = getSummary.format!({
       entityType: 'gene',
@@ -187,6 +209,7 @@ describe('getSummary format', () => {
       ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('+5 more');
+    for (const synonym of synonyms) expect(text).toContain(synonym);
+    expect(text).not.toContain('more)');
   });
 });

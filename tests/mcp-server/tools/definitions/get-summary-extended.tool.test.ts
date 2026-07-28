@@ -58,14 +58,31 @@ describe('getSummary handler — protein entity type', () => {
 });
 
 describe('getSummary handler — taxonomy entity type with lineage', () => {
-  it('extracts lineage array from taxonomy response', async () => {
-    mockClient.getEntitySummary.mockResolvedValueOnce({
-      TaxonomyID: 9606,
-      ScientificName: 'Homo sapiens',
-      CommonName: 'human',
-      Rank: 'species',
-      Lineage: ['Mammalia', 'Primates', 'Hominidae'],
-    });
+  /**
+   * Mirrors the live /taxonomy/taxid/9606/summary/JSON payload: RankedLineage is a
+   * rank-keyed object in most-specific-first key order, with blanks for ranks that
+   * do not apply, and Synonym sits at the top level.
+   */
+  const TAX_9606 = {
+    TaxonomyID: 9606,
+    ScientificName: 'Homo sapiens',
+    CommonName: 'human',
+    Rank: 'species',
+    RankedLineage: {
+      Species: '',
+      Genus: 'Homo',
+      Family: 'Hominidae',
+      Order: 'Primates',
+      Class: 'Mammalia',
+      Phylum: 'Chordata',
+      Kingdom: 'Metazoa',
+      Superkingdom: 'Eukaryota',
+    },
+    Synonym: ['Homo sapiens Linnaeus, 1758', 'Homo sapiens', 'human'],
+  };
+
+  it('flattens RankedLineage most-inclusive-first and drops blank ranks (#39)', async () => {
+    mockClient.getEntitySummary.mockResolvedValueOnce(TAX_9606);
     const ctx = createMockContext();
     const input = getSummary.input.parse({
       entityType: 'taxonomy',
@@ -74,18 +91,39 @@ describe('getSummary handler — taxonomy entity type with lineage', () => {
     const result = await getSummary.handler(input, ctx);
 
     const data = result.summaries[0]!.data!;
-    expect(data.lineage).toEqual(['Mammalia', 'Primates', 'Hominidae']);
+    // Superkingdom → Genus; the empty Species rank is dropped, not emitted as a blank.
+    expect(data.lineage).toEqual([
+      'Eukaryota',
+      'Metazoa',
+      'Chordata',
+      'Mammalia',
+      'Primates',
+      'Hominidae',
+      'Homo',
+    ]);
     expect(data.scientificName).toBe('Homo sapiens');
     expect(data.rank).toBe('species');
     expect(data.commonName).toBe('human');
   });
 
-  it('handles taxonomy without lineage gracefully', async () => {
+  it('maps the taxonomy Synonym array to synonyms (#39)', async () => {
+    mockClient.getEntitySummary.mockResolvedValueOnce(TAX_9606);
+    const ctx = createMockContext();
+    const input = getSummary.input.parse({ entityType: 'taxonomy', identifiers: [9606] });
+    const result = await getSummary.handler(input, ctx);
+
+    expect(result.summaries[0]!.data!.synonyms).toEqual([
+      'Homo sapiens Linnaeus, 1758',
+      'Homo sapiens',
+      'human',
+    ]);
+  });
+
+  it('handles taxonomy without RankedLineage or Synonym gracefully', async () => {
     mockClient.getEntitySummary.mockResolvedValueOnce({
       TaxonomyID: 1,
       ScientificName: 'Bacteria',
       Rank: 'superkingdom',
-      // no Lineage field
     });
     const ctx = createMockContext();
     const input = getSummary.input.parse({
@@ -96,7 +134,21 @@ describe('getSummary handler — taxonomy entity type with lineage', () => {
 
     const data = result.summaries[0]!.data!;
     expect(data.lineage).toBeUndefined();
+    expect(data.synonyms).toBeUndefined();
     expect(data.scientificName).toBe('Bacteria');
+  });
+
+  it('omits lineage when every RankedLineage rank is blank', async () => {
+    mockClient.getEntitySummary.mockResolvedValueOnce({
+      TaxonomyID: 2,
+      ScientificName: 'Unclassified',
+      RankedLineage: { Species: '', Genus: '', Family: '' },
+    });
+    const ctx = createMockContext();
+    const input = getSummary.input.parse({ entityType: 'taxonomy', identifiers: [2] });
+    const result = await getSummary.handler(input, ctx);
+
+    expect(result.summaries[0]!.data!.lineage).toBeUndefined();
   });
 });
 
@@ -183,21 +235,38 @@ describe('getSummary format — additional cases', () => {
     expect(text).toContain('receptor tyrosine kinase');
   });
 
-  it('truncates arrays with more than 10 items to +N more', () => {
-    const synonyms = Array.from({ length: 15 }, (_, i) => `Syn-${i}`);
+  it('renders all 15 EGFR gene synonyms, not a 10-item head (#37)', () => {
+    // The live gene/geneid/1956 summary carries exactly these 15 Synonym entries.
+    const synonyms = [
+      'ERBB',
+      'ERBB1',
+      'ERRP',
+      'HER1',
+      'NISBD2',
+      'NNCIS',
+      'PIG61',
+      'mENA',
+      'avian erythroblastic leukemia viral (v-erb-b) oncogene homolog',
+      'cell growth inhibiting protein 40',
+      'cell proliferation-inducing protein 61',
+      'epidermal growth factor receptor tyrosine kinase domain',
+      'erb-b2 receptor tyrosine kinase 1',
+      'proto-oncogene c-ErbB-1',
+      'receptor tyrosine-protein kinase erbB-1',
+    ];
     const blocks = getSummary.format!({
       entityType: 'gene',
       summaries: [
         {
-          identifier: 1,
+          identifier: 1956,
           found: true,
-          data: { name: 'TestGene', synonyms },
+          data: { name: 'Epidermal growth factor receptor', symbol: 'EGFR', synonyms },
         },
       ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('+5 more');
-    expect(text).toContain('Syn-0');
+    for (const synonym of synonyms) expect(text).toContain(synonym);
+    expect(text).not.toContain('more)');
   });
 
   it('omits empty arrays from display', () => {
@@ -216,7 +285,7 @@ describe('getSummary format — additional cases', () => {
     expect(text).not.toContain('Synonyms: ');
   });
 
-  it('formats taxonomy lineage array', () => {
+  it('formats the taxonomy lineage in full, most-inclusive-first', () => {
     const blocks = getSummary.format!({
       entityType: 'taxonomy',
       summaries: [
@@ -227,15 +296,42 @@ describe('getSummary format — additional cases', () => {
             scientificName: 'Homo sapiens',
             commonName: 'human',
             rank: 'species',
-            lineage: ['Mammalia', 'Primates', 'Hominidae'],
+            lineage: [
+              'Eukaryota',
+              'Metazoa',
+              'Chordata',
+              'Mammalia',
+              'Primates',
+              'Hominidae',
+              'Homo',
+            ],
+            synonyms: ['Homo sapiens Linnaeus, 1758', 'human'],
           },
         },
       ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).toContain('Homo sapiens');
-    expect(text).toContain('Mammalia');
-    expect(text).toContain('Primates');
+    expect(text).toContain(
+      'Lineage: Eukaryota | Metazoa | Chordata | Mammalia | Primates | Hominidae | Homo',
+    );
+    // The first synonym carries its own comma — it must stay one entry, not two.
+    expect(text).toContain('Synonyms: Homo sapiens Linnaeus, 1758 | human');
+  });
+
+  it('keeps a synonym containing ", " as one recoverable entry', () => {
+    const synonyms = ['Homo sapiens Linnaeus, 1758', 'Homo sapiens', 'human'];
+    const blocks = getSummary.format!({
+      entityType: 'taxonomy',
+      summaries: [
+        { identifier: 9606, found: true, data: { scientificName: 'Homo sapiens', synonyms } },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    const line = text.split('\n').find((l) => l.trimStart().startsWith('Synonyms: '))!;
+    const rendered = line.trimStart().slice('Synonyms: '.length).split(' | ');
+    // Three inputs, three entries — the comma inside the first is not a boundary.
+    expect(rendered).toEqual(synonyms);
   });
 
   it('formats assay summary fields', () => {
