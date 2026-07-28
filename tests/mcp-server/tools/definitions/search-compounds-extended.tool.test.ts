@@ -184,6 +184,19 @@ describe('searchCompounds handler — identifier batch edge cases', () => {
 });
 
 describe('searchCompounds handler — boundary values', () => {
+  /* A fractional cap reaches PubChem verbatim on the bounded searches — the handler derives
+   * the upstream record window from it — so an unconstrained maxResults fails at the upstream
+   * with an HTTP 400 rather than being floored locally. */
+  it('rejects a fractional maxResults', () => {
+    expect(() =>
+      searchCompounds.input.parse({
+        searchType: 'formula',
+        formula: 'C21H30O2',
+        maxResults: 7.5,
+      }),
+    ).toThrow();
+  });
+
   it('accepts minimum maxResults of 1', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([1, 2, 3]);
     const ctx = createMockContext();
@@ -670,14 +683,19 @@ describe('searchCompounds handler — offset paging (#38)', () => {
   });
 
   it('emits an integer nextOffset even when maxResults is fractional (#44)', async () => {
+    /* The schema rejects a fractional cap, so this drives the handler directly to guard the
+     * stride derivation itself: taking it from the cap rather than from the returned page
+     * would reopen the dead end regardless of what the schema accepts. */
     mockClient.searchByName.mockResolvedValueOnce([10, 20, 30, 40]);
     const ctx = createMockContext();
-    const input = searchCompounds.input.parse({
-      searchType: 'identifier',
-      identifierType: 'name',
-      identifiers: ['aspirin'],
+    const input = {
+      ...searchCompounds.input.parse({
+        searchType: 'identifier',
+        identifierType: 'name',
+        identifiers: ['aspirin'],
+      }),
       maxResults: 2.5,
-    });
+    };
     await searchCompounds.handler(input, ctx);
     const nextOffset = getEnrichment(ctx).nextOffset as number;
 

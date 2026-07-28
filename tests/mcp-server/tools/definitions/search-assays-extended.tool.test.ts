@@ -150,6 +150,16 @@ describe('searchAssays handler — input validation', () => {
     ).toThrow();
   });
 
+  it('rejects a fractional maxResults', () => {
+    expect(() =>
+      searchAssays.input.parse({
+        targetType: 'genesymbol',
+        targetQuery: 'EGFR',
+        maxResults: 2.5,
+      }),
+    ).toThrow();
+  });
+
   it('rejects maxResults above 200', () => {
     expect(() =>
       searchAssays.input.parse({

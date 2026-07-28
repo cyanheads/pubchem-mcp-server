@@ -40,6 +40,7 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       ),
     maxPerType: z
       .number()
+      .int()
       .min(1)
       .max(500)
       .default(50)

@@ -53,6 +53,7 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       ),
     maxResults: z
       .number()
+      .int()
       .min(1)
       .max(100)
       .default(20)

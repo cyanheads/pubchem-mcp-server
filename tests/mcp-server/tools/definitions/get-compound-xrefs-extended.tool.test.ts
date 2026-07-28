@@ -282,17 +282,23 @@ describe('getCompoundXrefs handler — offset pagination (#38)', () => {
     ).toThrow();
   });
 
+  it('rejects a fractional maxPerType', () => {
+    expect(() =>
+      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['RN'], maxPerType: 2.5 }),
+    ).toThrow();
+  });
+
   it('emits a nextOffset the offset input accepts, even for a fractional maxPerType', async () => {
-    // maxPerType is unconstrained to integers, so a stride of maxPerType would hand back a
-    // fractional nextOffset that this tool's own int-validated offset rejects — a dead end.
+    /* The schema now rejects a fractional cap, so this drives the handler directly: the guard
+     * under test is that the stride comes from the returned page, not from the cap. A stride of
+     * maxPerType would hand back a fractional nextOffset that this tool's own int-validated
+     * offset then rejects — a dead end, reachable again if the derivation regresses. */
     mockClient.getXrefs.mockResolvedValueOnce(idPage(11));
     const ctx = createMockContext();
-    const input = getCompoundXrefs.input.parse({
-      cid: 2244,
-      xrefTypes: ['RN'],
-      offset: 0,
+    const input = {
+      ...getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['RN'], offset: 0 }),
       maxPerType: 2.5,
-    });
+    };
     await getCompoundXrefs.handler(input, ctx);
     const nextOffset = getEnrichment(ctx).nextOffset as number;
 

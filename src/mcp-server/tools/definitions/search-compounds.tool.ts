@@ -92,6 +92,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       ),
     maxResults: z
       .number()
+      .int()
       .min(1)
       .max(200)
       .default(20)

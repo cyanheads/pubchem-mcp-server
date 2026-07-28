@@ -38,6 +38,7 @@ export const searchAssays = tool('pubchem_search_assays', {
       ),
     maxResults: z
       .number()
+      .int()
       .min(1)
       .max(200)
       .default(50)

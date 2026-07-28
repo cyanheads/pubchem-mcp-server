@@ -84,6 +84,10 @@ describe('getBioactivity handler — input validation', () => {
     expect(() => getBioactivity.input.parse({ cid: 2244, maxResults: 101 })).toThrow();
   });
 
+  it('rejects a fractional maxResults', () => {
+    expect(() => getBioactivity.input.parse({ cid: 2244, maxResults: 2.5 })).toThrow();
+  });
+
   it('accepts exactly maxResults=100', () => {
     expect(() => getBioactivity.input.parse({ cid: 2244, maxResults: 100 })).not.toThrow();
   });
