@@ -11,7 +11,7 @@ import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 export const searchAssays = tool('pubchem_search_assays', {
   title: 'Search Assays',
   description:
-    'Find PubChem bioassays associated with a biological target. Search by gene symbol (e.g. "EGFR"), protein name, NCBI Gene ID, or UniProt accession. Returns assay IDs (AIDs) which can be explored further with pubchem_get_summary.',
+    'Find PubChem bioassays associated with a biological target. Search by gene symbol (e.g. "EGFR"), protein name, NCBI Gene ID, or UniProt accession. Returns a page of assay IDs (AIDs) — page past maxResults with offset — which can be explored further with pubchem_get_summary.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -28,19 +28,28 @@ export const searchAssays = tool('pubchem_search_assays', {
       .describe(
         'Target identifier. Examples: "EGFR" (genesymbol), "Epidermal growth factor receptor" (proteinname), "1956" (geneid), "P00533" (proteinaccession).',
       ),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .default(0)
+      .describe(
+        'Zero-based index of the first AID to return. Pass the nextOffset from a previous call to read the following page. Default: 0.',
+      ),
     maxResults: z
       .number()
       .min(1)
       .max(200)
       .default(50)
       .describe(
-        'Max AIDs to return (1-200). Popular targets may have thousands of assays. Default: 50.',
+        'Max AIDs to return per page (1-200). Popular targets may have thousands of assays; use offset to reach the ones past this page. Default: 50.',
       ),
   }),
   output: z.object({
     aids: z.array(z.number()).describe('PubChem Assay IDs.'),
   }),
-  // Agent-facing context — target echo, total before cap, and an empty-result notice.
+  // Agent-facing context — target echo, the total across all pages, the page boundary, and a
+  // notice distinguishing "no match" from "offset past the end".
   // Reaches structuredContent and content[] automatically; not in the domain return.
   enrichment: {
     targetType: z
@@ -49,18 +58,22 @@ export const searchAssays = tool('pubchem_search_assays', {
         'Target identifier type used: genesymbol, proteinname, geneid, or proteinaccession.',
       ),
     targetQuery: z.string().describe('Target identifier searched.'),
-    totalFound: z.number().describe('Total AIDs found before the maxResults cap.'),
-    truncated: z
-      .boolean()
+    totalFound: z.number().describe('Total AIDs found for this target, across all pages.'),
+    offset: z.number().describe('Zero-based index of the first AID returned.'),
+    nextOffset: z
+      .number()
       .optional()
-      .describe('True when AIDs were capped at maxResults — more assays exist than returned.'),
-    shown: z.number().optional().describe('AIDs returned after the maxResults cap.'),
+      .describe(
+        'Offset to pass on the next call to continue past this page. Omitted when no further AIDs match.',
+      ),
+    truncated: z.boolean().optional().describe('True when matching AIDs remain past this page.'),
+    shown: z.number().optional().describe('AIDs returned on this page.'),
     cap: z.number().optional().describe('The maxResults cap that was applied.'),
     notice: z
       .string()
       .optional()
       .describe(
-        'Recovery guidance when no assays matched — echoes the target and suggests alternative search types. Absent when assays were returned.',
+        'Recovery guidance when no assays matched, when the offset runs past the result set, or when further pages remain. Absent when this page is complete and non-empty.',
       ),
   },
   errors: [
@@ -103,23 +116,37 @@ export const searchAssays = tool('pubchem_search_assays', {
     const allAids = await client.searchAssaysByTarget(input.targetType, targetQuery);
 
     const totalFound = allAids.length;
-    const aids = allAids.slice(0, input.maxResults);
+    // Offset is applied client-side: PubChem's target-to-AID endpoint returns the whole AID
+    // list in one response, so searchAssaysByTarget already holds every match.
+    const aids = allAids.slice(input.offset, input.offset + input.maxResults);
+    const nextOffset = input.offset + aids.length;
+    const hasMore = nextOffset < totalFound;
 
     ctx.log.info('Assay search completed', {
       targetType: input.targetType,
       targetQuery,
       totalFound,
+      offset: input.offset,
       returned: aids.length,
     });
 
-    // Agent-facing context: target echo, total, and empty-result notice.
-    ctx.enrich({ targetType: input.targetType, targetQuery, totalFound });
-    if (aids.length === 0) {
+    // Agent-facing context: target echo, total, page boundary, and recovery notices.
+    ctx.enrich({ targetType: input.targetType, targetQuery, totalFound, offset: input.offset });
+    if (hasMore) ctx.enrich({ nextOffset });
+    if (totalFound === 0) {
       ctx.enrich.notice(
         `No assays found for "${targetQuery}" (${input.targetType}). Try a different targetType (e.g. switch from proteinname to genesymbol), verify the identifier spelling, or use pubchem_get_summary for gene/protein entity lookups.`,
       );
-    } else if (totalFound > aids.length) {
-      ctx.enrich.truncated({ shown: aids.length, cap: input.maxResults });
+    } else if (aids.length === 0) {
+      ctx.enrich.notice(
+        `offset ${input.offset} is past the ${totalFound} AID(s) found for "${targetQuery}". Pass an offset below ${totalFound}.`,
+      );
+    } else if (hasMore) {
+      ctx.enrich.truncated({
+        shown: aids.length,
+        cap: input.maxResults,
+        guidance: `Showing AIDs ${input.offset + 1}-${nextOffset} of ${totalFound}. Pass offset=${nextOffset} for the next page.`,
+      });
     }
 
     return { aids };
@@ -129,6 +156,8 @@ export const searchAssays = tool('pubchem_search_assays', {
     if (result.aids.length > 0) {
       return [{ type: 'text', text: `AIDs: ${result.aids.join(', ')}` }];
     }
-    return [{ type: 'text', text: 'No assays found.' }];
+    // Neutral wording: an empty page is either "no match" or "offset past the end" — the
+    // enrichment trailer's notice says which.
+    return [{ type: 'text', text: 'No assays returned.' }];
   },
 });
