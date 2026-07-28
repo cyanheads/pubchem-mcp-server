@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.6.0](changelog/0.6.x/0.6.0.md) — 2026-07-28 · ⚠️ Breaking
+
+Constrain four per-page cap inputs to integers, rejecting fractional values that were previously silently floored or forwarded upstream.
+
 ## [0.5.2](changelog/0.5.x/0.5.2.md) — 2026-07-28
 
 Add offset pagination to pubchem_search_compounds and pubchem_get_compound_interactions, completing #38; switch the interactions SDQ query to a select projection for exact per-kind totals.
