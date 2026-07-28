@@ -15,6 +15,8 @@ import type {
   ConformerListResponse,
   GHSClassification,
   InteractionEntry,
+  InteractionKindFetch,
+  InteractionKindPage,
   InteractionsResult,
   ListKeyResponse,
   PropertyTableResponse,
@@ -22,6 +24,7 @@ import type {
   PugViewResponse,
   PugViewSection,
   SafetyLookup,
+  SdqResponse,
   SynonymResponse,
   XrefResponse,
 } from './types.js';
@@ -1036,25 +1039,32 @@ export class PubChemClient {
   // ── Interactions ────────────────────────────────────────────────
 
   /** Fetch drug-drug, drug-food, and/or chemical-target interactions for a compound.
-   * Drug-drug and target data live in PubChem SDQ external tables (drugbankddi,
-   * consolidatedcompoundtarget); drug-food is inline PUG View text. Each kind is capped
-   * at maxEntries; absent data for a kind contributes nothing rather than erroring. */
+   * Drug-drug and target data live in PubChem SDQ external tables (drugbankddi, bioactivity);
+   * drug-food is inline PUG View text. Each kind reads a window of `maxEntries` entries
+   * starting at `offset` records into that kind's own stream; absent data for a kind
+   * contributes an empty page rather than erroring. */
   async getInteractions(
     cid: number,
     kinds: Array<'drug-drug' | 'drug-food' | 'target'>,
     maxEntries: number,
+    offset: number,
   ): Promise<InteractionsResult> {
     // Per-kind isolation: a failure in one source (upstream parse error, timeout, network)
     // must not discard the kinds that succeeded. Failures are reported, not thrown (#21).
+    // Page state is recorded per kind from that kind's own result, so a failing kind leaves
+    // the others' continuation signals untouched rather than zeroing them.
     const settled = await Promise.allSettled(
-      kinds.map((kind) => this.getInteractionsForKind(cid, kind, maxEntries)),
+      kinds.map((kind) => this.getInteractionsForKind(cid, kind, maxEntries, offset)),
     );
     const entries: InteractionEntry[] = [];
+    const pages: InteractionKindPage[] = [];
     const failedKinds: Array<{ kind: string; message: string }> = [];
     kinds.forEach((kind, i) => {
       const result = settled[i];
       if (result?.status === 'fulfilled') {
-        entries.push(...result.value);
+        const { entries: kindEntries, totalRecords, recordsConsumed } = result.value;
+        entries.push(...kindEntries);
+        pages.push({ kind, returnedCount: kindEntries.length, totalRecords, recordsConsumed });
       } else if (result?.status === 'rejected') {
         const reason = result.reason;
         failedKinds.push({
@@ -1063,29 +1073,37 @@ export class PubChemClient {
         });
       }
     });
-    return { entries, failedKinds };
+    return { entries, pages, failedKinds };
   }
 
   private getInteractionsForKind(
     cid: number,
     kind: 'drug-drug' | 'drug-food' | 'target',
     maxEntries: number,
-  ): Promise<InteractionEntry[]> {
+    offset: number,
+  ): Promise<InteractionKindFetch> {
     switch (kind) {
       case 'drug-drug':
-        return this.getDrugDrugInteractions(cid, maxEntries);
+        return this.getDrugDrugInteractions(cid, maxEntries, offset);
       case 'drug-food':
-        return this.getDrugFoodInteractions(cid, maxEntries);
+        return this.getDrugFoodInteractions(cid, maxEntries, offset);
       case 'target':
-        return this.getTargetInteractions(cid, maxEntries);
+        return this.getTargetInteractions(cid, maxEntries, offset);
     }
   }
 
   private async getDrugDrugInteractions(
     cid: number,
     maxEntries: number,
-  ): Promise<InteractionEntry[]> {
-    const rows = await this.fetchSdq('drugbankddi', cid, ['cid', 'name2', 'descr'], maxEntries);
+    offset: number,
+  ): Promise<InteractionKindFetch> {
+    const { rows, totalCount } = await this.fetchSdq(
+      'drugbankddi',
+      cid,
+      ['cid', 'name2', 'descr'],
+      maxEntries,
+      offset,
+    );
     const entries: InteractionEntry[] = [];
     for (const row of rows) {
       const text = typeof row.descr === 'string' ? row.descr : '';
@@ -1094,7 +1112,11 @@ export class PubChemClient {
       if (typeof row.name2 === 'string' && row.name2) entry.partner = row.name2;
       entries.push(entry);
     }
-    return entries;
+    return {
+      entries,
+      totalRecords: await this.resolveSdqTotal('drugbankddi', cid, rows.length, totalCount, offset),
+      recordsConsumed: rows.length,
+    };
   }
 
   /** Chemical-target binding/activity from PubChem's `bioactivity` SDQ collection (BindingDB,
@@ -1102,23 +1124,34 @@ export class PubChemClient {
    * compound; the `consolidatedcompoundtarget` collection used previously is gene-indexed, so
    * its `cid` filter was silently ignored — every CID returned the same default compound (#20).
    * Only rows naming a molecular target are returned; untargeted assay outcomes are the domain
-   * of pubchem_get_bioactivity. */
+   * of pubchem_get_bioactivity.
+   *
+   * Because most rows are dropped, the page position is an index into the activity records, not
+   * into the entries returned — the walk records exactly how many rows it read so the next page
+   * resumes at the first unread one. */
   private async getTargetInteractions(
     cid: number,
     maxEntries: number,
-  ): Promise<InteractionEntry[]> {
+    offset: number,
+  ): Promise<InteractionKindFetch> {
     // `targetname` is sparse (most rows are untargeted assay outcomes), so oversample and keep
     // the target-bearing rows, most-potent-first.
     const window = Math.min(Math.max(maxEntries * 4, 20), 100);
-    const rows = await this.fetchSdq(
+    const { rows, totalCount } = await this.fetchSdq(
       'bioactivity',
       cid,
       ['cid', 'targetname', 'acname', 'acqualifier', 'acvalue', 'aidsrcname'],
       window,
+      offset,
       ['acvalue,asc'],
     );
     const entries: InteractionEntry[] = [];
+    // Collapse duplicate measurements of the same target/value reported across assays.
+    const seen = new Set<string>();
+    let recordsConsumed = 0;
     for (const row of rows) {
+      if (entries.length === maxEntries) break;
+      recordsConsumed++;
       const target = typeof row.targetname === 'string' ? row.targetname.trim() : '';
       if (!target) continue;
       const acname = typeof row.acname === 'string' ? row.acname : '';
@@ -1131,64 +1164,91 @@ export class PubChemClient {
       // convention here — it is not a per-row unit fetched from SDQ (none exists to fetch).
       const activity =
         acname && acvalue ? `${acname} ${qualifier} ${acvalue} uM`.replace(/\s+/g, ' ').trim() : '';
+      const text = activity || 'Activity reported';
+      const key = `${target}|${text}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       entries.push({
         kind: 'target',
         source: typeof row.aidsrcname === 'string' && row.aidsrcname ? row.aidsrcname : 'PubChem',
         partner: target,
-        text: activity || 'Activity reported',
+        text,
       });
     }
-    // Collapse duplicate measurements of the same target/value reported across assays.
-    return dedupByKey(entries, (e) => `${e.partner ?? ''}|${e.text}`).slice(0, maxEntries);
+    return {
+      entries,
+      totalRecords: await this.resolveSdqTotal('bioactivity', cid, rows.length, totalCount, offset),
+      recordsConsumed,
+    };
   }
 
   private async getDrugFoodInteractions(
     cid: number,
     maxEntries: number,
-  ): Promise<InteractionEntry[]> {
+    offset: number,
+  ): Promise<InteractionKindFetch> {
+    const empty: InteractionKindFetch = { entries: [], totalRecords: 0, recordsConsumed: 0 };
     try {
       const data = await this.fetchJson<PugViewResponse>(
         `${this.viewBase}/data/compound/${cid}/JSON?heading=Drug-Food+Interactions`,
       );
       const sections = data.Record.Section;
-      if (!sections) return [];
+      if (!sections) return empty;
       const section = findSection(sections, 'Drug-Food Interactions');
-      if (!section) return [];
+      if (!section) return empty;
 
       const refToSource = new Map<number, string>();
       for (const ref of data.Record.Reference ?? []) {
         refToSource.set(ref.ReferenceNumber, ref.SourceName);
       }
 
+      // PUG View returns the whole section inline, so the deduped item list is the complete
+      // record stream and the page is a plain slice of it.
       const items = dedupByKey(extractDescriptionItems(section), descriptionKey);
-      return items.slice(0, maxEntries).map((item) => {
-        const source = item.refNum != null ? refToSource.get(item.refNum) : undefined;
-        return { kind: 'drug-food', source: source ?? 'PubChem', text: item.text };
-      });
+      const page = items.slice(offset, offset + maxEntries);
+      return {
+        entries: page.map((item) => {
+          const source = item.refNum != null ? refToSource.get(item.refNum) : undefined;
+          return { kind: 'drug-food', source: source ?? 'PubChem', text: item.text };
+        }),
+        totalRecords: items.length,
+        recordsConsumed: page.length,
+      };
     } catch (error) {
-      if (isNotFound(error)) return [];
+      if (isNotFound(error)) return empty;
       throw error;
     }
   }
 
   /** Query a PubChem SDQ external table for a single CID, projecting only the columns the
    * caller maps. Projection keeps payloads small and excludes the free-text `citations` column
-   * whose unescaped quotes make PubChem emit invalid JSON (#20). Returns [] on not-found; on an
-   * unparseable body throws a contextful error rather than the bare `Failed to parse JSON`, so
-   * the caller and per-kind isolation can report it cleanly. */
+   * whose unescaped quotes make PubChem emit invalid JSON (#20).
+   *
+   * Uses SDQ's `select` projection rather than `download`: the `SDQOutputSet` envelope it
+   * answers with carries `totalCount` — the records matching the query across all pages —
+   * beside the requested window, which is the only way to tell a full page from the last one.
+   * `start` is 1-based upstream; `offset` here is zero-based like every other paging input.
+   *
+   * Returns an empty page on not-found. A rejected query is reported, never read as "no data":
+   * SDQ answers a malformed query with a 5xx that the shared HTTP core already classifies and
+   * throws, and the `status.error` check covers the same rejection arriving inside a 2xx body.
+   * An unparseable body throws with the collection and a body snippet attached, so per-kind
+   * isolation can name what failed. */
   private async fetchSdq(
     collection: string,
     cid: number,
     columns: string[],
     limit: number,
+    offset = 0,
     order?: string[],
-  ): Promise<Array<Record<string, unknown>>> {
+  ): Promise<{ rows: Array<Record<string, unknown>>; totalCount: number }> {
+    const empty = { rows: [], totalCount: 0 };
     const query = JSON.stringify({
-      download: columns,
+      select: columns,
       collection,
       where: { ands: [{ cid: String(cid) }] },
       ...(order ? { order } : {}),
-      start: 1,
+      start: offset + 1,
       limit,
     });
     const url = `${this.sdqBase}?infmt=json&outfmt=json&query=${encodeURIComponent(query)}`;
@@ -1197,13 +1257,13 @@ export class PubChemClient {
     try {
       body = await this.fetchText(url);
     } catch (error) {
-      if (isNotFound(error)) return [];
+      if (isNotFound(error)) return empty;
       throw error;
     }
 
+    let parsed: unknown;
     try {
-      const data = JSON.parse(body) as unknown;
-      return Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+      parsed = JSON.parse(body);
     } catch {
       throw new McpError(
         JsonRpcErrorCode.ServiceUnavailable,
@@ -1211,6 +1271,35 @@ export class PubChemClient {
         { collection, cid, snippet: body.slice(0, 200) },
       );
     }
+
+    const set = (parsed as SdqResponse).SDQOutputSet?.[0];
+    if (!set) return empty;
+    if (set.status?.error) {
+      throw new McpError(
+        JsonRpcErrorCode.ServiceUnavailable,
+        `PubChem SDQ rejected the query for collection "${collection}": ${set.status.error}`,
+        { collection, cid, sdqError: set.status.error },
+      );
+    }
+    return { rows: set.rows ?? [], totalCount: set.totalCount ?? 0 };
+  }
+
+  /** Resolve a kind's record total for the page just fetched.
+   *
+   * SDQ reports `totalCount` alongside every non-empty page, but a `start` past the last record
+   * answers `totalCount` 0 — so an offset that overshoots would otherwise report "no records"
+   * for a compound that has thousands. A one-row probe from the top recovers the real bound,
+   * and only runs on that case. */
+  private async resolveSdqTotal(
+    collection: string,
+    cid: number,
+    rowsReturned: number,
+    reportedTotal: number,
+    offset: number,
+  ): Promise<number> {
+    if (rowsReturned > 0 || offset === 0) return reportedTotal;
+    const { totalCount } = await this.fetchSdq(collection, cid, ['cid'], 1);
+    return totalCount;
   }
 
   // ── 3D Structure ────────────────────────────────────────────────

@@ -17,6 +17,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 const textResponse = (body: string, status = 200, type = 'text/plain') =>
   new Response(body, { status, headers: { 'Content-Type': type } });
 
+/** SDQ answers a `select` projection with an SDQOutputSet envelope carrying totalCount. */
+const sdqResponse = (rows: Array<Record<string, unknown>>, totalCount = rows.length): Response =>
+  jsonResponse({ SDQOutputSet: [{ status: { code: 0 }, totalCount, rows }] });
+
 const fetchMock = vi.fn<typeof fetch>();
 
 beforeEach(() => {
@@ -31,14 +35,14 @@ afterEach(() => {
 describe('PubChemClient.getInteractions (#12)', () => {
   it('maps drug-drug SDQ rows: descr → text, name2 → partner, source DrugBank', async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse([
-        { cid: '54678486', name2: 'Lepirudin', descr: 'Risk of bleeding increased.' },
-        { cid: '54678486', descr: 'Metabolism increased.' },
-        { cid: '54678486', name2: 'Empty', descr: '' }, // dropped — no text
+      sdqResponse([
+        { cid: 54678486, name2: 'Lepirudin', descr: 'Risk of bleeding increased.' },
+        { cid: 54678486, descr: 'Metabolism increased.' },
+        { cid: 54678486, name2: 'Empty', descr: '' }, // dropped — no text
       ]),
     );
     const client = new PubChemClient();
-    const { entries } = await client.getInteractions(54678486, ['drug-drug'], 10);
+    const { entries } = await client.getInteractions(54678486, ['drug-drug'], 10, 0);
 
     expect(entries).toEqual([
       {
@@ -58,9 +62,9 @@ describe('PubChemClient.getInteractions (#12)', () => {
 
   it('maps target bioactivity rows: targetname → partner, activity → text, aidsrcname → source', async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse([
+      sdqResponse([
         {
-          cid: '5291',
+          cid: 5291,
           targetname: 'ABL1 - ABL proto-oncogene 1, non-receptor tyrosine kinase (human)',
           acname: 'Kd',
           acqualifier: '=',
@@ -69,18 +73,18 @@ describe('PubChemClient.getInteractions (#12)', () => {
         },
         // No acqualifier → activity rendered without it.
         {
-          cid: '5291',
+          cid: 5291,
           targetname: 'KIT proto-oncogene (human)',
           acname: 'GI50',
           acvalue: '0.001',
           aidsrcname: 'ChEMBL',
         },
         // No targetname → dropped (untargeted assay outcome, covered by pubchem_get_bioactivity).
-        { cid: '5291', acname: 'Potency', acvalue: '0.5', aidsrcname: 'NCATS' },
+        { cid: 5291, acname: 'Potency', acvalue: '0.5', aidsrcname: 'NCATS' },
       ]),
     );
     const client = new PubChemClient();
-    const { entries } = await client.getInteractions(5291, ['target'], 10);
+    const { entries } = await client.getInteractions(5291, ['target'], 10, 0);
 
     // acvalue is PubChem's normalized micromolar figure — the asserted `uM` unit rides the
     // text, and the numeric value is preserved (including the no-qualifier row).
@@ -129,7 +133,7 @@ describe('PubChemClient.getInteractions (#12)', () => {
       }),
     );
     const client = new PubChemClient();
-    const { entries } = await client.getInteractions(54678486, ['drug-food'], 10);
+    const { entries } = await client.getInteractions(54678486, ['drug-food'], 10, 0);
 
     expect(entries).toEqual([
       { kind: 'drug-food', source: 'DrugBank', text: 'Avoid foods rich in vitamin K.' },
@@ -137,9 +141,9 @@ describe('PubChemClient.getInteractions (#12)', () => {
   });
 
   it('returns [] for an empty SDQ result', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse([]));
+    fetchMock.mockResolvedValueOnce(sdqResponse([]));
     const client = new PubChemClient();
-    expect((await client.getInteractions(962, ['drug-drug'], 10)).entries).toEqual([]);
+    expect((await client.getInteractions(962, ['drug-drug'], 10, 0)).entries).toEqual([]);
   });
 
   it('reports a malformed SDQ body as a failed kind, never an opaque parse error (#20)', async () => {
@@ -148,7 +152,7 @@ describe('PubChemClient.getInteractions (#12)', () => {
       textResponse('[{"targetname":"Kinase "X" (human)","acname":"Ki","acvalue":"1"}]'),
     );
     const client = new PubChemClient();
-    const { entries, failedKinds } = await client.getInteractions(5291, ['target'], 10);
+    const { entries, failedKinds } = await client.getInteractions(5291, ['target'], 10, 0);
 
     expect(entries).toEqual([]);
     expect(failedKinds).toHaveLength(1);
@@ -161,7 +165,7 @@ describe('PubChemClient.getInteractions (#12)', () => {
       const url = String(input);
       if (url.includes('drugbankddi')) {
         return Promise.resolve(
-          jsonResponse([{ cid: '5291', name2: 'Lepirudin', descr: 'Risk of bleeding increased.' }]),
+          sdqResponse([{ cid: 5291, name2: 'Lepirudin', descr: 'Risk of bleeding increased.' }]),
         );
       }
       // target → malformed JSON, rejects inside the per-kind fetch
@@ -172,6 +176,7 @@ describe('PubChemClient.getInteractions (#12)', () => {
       5291,
       ['drug-drug', 'target'],
       10,
+      0,
     );
 
     expect(entries).toEqual([
@@ -183,6 +188,151 @@ describe('PubChemClient.getInteractions (#12)', () => {
       },
     ]);
     expect(failedKinds.map((f) => f.kind)).toEqual(['target']);
+  });
+
+  it('reports an SDQ-rejected query as a failed kind rather than an empty page', async () => {
+    // A populated status.error beside empty rows is a rejection, not an absence — asserted on a
+    // 2xx body so the check holds even when the rejection does not arrive as a 5xx.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        SDQOutputSet: [
+          { status: { code: -4, error: 'eSphinxSearchBusy' }, totalCount: 0, rows: [] },
+        ],
+      }),
+    );
+    const client = new PubChemClient();
+    const { entries, pages, failedKinds } = await client.getInteractions(2244, ['target'], 10, 0);
+
+    expect(entries).toEqual([]);
+    expect(pages).toEqual([]);
+    expect(failedKinds[0]!.message).toContain('eSphinxSearchBusy');
+  });
+});
+
+describe('PubChemClient.getInteractions paging (#38)', () => {
+  it('projects with select and translates the zero-based offset to SDQ start', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sdqResponse([{ cid: 2244, name2: 'Warfarin', descr: 'Bleeding risk increased.' }], 1777),
+    );
+    const client = new PubChemClient();
+    const { pages } = await client.getInteractions(2244, ['drug-drug'], 10, 40);
+
+    const query = decodeURIComponent(fetchMock.mock.calls[0]![0] as string);
+    expect(query).toContain('"select":["cid","name2","descr"]');
+    expect(query).toContain('"start":41');
+    expect(query).toContain('"limit":10');
+    expect(pages).toEqual([
+      { kind: 'drug-drug', returnedCount: 1, totalRecords: 1777, recordsConsumed: 1 },
+    ]);
+  });
+
+  it('counts records read, not entries produced, so the next target page skips nothing', async () => {
+    // Row 1 is untargeted and yields no entry; the walk still consumed it.
+    fetchMock.mockResolvedValueOnce(
+      sdqResponse(
+        [
+          { cid: 2244, acname: 'Potency', acvalue: '0.5', aidsrcname: 'NCATS' },
+          { cid: 2244, targetname: 'PTGS1 (human)', acname: 'IC50', acvalue: '1', aidsrcname: 'C' },
+          { cid: 2244, targetname: 'PTGS2 (human)', acname: 'IC50', acvalue: '2', aidsrcname: 'C' },
+          { cid: 2244, targetname: 'ALOX5 (human)', acname: 'IC50', acvalue: '3', aidsrcname: 'C' },
+        ],
+        7253,
+      ),
+    );
+    const client = new PubChemClient();
+    const { entries, pages } = await client.getInteractions(2244, ['target'], 2, 0);
+
+    expect(entries.map((e) => e.partner)).toEqual(['PTGS1 (human)', 'PTGS2 (human)']);
+    // Stopped after the third row — the fourth is left for the next page.
+    expect(pages[0]).toEqual({
+      kind: 'target',
+      returnedCount: 2,
+      totalRecords: 7253,
+      recordsConsumed: 3,
+    });
+  });
+
+  it('collapses duplicate target measurements within a page and still counts both records', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sdqResponse(
+        [
+          { cid: 2244, targetname: 'PTGS1 (human)', acname: 'IC50', acvalue: '1', aidsrcname: 'C' },
+          { cid: 2244, targetname: 'PTGS1 (human)', acname: 'IC50', acvalue: '1', aidsrcname: 'C' },
+        ],
+        7253,
+      ),
+    );
+    const client = new PubChemClient();
+    const { entries, pages } = await client.getInteractions(2244, ['target'], 10, 0);
+
+    expect(entries).toHaveLength(1);
+    expect(pages[0]!.recordsConsumed).toBe(2);
+  });
+
+  it('slices the inline drug-food list at the offset and reports the full item total', async () => {
+    const item = (s: string) => ({ Value: { StringWithMarkup: [{ String: s }] } });
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        Record: {
+          RecordType: 'CID',
+          RecordNumber: 2244,
+          Section: [
+            {
+              TOCHeading: 'Drug-Food Interactions',
+              Information: [
+                item('Take with food.'),
+                item('Avoid alcohol.'),
+                item('Avoid grapefruit.'),
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const client = new PubChemClient();
+    const { entries, pages } = await client.getInteractions(2244, ['drug-food'], 1, 1);
+
+    expect(entries.map((e) => e.text)).toEqual(['Avoid alcohol.']);
+    expect(pages[0]).toEqual({
+      kind: 'drug-food',
+      returnedCount: 1,
+      totalRecords: 3,
+      recordsConsumed: 1,
+    });
+  });
+
+  it('recovers the record total with a probe when the offset overshoots the last SDQ record', async () => {
+    // SDQ reports totalCount 0 alongside an eNoHitsFound page, so the bound needs a second read.
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          SDQOutputSet: [
+            { status: { code: 0, warning: ['eNoHitsFound (227.22)'] }, totalCount: 0, rows: [] },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(sdqResponse([{ cid: 2244 }], 1777));
+    const client = new PubChemClient();
+    const { entries, pages } = await client.getInteractions(2244, ['drug-drug'], 10, 5000);
+
+    expect(entries).toEqual([]);
+    expect(pages[0]).toEqual({
+      kind: 'drug-drug',
+      returnedCount: 0,
+      totalRecords: 1777,
+      recordsConsumed: 0,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(decodeURIComponent(fetchMock.mock.calls[1]![0] as string)).toContain('"start":1');
+  });
+
+  it('does not probe for a total when an empty page was requested from the start', async () => {
+    fetchMock.mockResolvedValueOnce(sdqResponse([], 0));
+    const client = new PubChemClient();
+    const { pages } = await client.getInteractions(962, ['drug-drug'], 10, 0);
+
+    expect(pages[0]!.totalRecords).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

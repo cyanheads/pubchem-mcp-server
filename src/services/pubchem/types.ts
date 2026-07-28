@@ -94,6 +94,26 @@ export interface PugViewInformation {
   };
 }
 
+// ── SDQ response types ───────────────────────────────────────────────
+
+/** Envelope returned by the SDQ agent for a `select` projection.
+ *
+ * `totalCount` is the number of records matching the query across all pages, independent of
+ * the `limit` window — with one exception: a `start` past the last record reports `totalCount`
+ * 0 alongside an `eNoHitsFound` warning, so an empty page cannot be read as a total.
+ *
+ * `status` separates a rejection from an absence. SDQ reports a malformed query as a 5xx
+ * carrying `status.error`, so an empty `rows` beside a populated `status.error` is a failure
+ * whatever the HTTP status was — while an empty `rows` under `status.code` 0 is a real absence. */
+export interface SdqResponse {
+  SDQOutputSet?: Array<{
+    status?: { code?: number; error?: string; warning?: string[] };
+    totalCount?: number;
+    collection?: string;
+    rows?: Array<Record<string, unknown>>;
+  }>;
+}
+
 // ── Parsed output types ──────────────────────────────────────────────
 
 /** Parsed GHS hazard classification */
@@ -149,6 +169,35 @@ export interface InteractionEntry {
   text: string;
 }
 
+/** Where one interaction kind's page landed in that kind's source-record stream.
+ *
+ * Every kind is backed by an ordered stream of source records, and entries are derived from
+ * them: an SDQ row whose `targetname` is blank or whose `descr` is empty produces no entry, and
+ * duplicate measurements collapse within a page. So `returnedCount` counts entries while
+ * `totalRecords` and `recordsConsumed` count records, and the two are not interchangeable —
+ * paging divides the records, so a duplicate split across two pages survives on both. */
+export interface InteractionKindPage {
+  /** Interaction category this page covers. */
+  kind: 'drug-drug' | 'drug-food' | 'target';
+  /** Source records this page read, starting at the requested offset. The next page resumes
+   * at the first record it did not read. */
+  recordsConsumed: number;
+  /** Interaction entries this page produced. */
+  returnedCount: number;
+  /** Source records available for this kind, across all pages. */
+  totalRecords: number;
+}
+
+/** One kind's page: the entries it produced, plus where it landed in that kind's record
+ * stream. `getInteractions` turns this into an {@link InteractionKindPage} per kind. */
+export interface InteractionKindFetch {
+  entries: InteractionEntry[];
+  /** Source records this page read, starting at the requested offset. */
+  recordsConsumed: number;
+  /** Source records available for this kind, across all pages. */
+  totalRecords: number;
+}
+
 /** Result of a multi-kind interaction fetch. Kinds are fetched independently so a failure in
  * one (upstream parse error, timeout, network) never discards the kinds that succeeded. */
 export interface InteractionsResult {
@@ -156,6 +205,9 @@ export interface InteractionsResult {
   entries: InteractionEntry[];
   /** Kinds whose fetch failed, with the failure message. Empty when every kind resolved. */
   failedKinds: Array<{ kind: string; message: string }>;
+  /** Page state for each kind that resolved successfully, in the order requested. A kind
+   * present in `failedKinds` is absent here — its page state is unknown, not zero. */
+  pages: InteractionKindPage[];
 }
 
 /** A single atom in a 3D conformer (Cartesian coordinates, Angstroms). */
