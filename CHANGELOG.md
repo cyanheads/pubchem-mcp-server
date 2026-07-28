@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.4.2](changelog/0.4.x/0.4.2.md) — 2026-07-28
+
+Distinguish nonexistent CIDs from no-data compounds in pubchem_get_compound_safety; mark undecoded GHS P-codes explicitly; drop the dead severity field from pubchem_get_compound_interactions; fix two GHS-statement parsing bugs; adopt mcp-ts-core ^0.11.0
+
 ## [0.4.1](changelog/0.4.x/0.4.1.md) — 2026-07-03
 
 Decode GHS precautionary (P-code) statements to standard text via a new lookup table in pubchem_get_compound_safety; append the asserted uM unit to target-kind activity values in pubchem_get_compound_interactions

@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-07-03 15:13:37
+Generated on: 2026-07-28 12:57:36
 
 ```text
 pubchem-mcp-server/
@@ -11,10 +11,12 @@ pubchem-mcp-server/
 │   ├── mcp.json
 │   └── plugin.json
 ├── .github/
-│   └── ISSUE_TEMPLATE/
-│       ├── bug_report.yml
-│       ├── config.yml
-│       └── feature_request.yml
+│   ├── ISSUE_TEMPLATE/
+│   │   ├── bug_report.yml
+│   │   ├── config.yml
+│   │   └── feature_request.yml
+│   ├── FUNDING.yml
+│   └── SECURITY.md
 ├── .vscode/
 │   ├── extensions.json
 │   └── settings.json
@@ -92,8 +94,6 @@ pubchem-mcp-server/
 │   │   └── SKILL.md
 │   ├── design-mcp-server/
 │   │   └── SKILL.md
-│   ├── devcheck/
-│   │   └── SKILL.md
 │   ├── field-test/
 │   │   └── SKILL.md
 │   ├── git-wrapup/
@@ -167,6 +167,7 @@ pubchem-mcp-server/
 │   │   │   └── definitions/
 │   │   │       ├── assay.resource.test.ts
 │   │   │       ├── compound-image.resource.test.ts
+│   │   │       ├── compound-safety.resource.test.ts
 │   │   │       └── compound.resource.test.ts
 │   │   └── tools/
 │   │       └── definitions/
@@ -197,6 +198,7 @@ pubchem-mcp-server/
 │           └── sdf-parser.test.ts
 ├── .dockerignore
 ├── .env.example
+├── .gitattributes
 ├── .gitignore
 ├── .mcpbignore
 ├── biome.json

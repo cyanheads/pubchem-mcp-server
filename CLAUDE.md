@@ -1,8 +1,8 @@
 # Agent Protocol
 
 **Server:** pubchem-mcp-server
-**Version:** 0.4.1
-**Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) ^0.10.10
+**Version:** 0.4.2
+**Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) ^0.11.0
 
 > **Read the framework docs first:** `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` contains the full API reference — builders, Context, error codes, exports, patterns. This file covers server-specific conventions only.
 
@@ -233,7 +233,6 @@ Available skills:
 | `tool-defs-analysis` | Audit LLM-facing language across every tool/resource/prompt: voice, internal leaks, defaults, recovery hints, output descriptions, sparsity, examples, structure, mutator observability, unit-bearing numeric names (12 categories) |
 | `security-pass` | Audit server for MCP-flavored security gaps: output injection, scope blast radius, input sinks, tenant isolation |
 | `code-simplifier` | Post-session cleanup against `git diff` — modernize syntax, consolidate duplication, align with the codebase |
-| `devcheck` | Lint, format, typecheck, audit |
 | `polish-docs-meta` | Finalize docs, README, metadata, and agent protocol for shipping |
 | `git-wrapup` | Land working-tree changes as a versioned commit + annotated tag — version bump, changelog, verify, tag. Local only. |
 | `release-and-publish` | Post-wrapup ship workflow: verification gate, push, publish to npm/MCP Registry/GHCR |
@@ -274,12 +273,13 @@ When you complete a skill's checklist, check the boxes and add a completion time
 | `bun run list-skills` | Print skill index from project `skills/` |
 | `bun run format` | Auto-fix formatting (safe autofixes only) |
 | `bun run format:unsafe` | Auto-fix formatting including unsafe rules (biome `--unsafe`) |
+| `bun run lint:mcp` | Run the MCP definition linter standalone (rule catalog: `api-linter` skill) |
 | `bun run lint:packaging` | Validate `manifest.json` / `server.json` env-var alignment |
 | `bun run bundle` | Build and pack as `.mcpb` for one-click Claude Desktop install |
 | `bun run changelog:build` | Regenerate `CHANGELOG.md` from `changelog/*.md` |
 | `bun run changelog:check` | Verify `CHANGELOG.md` is in sync (used by devcheck) |
 | `bun run release:github` | Create GitHub Release from annotated tag (enforces `v<VERSION>: <subject>` title) |
-| `bun run test` | Run tests |
+| `bun run test` | Run tests (Vitest — use `bun run test`, not `bun test`) |
 | `bun run start:stdio` | Production mode (stdio) |
 | `bun run start:http` | Production mode (HTTP) |
 
