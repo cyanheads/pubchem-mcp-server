@@ -3,7 +3,7 @@
  * @module mcp-server/tools/definitions/get-compound-details-extended.test
  */
 
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundDetails } from '@/mcp-server/tools/definitions/get-compound-details.tool.js';
 
@@ -193,6 +193,289 @@ describe('getCompoundDetails handler — synonyms edge cases', () => {
   });
 });
 
+describe('getCompoundDetails handler — PUG View cap disclosure (#40)', () => {
+  /** 12 found CIDs, descriptions requested — two land past the fan-out limit. */
+  const setUpOverflowBatch = () => {
+    const cids = Array.from({ length: 12 }, (_, i) => i + 1);
+    mockClient.getProperties.mockResolvedValueOnce(
+      cids.map((cid) => ({ CID: cid, MolecularFormula: 'C1H1' })),
+    );
+    for (let i = 0; i < 10; i++) {
+      mockClient.getDescription.mockResolvedValueOnce([{ text: `Description ${i}` }]);
+    }
+    return cids;
+  };
+
+  it('names the enriched and skipped CIDs instead of dropping them silently', async () => {
+    const cids = setUpOverflowBatch();
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({ cids, includeDescription: true });
+    await getCompoundDetails.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.enrichedCids).toEqual(cids.slice(0, 10));
+    expect(enrichment.skippedCids).toEqual([11, 12]);
+    expect(enrichment.notice).toContain('first 10 of 12 found CIDs');
+    expect(enrichment.notice).toContain('11, 12');
+    expect(enrichment.notice).toContain('follow-up call');
+  });
+
+  it('stays silent when the batch fits inside the limit', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([
+      { CID: 2244, MolecularFormula: 'C9H8O4' },
+      { CID: 3672, MolecularFormula: 'C13H18O2' },
+    ]);
+    mockClient.getDescription
+      .mockResolvedValueOnce([{ text: 'Aspirin.' }])
+      .mockResolvedValueOnce([{ text: 'Ibuprofen.' }]);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244, 3672],
+      includeDescription: true,
+    });
+    await getCompoundDetails.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.enrichedCids).toBeUndefined();
+    expect(enrichment.skippedCids).toBeUndefined();
+    expect(enrichment.notice).toBeUndefined();
+  });
+
+  it('does not disclose a cap when neither PUG View flag is set', async () => {
+    const cids = Array.from({ length: 12 }, (_, i) => i + 1);
+    mockClient.getProperties.mockResolvedValueOnce(
+      cids.map((cid) => ({ CID: cid, MolecularFormula: 'C1H1' })),
+    );
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({ cids });
+    await getCompoundDetails.handler(input, ctx);
+
+    expect(getEnrichment(ctx).skippedCids).toBeUndefined();
+  });
+
+  it('counts only found CIDs toward the limit', async () => {
+    // 4 missing CIDs at the head still leave the 11 real ones one over the limit.
+    const missing = [900, 901, 902, 903];
+    const found = Array.from({ length: 11 }, (_, i) => i + 1);
+    mockClient.getProperties.mockResolvedValueOnce([
+      ...missing.map((cid) => ({ CID: cid })),
+      ...found.map((cid) => ({ CID: cid, MolecularFormula: 'C1H1' })),
+    ]);
+    for (let i = 0; i < 10; i++) {
+      mockClient.getClassification.mockResolvedValueOnce(null);
+    }
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [...missing, ...found],
+      includeClassification: true,
+    });
+    await getCompoundDetails.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.enrichedCids).toEqual(found.slice(0, 10));
+    expect(enrichment.skippedCids).toEqual([11]);
+  });
+});
+
+describe('getCompoundDetails handler — synonym/description continuation (#38)', () => {
+  const synonyms = Array.from({ length: 30 }, (_, i) => `Synonym-${i}`);
+  const descriptions = Array.from({ length: 8 }, (_, i) => ({ text: `Description ${i}` }));
+
+  it('returns the synonym slice starting at synonymOffset', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+    mockClient.getSynonyms.mockResolvedValueOnce(synonyms);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244],
+      includeSynonyms: true,
+      synonymOffset: 10,
+      maxSynonyms: 5,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.compounds[0]!.synonyms).toEqual([
+      'Synonym-10',
+      'Synonym-11',
+      'Synonym-12',
+      'Synonym-13',
+      'Synonym-14',
+    ]);
+    // The total stays the compound's full count, not the page length.
+    expect(result.compounds[0]!.synonymsTotal).toBe(30);
+    expect(enrichment.synonymOffset).toBe(10);
+    expect(enrichment.nextSynonymOffset).toBe(15);
+    expect(enrichment.notice).toContain('synonymOffset=15');
+  });
+
+  it('walks one compound of synonyms end to end without repeats or gaps', async () => {
+    const seen: string[] = [];
+    for (let synonymOffset = 0; synonymOffset < 30; synonymOffset += 12) {
+      mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+      mockClient.getSynonyms.mockResolvedValueOnce(synonyms);
+      const ctx = createMockContext();
+      const input = getCompoundDetails.input.parse({
+        cids: [2244],
+        includeSynonyms: true,
+        synonymOffset,
+        maxSynonyms: 12,
+      });
+      const result = await getCompoundDetails.handler(input, ctx);
+      seen.push(...(result.compounds[0]!.synonyms ?? []));
+    }
+
+    expect(seen).toEqual(synonyms);
+  });
+
+  it('marks the last synonym page as complete', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+    mockClient.getSynonyms.mockResolvedValueOnce(synonyms);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244],
+      includeSynonyms: true,
+      synonymOffset: 25,
+      maxSynonyms: 10,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.compounds[0]!.synonyms).toHaveLength(5);
+    expect(enrichment.nextSynonymOffset).toBeUndefined();
+    expect(enrichment.notice).toBeUndefined();
+  });
+
+  it('explains a synonymOffset past every compound in the batch', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([
+      { CID: 2244, MolecularFormula: 'C9H8O4' },
+      { CID: 3672, MolecularFormula: 'C13H18O2' },
+    ]);
+    mockClient.getSynonyms
+      .mockResolvedValueOnce(['a', 'b', 'c'])
+      .mockResolvedValueOnce(['d', 'e', 'f', 'g']);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244, 3672],
+      includeSynonyms: true,
+      synonymOffset: 50,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.compounds[0]!.synonyms).toEqual([]);
+    // The full count survives the empty page, so the caller can pick a valid offset.
+    expect(result.compounds[0]!.synonymsTotal).toBe(3);
+    expect(enrichment.notice).toContain('synonymOffset 50 is past every compound');
+    // Bound comes from the longest list in the batch, not the first compound's.
+    expect(enrichment.notice).toContain('has 4 entries');
+  });
+
+  it('keeps paging open while any compound in the batch has more', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([
+      { CID: 2244, MolecularFormula: 'C9H8O4' },
+      { CID: 3672, MolecularFormula: 'C13H18O2' },
+    ]);
+    mockClient.getSynonyms.mockResolvedValueOnce(['a', 'b']).mockResolvedValueOnce(synonyms);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244, 3672],
+      includeSynonyms: true,
+      maxSynonyms: 5,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.compounds[0]!.synonyms).toEqual(['a', 'b']);
+    expect(result.compounds[1]!.synonyms).toHaveLength(5);
+    expect(enrichment.nextSynonymOffset).toBe(5);
+  });
+
+  it('pages descriptions independently of synonyms', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+    mockClient.getDescription.mockResolvedValueOnce(descriptions);
+    mockClient.getSynonyms.mockResolvedValueOnce(['a', 'b']);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244],
+      includeDescription: true,
+      includeSynonyms: true,
+      descriptionOffset: 3,
+      maxDescriptions: 2,
+      maxSynonyms: 20,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.compounds[0]!.descriptions).toEqual([
+      { text: 'Description 3' },
+      { text: 'Description 4' },
+    ]);
+    expect(result.compounds[0]!.descriptionsTotal).toBe(8);
+    expect(enrichment.descriptionOffset).toBe(3);
+    expect(enrichment.nextDescriptionOffset).toBe(5);
+    // Synonyms fit on one page, so only the description continuation is open.
+    expect(enrichment.synonymOffset).toBe(0);
+    expect(enrichment.nextSynonymOffset).toBeUndefined();
+  });
+
+  it('explains a descriptionOffset past every compound in the batch', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+    mockClient.getDescription.mockResolvedValueOnce(descriptions);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids: [2244],
+      includeDescription: true,
+      descriptionOffset: 20,
+    });
+    const result = await getCompoundDetails.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.compounds[0]!.descriptions).toEqual([]);
+    expect(result.compounds[0]!.descriptionsTotal).toBe(8);
+    expect(enrichment.notice).toContain('descriptionOffset 20 is past every compound');
+  });
+
+  it('composes the skipped-CID and continuation notices into one string', async () => {
+    const cids = Array.from({ length: 12 }, (_, i) => i + 1);
+    mockClient.getProperties.mockResolvedValueOnce(
+      cids.map((cid) => ({ CID: cid, MolecularFormula: 'C1H1' })),
+    );
+    for (let i = 0; i < 10; i++) {
+      mockClient.getDescription.mockResolvedValueOnce(descriptions);
+    }
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({
+      cids,
+      includeDescription: true,
+      maxDescriptions: 2,
+    });
+    await getCompoundDetails.handler(input, ctx);
+    const notice = getEnrichment(ctx).notice as string;
+
+    expect(notice).toContain('re-request those CIDs');
+    expect(notice).toContain('descriptionOffset=2');
+  });
+
+  it('omits offset echoes for lists that were not requested', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+    const ctx = createMockContext();
+    const input = getCompoundDetails.input.parse({ cids: [2244] });
+    await getCompoundDetails.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.synonymOffset).toBeUndefined();
+    expect(enrichment.descriptionOffset).toBeUndefined();
+  });
+
+  it('defaults both offsets to 0 and rejects negatives', () => {
+    const parsed = getCompoundDetails.input.parse({ cids: [2244] });
+    expect(parsed.synonymOffset).toBe(0);
+    expect(parsed.descriptionOffset).toBe(0);
+    expect(() => getCompoundDetails.input.parse({ cids: [2244], synonymOffset: -1 })).toThrow();
+    expect(() => getCompoundDetails.input.parse({ cids: [2244], descriptionOffset: -1 })).toThrow();
+  });
+});
+
 describe('getCompoundDetails format — additional cases', () => {
   it('renders "N/A (insufficient data)" when drug-likeness pass is null', () => {
     const blocks = getCompoundDetails.format!({
@@ -272,6 +555,40 @@ describe('getCompoundDetails format — additional cases', () => {
     expect(text).toContain('Synonym-0');
     expect(text).toContain('25 total');
     expect(text).toContain('+5 more');
+  });
+
+  it('renders an empty synonym page as a page boundary, not as "no synonyms" (#38)', () => {
+    const blocks = getCompoundDetails.format!({
+      compounds: [{ cid: 2244, found: true, properties: {}, synonyms: [], synonymsTotal: 698 }],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(text).toContain('**Synonyms** (698 total): none at this synonymOffset');
+  });
+
+  it('renders an empty description page as a page boundary (#38)', () => {
+    const blocks = getCompoundDetails.format!({
+      compounds: [
+        { cid: 2244, found: true, properties: {}, descriptions: [], descriptionsTotal: 7 },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(text).toContain('**Descriptions** (7 total): none at this descriptionOffset');
+  });
+
+  it('points at both the cap and the offset when descriptions are windowed (#38)', () => {
+    const blocks = getCompoundDetails.format!({
+      compounds: [
+        {
+          cid: 2244,
+          found: true,
+          properties: {},
+          descriptions: [{ text: 'first' }],
+          descriptionsTotal: 7,
+        },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(text).toContain('raise maxDescriptions or page with descriptionOffset');
   });
 
   it('renders every MeSH class structuredContent carries (#37)', () => {

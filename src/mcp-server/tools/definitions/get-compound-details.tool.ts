@@ -110,12 +110,19 @@ function computeDrugLikeness(properties: Record<string, unknown>): DrugLikenessA
   };
 }
 
+/**
+ * PUG View is a per-CID endpoint, so descriptions and classification fan out one request per
+ * compound. The batch accepts up to 100 CIDs; this bounds that fan-out. CIDs past it come back
+ * without descriptions or classification — disclosed via enrichment (#40).
+ */
+const PUG_VIEW_CID_CAP = 10;
+
 // ── Tool definition ────────────────────────────────────────────────────
 
 export const getCompoundDetails = tool('pubchem_get_compound_details', {
   title: 'Get Compound Details',
   description:
-    'Get detailed compound information by CID. Returns physicochemical properties (molecular weight, SMILES, InChIKey, XLogP, TPSA, etc.), optionally with a textual description (pharmacology, mechanism, therapeutic use), all known synonyms, drug-likeness assessment (Lipinski/Veber rules), and/or pharmacological classification (FDA classes, MeSH classes, ATC codes). Accepts up to 100 CIDs per call.',
+    'Get detailed compound information by CID. Returns physicochemical properties (molecular weight, SMILES, InChIKey, XLogP, TPSA, etc.), optionally with a textual description (pharmacology, mechanism, therapeutic use), known synonyms, drug-likeness assessment (Lipinski/Veber rules), and/or pharmacological classification (FDA classes, MeSH classes, ATC codes). Accepts up to 100 CIDs per call.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -139,7 +146,15 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .boolean()
       .default(false)
       .describe(
-        'Include textual descriptions (pharmacology, mechanism, therapeutic use) attributed by source. Well-studied compounds have many overlapping summaries — capped via maxDescriptions. Fetched only for the first 10 CIDs in the batch; remaining CIDs return without descriptions.',
+        `Include textual descriptions (pharmacology, mechanism, therapeutic use) attributed by source. Well-studied compounds have many overlapping summaries — paged via descriptionOffset/maxDescriptions. Fetched only for the first ${PUG_VIEW_CID_CAP} CIDs in the batch; remaining CIDs return without descriptions and are listed in the response's skippedCids.`,
+      ),
+    descriptionOffset: z
+      .number()
+      .int()
+      .min(0)
+      .default(0)
+      .describe(
+        "Zero-based index of the first description to return within each compound's description list. The same offset is applied to every compound in the batch. Pass the nextDescriptionOffset from a previous call to read the following page. Default: 0.",
       ),
     maxDescriptions: z
       .number()
@@ -148,13 +163,21 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .max(20)
       .default(3)
       .describe(
-        'Max number of distinct description entries per compound (1-20). PubChem returns near-duplicate summaries from many depositors; duplicates are collapsed before this cap applies. Default: 3.',
+        'Max number of distinct description entries per compound per page (1-20). PubChem returns near-duplicate summaries from many depositors; duplicates are collapsed before this cap applies. Default: 3.',
       ),
     includeSynonyms: z
       .boolean()
       .default(false)
       .describe(
-        'Fetch all known names and synonyms (trade names, systematic names, registry numbers). Slower for large CID lists.',
+        'Fetch known names and synonyms (trade names, systematic names, registry numbers), paged via synonymOffset/maxSynonyms. Fetched for every found CID in the batch. Slower for large CID lists.',
+      ),
+    synonymOffset: z
+      .number()
+      .int()
+      .min(0)
+      .default(0)
+      .describe(
+        "Zero-based index of the first synonym to return within each compound's synonym list. The same offset is applied to every compound in the batch. Pass the nextSynonymOffset from a previous call to read the following page. Default: 0.",
       ),
     maxSynonyms: z
       .number()
@@ -163,7 +186,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .max(100)
       .default(20)
       .describe(
-        'Max synonyms returned per compound (1-100). PubChem lists hundreds for common drugs; capped to keep the response focused. Default: 20.',
+        'Max synonyms returned per compound per page (1-100). PubChem lists hundreds for common drugs; use synonymOffset to reach the ones past this page. Default: 20.',
       ),
     includeDrugLikeness: z
       .boolean()
@@ -175,7 +198,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .boolean()
       .default(false)
       .describe(
-        'Include pharmacological classification: FDA Established Pharmacologic Classes, mechanisms of action, MeSH classes, and ATC codes. Fetched only for the first 10 CIDs in the batch; remaining CIDs return without classification.',
+        `Include pharmacological classification: FDA Established Pharmacologic Classes, mechanisms of action, MeSH classes, and ATC codes. Fetched only for the first ${PUG_VIEW_CID_CAP} CIDs in the batch; remaining CIDs return without classification and are listed in the response's skippedCids.`,
       ),
   }),
   output: z.object({
@@ -208,20 +231,25 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
               )
               .optional()
               .describe(
-                'Textual descriptions, deduplicated and capped at maxDescriptions. Each entry carries optional source attribution.',
+                'Textual descriptions on this page, deduplicated then windowed by descriptionOffset/maxDescriptions. Each entry carries optional source attribution. Empty when descriptionOffset runs past descriptionsTotal.',
               ),
             descriptionsTotal: z
               .number()
               .optional()
               .describe(
-                'Total distinct descriptions available before truncation. Larger than descriptions.length when more sources exist — increase maxDescriptions to see them.',
+                'Total distinct descriptions available for this compound, across all pages. Larger than descriptions.length when more sources exist — raise maxDescriptions or page with descriptionOffset to see them.',
               ),
-            synonyms: z.array(z.string()).optional().describe('Known names and synonyms.'),
+            synonyms: z
+              .array(z.string())
+              .optional()
+              .describe(
+                'Known names and synonyms on this page, windowed by synonymOffset/maxSynonyms. Empty when synonymOffset runs past synonymsTotal.',
+              ),
             synonymsTotal: z
               .number()
               .optional()
               .describe(
-                'Total synonyms available before truncation. Larger than synonyms.length when more exist — increase maxSynonyms to see them.',
+                'Total synonyms available for this compound, across all pages. Larger than synonyms.length when more exist — raise maxSynonyms or page with synonymOffset to see them.',
               ),
             drugLikeness: drugLikenessSchema
               .optional()
@@ -236,6 +264,70 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       )
       .describe('Compound detail records.'),
   }),
+  // Agent-facing context for the two things a per-compound record cannot say on its own:
+  // which CIDs the PUG View fan-out reached (#40), and where the synonym/description windows
+  // sit within each compound's full list (#38). Both are batch-wide — one offset and one cap
+  // apply to every compound — so they belong here rather than repeated per record. Reaches
+  // structuredContent and content[]; keys disjoint from output (compounds lives there).
+  //
+  // A full page is exactly maxSynonyms/maxDescriptions long, so one nextOffset serves every
+  // compound that still has entries left, whatever its individual total.
+  enrichment: {
+    enrichedCids: z
+      .array(z.number())
+      .optional()
+      .describe(
+        'CIDs whose descriptions and classification were fetched. Present only when the batch exceeded the per-call fan-out limit and other CIDs were skipped.',
+      ),
+    skippedCids: z
+      .array(z.number())
+      .optional()
+      .describe(
+        'CIDs found in PubChem whose descriptions and classification were NOT fetched because the batch exceeded the per-call fan-out limit. Their absence from a record means "not requested", not "PubChem has none" — re-request these CIDs in a follow-up call. Present only when CIDs were skipped.',
+      ),
+    synonymOffset: z
+      .number()
+      .optional()
+      .describe(
+        "Zero-based index of the first synonym returned within each compound's list. Present when includeSynonyms is true.",
+      ),
+    nextSynonymOffset: z
+      .number()
+      .optional()
+      .describe(
+        'synonymOffset to pass on the next call to continue past this page. Omitted when no compound in the batch has further synonyms.',
+      ),
+    descriptionOffset: z
+      .number()
+      .optional()
+      .describe(
+        "Zero-based index of the first description returned within each compound's list. Present when includeDescription is true.",
+      ),
+    nextDescriptionOffset: z
+      .number()
+      .optional()
+      .describe(
+        'descriptionOffset to pass on the next call to continue past this page. Omitted when no compound in the batch has further descriptions.',
+      ),
+    notice: z
+      .string()
+      .optional()
+      .describe(
+        'Recovery guidance covering the skipped CIDs, an offset that runs past every compound, and pages that remain. Absent when nothing was skipped or truncated.',
+      ),
+  },
+  // Both fields are optional, so `render` sees `number[] | undefined` at the type level; the
+  // framework only calls it for a populated field.
+  enrichmentTrailer: {
+    enrichedCids: {
+      render: (cids) =>
+        `**Descriptions/classification fetched for:** CID ${(cids ?? []).join(', ')}`,
+    },
+    skippedCids: {
+      render: (cids) =>
+        `**Descriptions/classification skipped for:** CID ${(cids ?? []).join(', ')}`,
+    },
+  },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
@@ -261,14 +353,15 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       return Object.keys(row).some((k) => k !== 'CID');
     };
 
-    // PUG View calls (per-CID, capped at 10) — skip CIDs that aren't in PubChem
+    // PUG View calls (per-CID, capped) — skip CIDs that aren't in PubChem
     const foundCids = input.cids.filter(isFound);
-    const viewCids = foundCids.slice(0, 10);
-    if (
-      (input.includeDescription || input.includeClassification) &&
-      viewCids.length < foundCids.length
-    ) {
-      ctx.log.info('PUG View fetch capped at 10 CIDs', {
+    const viewCids = foundCids.slice(0, PUG_VIEW_CID_CAP);
+    const skippedViewCids = foundCids.slice(PUG_VIEW_CID_CAP);
+    const viewCapEngaged =
+      (input.includeDescription || input.includeClassification) && skippedViewCids.length > 0;
+    if (viewCapEngaged) {
+      ctx.log.info('PUG View fetch capped', {
+        cap: PUG_VIEW_CID_CAP,
         requested: foundCids.length,
         fetching: viewCids.length,
       });
@@ -332,12 +425,18 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
 
       const allDescs = descMap?.get(cid);
       if (allDescs && allDescs.length > 0) {
-        compound.descriptions = allDescs.slice(0, input.maxDescriptions);
+        compound.descriptions = allDescs.slice(
+          input.descriptionOffset,
+          input.descriptionOffset + input.maxDescriptions,
+        );
         compound.descriptionsTotal = allDescs.length;
       }
       const syns = synMap?.get(cid);
       if (syns) {
-        compound.synonyms = syns.slice(0, input.maxSynonyms);
+        compound.synonyms = syns.slice(
+          input.synonymOffset,
+          input.synonymOffset + input.maxSynonyms,
+        );
         compound.synonymsTotal = syns.length;
       }
       if (input.includeDrugLikeness) compound.drugLikeness = computeDrugLikeness(properties);
@@ -346,6 +445,56 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
 
       return compound;
     });
+
+    const notices: string[] = [];
+
+    // #40 — the PUG View fan-out cap is otherwise invisible: a capped-out CID looks exactly
+    // like a compound PubChem has no description for.
+    if (viewCapEngaged) {
+      ctx.enrich({ enrichedCids: viewCids, skippedCids: skippedViewCids });
+      notices.push(
+        `Descriptions and classification were fetched for the first ${viewCids.length} of ${foundCids.length} found CIDs (limit: ${PUG_VIEW_CID_CAP} per call). CID ${skippedViewCids.join(', ')} returned without them — re-request those CIDs in a follow-up call.`,
+      );
+    }
+
+    if (input.includeSynonyms) {
+      const page = listPage(
+        [...(synMap?.values() ?? [])].map((s) => s.length),
+        input.synonymOffset,
+        input.maxSynonyms,
+      );
+      ctx.enrich({ synonymOffset: input.synonymOffset });
+      if (page.hasMore) ctx.enrich({ nextSynonymOffset: page.nextOffset });
+      if (page.allEmpty) {
+        notices.push(
+          `synonymOffset ${input.synonymOffset} is past every compound in this batch — the longest synonym list has ${page.largestTotal} entries. Pass a synonymOffset below ${page.largestTotal}.`,
+        );
+      } else if (page.hasMore) {
+        notices.push(`More synonyms remain — pass synonymOffset=${page.nextOffset} to continue.`);
+      }
+    }
+
+    if (input.includeDescription) {
+      const page = listPage(
+        [...(descMap?.values() ?? [])].map((d) => d.length),
+        input.descriptionOffset,
+        input.maxDescriptions,
+      );
+      ctx.enrich({ descriptionOffset: input.descriptionOffset });
+      if (page.hasMore) ctx.enrich({ nextDescriptionOffset: page.nextOffset });
+      if (page.allEmpty) {
+        notices.push(
+          `descriptionOffset ${input.descriptionOffset} is past every compound in this batch — the longest description list has ${page.largestTotal} entries. Pass a descriptionOffset below ${page.largestTotal}.`,
+        );
+      } else if (page.hasMore) {
+        notices.push(
+          `More descriptions remain — pass descriptionOffset=${page.nextOffset} to continue.`,
+        );
+      }
+    }
+
+    // One notice field, so the sources are composed rather than overwriting one another.
+    if (notices.length > 0) ctx.enrich.notice(notices.join(' '));
 
     return { compounds };
   },
@@ -471,7 +620,15 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         blocks.push(lines.join('\n'));
       }
 
-      // Descriptions (with source attribution; truncated to maxDescriptions)
+      // An empty list with a non-zero total means the offset ran past this compound —
+      // distinct from having no descriptions at all, which omits the field entirely.
+      if (c.descriptions?.length === 0) {
+        blocks.push(
+          `\n**Descriptions** (${c.descriptionsTotal ?? 0} total): none at this descriptionOffset`,
+        );
+      }
+
+      // Descriptions (with source attribution; windowed by descriptionOffset/maxDescriptions)
       if (c.descriptions && c.descriptions.length > 0) {
         const total = c.descriptionsTotal ?? c.descriptions.length;
         const shown = c.descriptions.length;
@@ -491,17 +648,21 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         const more = total - shown;
         if (more > 0) {
           descLines.push(
-            `_+${more} more description${more === 1 ? '' : 's'} from other sources — increase maxDescriptions to see them._`,
+            `_+${more} more description${more === 1 ? '' : 's'} from other sources — raise maxDescriptions or page with descriptionOffset to see them._`,
           );
         }
         blocks.push(descLines.join('\n\n'));
       }
 
-      // Synonyms (capped at maxSynonyms in the handler; total reported)
+      if (c.synonyms?.length === 0) {
+        blocks.push(`\n**Synonyms** (${c.synonymsTotal ?? 0} total): none at this synonymOffset`);
+      }
+
+      // Synonyms (windowed by synonymOffset/maxSynonyms in the handler; total reported)
       if (c.synonyms && c.synonyms.length > 0) {
         const total = c.synonymsTotal ?? c.synonyms.length;
         const more = total - c.synonyms.length;
-        const suffix = more > 0 ? ` (+${more} more)` : '';
+        const suffix = more > 0 ? ` (+${more} more not on this page)` : '';
         /**
          * Pipe-separated: CAS-style inverted names ("Benzoic acid, 2-(acetyloxy)-") carry
          * their own ", ", which would split one synonym into two. " | " is this formatter's
@@ -520,6 +681,24 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     return [{ type: 'text', text: blocks.join('\n') }];
   },
 });
+
+/**
+ * Batch-wide page state for one of the per-compound lists. `totals` holds each compound's
+ * full list length; a page is windowed at the same offset and cap for every compound.
+ */
+function listPage(
+  totals: number[],
+  offset: number,
+  cap: number,
+): { allEmpty: boolean; hasMore: boolean; largestTotal: number; nextOffset: number } {
+  const largestTotal = totals.reduce((max, t) => Math.max(max, t), 0);
+  return {
+    allEmpty: largestTotal > 0 && totals.every((t) => t <= offset),
+    hasMore: totals.some((t) => t > offset + cap),
+    largestTotal,
+    nextOffset: offset + cap,
+  };
+}
 
 function formatRules(rules: Array<[string, DrugLikenessRule]>): string {
   return rules
