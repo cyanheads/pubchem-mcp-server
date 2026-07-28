@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.5.1](changelog/0.5.x/0.5.1.md) — 2026-07-28
+
+Add offset pagination to pubchem_get_compound_xrefs and pubchem_search_assays; add synonymOffset/descriptionOffset paging plus PUG View fan-out disclosure to pubchem_get_compound_details; fix README overclaims on synonym coverage and bioactivity paging.
+
 ## [0.5.0](changelog/0.5.x/0.5.0.md) — 2026-07-28 · ⚠️ Breaking
 
 Bound pubchem_search_compounds fast searches with PubChem's MaxRecords instead of pulling the full match set, reporting a totalFoundAtLeast floor when saturated; add offset pagination to pubchem_get_bioactivity. Breaking: outputSchema.required changes on both tools.

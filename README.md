@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.5.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/pubchem-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.29.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/pubchem-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/pubchem-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.3.0-f472b6.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.5.1-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/pubchem-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.29.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/pubchem-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/pubchem-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.3.0-f472b6.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -62,8 +62,9 @@ Get detailed compound information by CID.
 
 - Batches up to 100 CIDs in a single request
 - 27 available properties: molecular weight, SMILES, InChIKey, XLogP, TPSA, complexity, stereo counts, and more
-- Optionally includes textual descriptions (pharmacology, mechanism, therapeutic use) from PUG View
-- Optionally includes all known synonyms (trade names, systematic names, registry numbers)
+- Optionally includes textual descriptions (pharmacology, mechanism, therapeutic use) from PUG View — fetched for the first 10 CIDs of a batch, with the skipped CIDs named in the response
+- Optionally includes known synonyms (trade names, systematic names, registry numbers)
+- Synonyms and descriptions are paged: `synonymOffset` and `descriptionOffset` window every compound in the batch at the same position, reaching the entries past a page
 - Optionally computes drug-likeness assessment (Lipinski Rule of Five + Veber rules) from fetched properties
 - Optionally fetches pharmacological classification (FDA classes, mechanisms of action, MeSH classes, ATC codes)
 
@@ -75,7 +76,7 @@ Get a compound's bioactivity profile from PubChem BioAssay.
 
 - Returns assay outcomes (Active/Inactive/Inconclusive), target info (protein accessions, NCBI Gene IDs), and quantitative values (IC50, EC50, Ki)
 - Filter by outcome and/or a specific molecular target (NCBI Gene ID or protein accession)
-- Caps at 100 results per request (well-studied compounds may have thousands)
+- Caps at 100 results per page; `offset` reaches the rest (well-studied compounds may have thousands)
 
 ---
 
