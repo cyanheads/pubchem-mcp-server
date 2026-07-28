@@ -85,7 +85,7 @@ describe('searchCompounds handler', () => {
     const enrichment = getEnrichment(ctx);
 
     expect(enrichment.totalFound).toBe(2);
-    expect(mockClient.searchByFormula).toHaveBeenCalledWith('C6H12O6', false);
+    expect(mockClient.searchByFormula).toHaveBeenCalledWith('C6H12O6', false, 21);
   });
 
   it('passes allowOtherElements for formula search', async () => {
@@ -98,7 +98,7 @@ describe('searchCompounds handler', () => {
     });
     await searchCompounds.handler(input, ctx);
 
-    expect(mockClient.searchByFormula).toHaveBeenCalledWith('C6H12O6', true);
+    expect(mockClient.searchByFormula).toHaveBeenCalledWith('C6H12O6', true, 21);
   });
 
   it('searches by similarity', async () => {
@@ -114,7 +114,7 @@ describe('searchCompounds handler', () => {
     const enrichment = getEnrichment(ctx);
 
     expect(enrichment.totalFound).toBe(3);
-    expect(mockClient.searchByStructure).toHaveBeenCalledWith('similarity', '2244', 'cid', 85);
+    expect(mockClient.searchByStructure).toHaveBeenCalledWith('similarity', '2244', 'cid', 85, 21);
   });
 
   it('searches by substructure', async () => {
@@ -133,6 +133,7 @@ describe('searchCompounds handler', () => {
       'c1ccccc1',
       'smiles',
       90,
+      21,
     );
     expect(enrichment.totalFound).toBe(2);
   });
@@ -153,7 +154,8 @@ describe('searchCompounds handler', () => {
   });
 
   it('caps results at maxResults', async () => {
-    mockClient.searchByFormula.mockResolvedValueOnce([1, 2, 3, 4, 5]);
+    // maxResults 2 means the client is asked for 3; a full 3 back proves more exist (#41).
+    mockClient.searchByFormula.mockResolvedValueOnce([1, 2, 3]);
     const ctx = createMockContext();
     const input = searchCompounds.input.parse({
       searchType: 'formula',
@@ -163,8 +165,9 @@ describe('searchCompounds handler', () => {
     const result = await searchCompounds.handler(input, ctx);
     const enrichment = getEnrichment(ctx);
 
-    expect(enrichment.totalFound).toBe(5);
+    expect(mockClient.searchByFormula).toHaveBeenCalledWith('H2O', false, 3);
     expect(result.results).toHaveLength(2);
+    expect(enrichment.truncated).toBe(true);
   });
 
   it('populates notice enrichment when no results found', async () => {
@@ -258,6 +261,85 @@ describe('searchCompounds handler', () => {
         identifiers: ['aspirin', '   '],
       }),
     ).toThrow(/non-empty/);
+  });
+});
+
+describe('searchCompounds handler — bounded fast searches (#41)', () => {
+  it('asks PubChem for one record past maxResults instead of the whole match set', async () => {
+    mockClient.searchByStructure.mockResolvedValueOnce([1, 2, 3]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'substructure',
+      query: 'c1ccccc1C(=O)O',
+      queryType: 'smiles',
+      maxResults: 3,
+    });
+    await searchCompounds.handler(input, ctx);
+
+    expect(mockClient.searchByStructure).toHaveBeenCalledWith(
+      'substructure',
+      'c1ccccc1C(=O)O',
+      'smiles',
+      90,
+      4,
+    );
+  });
+
+  it('reports a floor, not a total, when the bounded search comes back saturated', async () => {
+    // 4 CIDs for a cap of 4 — the true match count is unknowable from this response.
+    mockClient.searchByStructure.mockResolvedValueOnce([1, 2, 3, 4]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'substructure',
+      query: 'c1ccccc1C(=O)O',
+      queryType: 'smiles',
+      maxResults: 3,
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.results.map((r) => r.cid)).toEqual([1, 2, 3]);
+    expect(enrichment.totalFound).toBeUndefined();
+    expect(enrichment.totalFoundAtLeast).toBe(4);
+    expect(enrichment.truncated).toBe(true);
+    expect(enrichment.notice).toContain('no match count');
+  });
+
+  it('reports an exact total when the bounded search returns fewer than the cap', async () => {
+    mockClient.searchByFormula.mockResolvedValueOnce([5988, 79025, 107526]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'formula',
+      formula: 'C6H12O6',
+      maxResults: 10,
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(mockClient.searchByFormula).toHaveBeenCalledWith('C6H12O6', false, 11);
+    expect(result.results.map((r) => r.cid)).toEqual([5988, 79025, 107526]);
+    expect(enrichment.totalFound).toBe(3);
+    expect(enrichment.totalFoundAtLeast).toBeUndefined();
+    expect(enrichment.truncated).toBeUndefined();
+  });
+
+  it('keeps identifier totals exact — those lookups are never bounded', async () => {
+    mockClient.searchByName.mockResolvedValueOnce([2244, 3672, 1983, 5090]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin'],
+      maxResults: 2,
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(mockClient.searchByName).toHaveBeenCalledWith('aspirin');
+    expect(result.results.map((r) => r.cid)).toEqual([2244, 3672]);
+    expect(enrichment.totalFound).toBe(4);
+    expect(enrichment.totalFoundAtLeast).toBeUndefined();
+    expect(enrichment.notice).toContain('Showing 2 of 4 matches');
   });
 });
 

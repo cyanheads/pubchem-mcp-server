@@ -223,6 +223,125 @@ describe('PubChemClient.getAssaySummary parseAssayTable (#6)', () => {
   });
 });
 
+describe('PubChemClient fast-search record cap (#41)', () => {
+  const cidResponse = (cids: number[]) => jsonResponse({ IdentifierList: { CID: cids } });
+  const requestedUrl = () => String(fetchMock.mock.calls[0]![0]);
+
+  it('bounds fastformula with MaxRecords', async () => {
+    fetchMock.mockResolvedValueOnce(cidResponse([5988, 79025]));
+
+    const client = new PubChemClient();
+    const cids = await client.searchByFormula('C6H12O6', false, 21);
+
+    expect(cids).toEqual([5988, 79025]);
+    expect(requestedUrl()).toBe(
+      'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/fastformula/C6H12O6/cids/JSON?MaxRecords=21',
+    );
+  });
+
+  it('keeps AllowOtherElements alongside the cap', async () => {
+    fetchMock.mockResolvedValueOnce(cidResponse([5988]));
+
+    const client = new PubChemClient();
+    await client.searchByFormula('C6H12O6', true, 21);
+
+    const url = requestedUrl();
+    expect(url).toContain('MaxRecords=21');
+    expect(url).toContain('AllowOtherElements=true');
+  });
+
+  it('bounds fastsubstructure on the SMILES POST path', async () => {
+    fetchMock.mockResolvedValueOnce(cidResponse([135, 243]));
+
+    const client = new PubChemClient();
+    await client.searchByStructure('substructure', 'c1ccccc1C(=O)O', 'smiles', undefined, 21);
+
+    expect(requestedUrl()).toBe(
+      'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/fastsubstructure/smiles/cids/JSON?MaxRecords=21',
+    );
+    const init = fetchMock.mock.calls[0]![1] as RequestInit;
+    expect(init.method).toBe('POST');
+    expect(String(init.body)).toBe('smiles=c1ccccc1C%28%3DO%29O');
+  });
+
+  it('bounds fastsuperstructure on the CID GET path', async () => {
+    fetchMock.mockResolvedValueOnce(cidResponse([2244]));
+
+    const client = new PubChemClient();
+    await client.searchByStructure('superstructure', '2244', 'cid', undefined, 21);
+
+    expect(requestedUrl()).toBe(
+      'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/fastsuperstructure/cid/2244/cids/JSON?MaxRecords=21',
+    );
+  });
+
+  it('bounds fastsimilarity_2d alongside Threshold', async () => {
+    fetchMock.mockResolvedValueOnce(cidResponse([2244]));
+
+    const client = new PubChemClient();
+    await client.searchByStructure('similarity', '2244', 'cid', 85, 21);
+
+    const url = requestedUrl();
+    expect(url).toContain('/compound/fastsimilarity_2d/cid/2244/cids/JSON?');
+    expect(url).toContain('MaxRecords=21');
+    expect(url).toContain('Threshold=85');
+  });
+
+  it('defaults the similarity threshold to 90 when unset', async () => {
+    fetchMock.mockResolvedValueOnce(cidResponse([2244]));
+
+    const client = new PubChemClient();
+    await client.searchByStructure('similarity', '2244', 'cid', undefined, 21);
+
+    expect(requestedUrl()).toContain('Threshold=90');
+  });
+
+  /* The MaxRecords on a search URL bounds that request, not the ListKey PubChem hands back
+   * when it answers asynchronously. Without carrying the cap into the retrieval, an async
+   * answer returns the whole match set and the caller reads PubChem's 1,000,000 ceiling as
+   * a floor — the misreport the cap exists to prevent. */
+  it('carries the cap into an async ListKey retrieval and enforces it locally', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ Waiting: { ListKey: 'abc123' } }));
+      // PubChem ignoring listkey_count is the case the slice covers: 5 CIDs for a cap of 3.
+      fetchMock.mockResolvedValueOnce(cidResponse([1, 2, 3, 4, 5]));
+
+      const client = new PubChemClient();
+      const pending = client.searchByStructure('substructure', 'C', 'smiles', undefined, 3);
+      await vi.advanceTimersByTimeAsync(1500);
+      const cids = await pending;
+
+      expect(cids).toEqual([1, 2, 3]);
+      expect(String(fetchMock.mock.calls[1]![0])).toBe(
+        'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/listkey/abc123/cids/JSON?listkey_count=3',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves an unbounded identifier lookup unbounded when it goes async', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ Waiting: { ListKey: 'def456' } }));
+      fetchMock.mockResolvedValueOnce(cidResponse([1, 2, 3, 4, 5]));
+
+      const client = new PubChemClient();
+      const pending = client.searchByName('aspirin');
+      await vi.advanceTimersByTimeAsync(1500);
+      const cids = await pending;
+
+      expect(cids).toEqual([1, 2, 3, 4, 5]);
+      expect(String(fetchMock.mock.calls[1]![0])).toBe(
+        'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/listkey/def456/cids/JSON',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('PubChemClient.getDescription (#7)', () => {
   it('dedupes byte-identical descriptions reposted by multiple depositors and tags sources', async () => {
     fetchMock.mockResolvedValueOnce(

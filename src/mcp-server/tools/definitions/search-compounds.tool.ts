@@ -123,13 +123,31 @@ export const searchCompounds = tool('pubchem_search_compounds', {
   }),
   // Agent-facing context — search strategy echo, total before cap, and an empty-result
   // notice. Reaches structuredContent and content[] automatically; not in the domain return.
+  //
+  // Bounded-total convention: a reported total states only what the server actually
+  // observed. `totalFound` carries a true count and appears only when the whole match set
+  // was seen. When the upstream request was itself bounded and came back saturated, the
+  // exact total is unknowable, so `totalFoundAtLeast` carries a floor in its place rather
+  // than a number that reads as a count. Exactly one of the two is populated per call; any
+  // other capped output pairs its count field with an `…AtLeast` twin the same way.
   enrichment: {
     searchType: z
       .string()
       .describe(
         'Search strategy used: identifier, formula, substructure, superstructure, or similarity.',
       ),
-    totalFound: z.number().describe('Total CIDs found before the maxResults cap.'),
+    totalFound: z
+      .number()
+      .optional()
+      .describe(
+        'Exact number of matching CIDs, before the maxResults cap. Omitted when a formula, substructure, superstructure, or similarity search filled its page — PubChem returns no match count for those, so totalFoundAtLeast reports a floor instead.',
+      ),
+    totalFoundAtLeast: z
+      .number()
+      .optional()
+      .describe(
+        'Lower bound on matching CIDs, reported in place of totalFound when the exact count is unavailable. At least this many match, and the true total may be higher; raise maxResults to retrieve more.',
+      ),
     truncated: z
       .boolean()
       .optional()
@@ -176,6 +194,11 @@ export const searchCompounds = tool('pubchem_search_compounds', {
   async handler(input, ctx) {
     const client = getPubChemClient();
     let allCids: number[] = [];
+    // Formula and structure searches are bounded server-side. One record past the cap is
+    // enough to prove more matches exist without moving the rest of PubChem's match set,
+    // which for a common substructure runs to 16.3 MB of CIDs.
+    const recordCap = input.maxResults + 1;
+    let boundedSearch = false;
     const identifierMap = new Map<number, string>();
     // Identifier-mode resolution tracking (#29): inputs that resolved to no CID, and
     // CIDs claimed by more than one distinct input (the output row can echo only one).
@@ -238,7 +261,8 @@ export const searchCompounds = tool('pubchem_search_compounds', {
             ...ctx.recoveryFor('missing_formula'),
           });
         }
-        allCids = await client.searchByFormula(input.formula, input.allowOtherElements);
+        boundedSearch = true;
+        allCids = await client.searchByFormula(input.formula, input.allowOtherElements, recordCap);
         break;
       }
       case 'substructure':
@@ -258,11 +282,13 @@ export const searchCompounds = tool('pubchem_search_compounds', {
             { ...ctx.recoveryFor('invalid_cid_query') },
           );
         }
+        boundedSearch = true;
         allCids = await client.searchByStructure(
           input.searchType,
           input.query,
           input.queryType,
           input.threshold,
+          recordCap,
         );
         break;
       }
@@ -270,17 +296,26 @@ export const searchCompounds = tool('pubchem_search_compounds', {
 
     // Deduplicate and cap
     const uniqueCids = [...new Set(allCids)];
-    const totalFound = uniqueCids.length;
+    const observedTotal = uniqueCids.length;
     const cappedCids = uniqueCids.slice(0, input.maxResults);
+
+    // A bounded search that came back short of its cap returned everything PubChem had, so
+    // the count is exact. A saturated one only proves a floor.
+    const totalIsExact = !boundedSearch || allCids.length < recordCap;
 
     ctx.log.info('Search completed', {
       searchType: input.searchType,
-      totalFound,
+      observedTotal,
+      totalIsExact,
       returned: cappedCids.length,
     });
 
     // Agent-facing context: search strategy echo, total, and empty-result notice.
-    ctx.enrich({ searchType: input.searchType, totalFound });
+    ctx.enrich(
+      totalIsExact
+        ? { searchType: input.searchType, totalFound: observedTotal }
+        : { searchType: input.searchType, totalFoundAtLeast: observedTotal },
+    );
 
     // Identifier-mode signals (#29): name inputs that did not resolve and flag CID
     // collisions, so a partial miss is never silent. Empty for other search types.
@@ -303,18 +338,21 @@ export const searchCompounds = tool('pubchem_search_compounds', {
           ? noticeParts.join(' ')
           : `No compounds matched the ${input.searchType} search. Try a different identifier, broaden the formula, lower the similarity threshold, or verify the SMILES/CID.`,
       );
-    } else if (totalFound > cappedCids.length) {
+    } else if (observedTotal > cappedCids.length) {
       // Truncated: fold any identifier notice into the truncation guidance (notice is
-      // last-wins, so compose rather than emit two; restate the cap when overriding).
-      if (noticeParts.length > 0) {
-        ctx.enrich.truncated({
-          shown: cappedCids.length,
-          cap: input.maxResults,
-          guidance: `${noticeParts.join(' ')} Showing ${cappedCids.length} of ${totalFound} matches — raise maxResults (max 200) for more.`,
-        });
-      } else {
-        ctx.enrich.truncated({ shown: cappedCids.length, cap: input.maxResults });
-      }
+      // last-wins, so compose rather than emit two). Without an exact total there is no
+      // "of N" to quote — say more exist and stop.
+      const truncationGuidance = totalIsExact
+        ? `Showing ${cappedCids.length} of ${observedTotal} matches — raise maxResults (max 200) for more.`
+        : `Showing ${cappedCids.length} matches; more exist, but PubChem reports no match count for a ${input.searchType} search — raise maxResults (max 200) for more.`;
+      ctx.enrich.truncated({
+        shown: cappedCids.length,
+        cap: input.maxResults,
+        guidance:
+          noticeParts.length > 0
+            ? `${noticeParts.join(' ')} ${truncationGuidance}`
+            : truncationGuidance,
+      });
     } else if (noticeParts.length > 0) {
       ctx.enrich.notice(noticeParts.join(' '));
     }

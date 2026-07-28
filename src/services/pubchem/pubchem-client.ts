@@ -515,11 +515,17 @@ export class PubChemClient {
 
   // ── CID Resolution ──────────────────────────────────────────────
 
-  /** Fetch CID list, with automatic ListKey polling for async searches */
-  private async fetchCids(url: string, init?: RequestInit): Promise<number[]> {
+  /** Fetch CID list, with automatic ListKey polling for async searches.
+   *
+   * `maxRecords` carries a bounded search's cap into the ListKey retrieval. A search that
+   * answers synchronously is already bounded by the `MaxRecords` on its own URL, but that
+   * bound lives in the request, not the ListKey — so an async answer would otherwise return
+   * the full match set and the caller would read PubChem's ceiling as a real count. Omitted
+   * for identifier lookups, which are unbounded by design. */
+  private async fetchCids(url: string, init?: RequestInit, maxRecords?: number): Promise<number[]> {
     try {
       const data = await this.fetchJson<CidListResponse | ListKeyResponse>(url, init);
-      if ('Waiting' in data) return this.pollListKey(data.Waiting.ListKey);
+      if ('Waiting' in data) return this.pollListKey(data.Waiting.ListKey, maxRecords);
       return data.IdentifierList.CID;
     } catch (error) {
       if (isNotFound(error)) return [];
@@ -527,15 +533,24 @@ export class PubChemClient {
     }
   }
 
-  /** Poll a PubChem ListKey until results are ready */
-  private async pollListKey(listKey: string, maxAttempts = 20): Promise<number[]> {
-    const pollUrl = `${this.pugBase}/compound/listkey/${listKey}/cids/JSON`;
+  /** Poll a PubChem ListKey until results are ready.
+   *
+   * `listkey_count` asks PubChem to trim the page; the slice enforces the same bound
+   * locally, so the caller's saturation test holds whether or not the parameter is honored. */
+  private async pollListKey(
+    listKey: string,
+    maxRecords?: number,
+    maxAttempts = 20,
+  ): Promise<number[]> {
+    const query = maxRecords === undefined ? '' : `?listkey_count=${maxRecords}`;
+    const pollUrl = `${this.pugBase}/compound/listkey/${listKey}/cids/JSON${query}`;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       await sleep(1500);
       try {
         const data = await this.fetchJson<CidListResponse | ListKeyResponse>(pollUrl);
         if ('Waiting' in data) continue;
-        return data.IdentifierList.CID;
+        const cids = data.IdentifierList.CID;
+        return maxRecords === undefined ? cids : cids.slice(0, maxRecords);
       } catch (error) {
         if (isNotFound(error)) return [];
         throw error;
@@ -562,18 +577,35 @@ export class PubChemClient {
     );
   }
 
-  searchByFormula(formula: string, allowOther = false): Promise<number[]> {
-    const params = allowOther ? '?AllowOtherElements=true' : '';
+  /** Formula search, bounded server-side by `maxRecords`.
+   *
+   * `MaxRecords` is mandatory rather than optional because an unbounded fast search moves
+   * PubChem's entire match set: a benzoic-acid substructure query returns 1,000,000 CIDs in
+   * 16.3 MB, which is PubChem's own ceiling rather than a real count. Callers ask for the
+   * window they will actually use.
+   *
+   * A response shorter than `maxRecords` is the complete match set; a response of exactly
+   * `maxRecords` is saturated, and the true total is not recoverable — PubChem returns the
+   * CID list alone, with no match count beside it. Callers that need to distinguish the two
+   * compare the returned length against the cap they passed. */
+  searchByFormula(formula: string, allowOther: boolean, maxRecords: number): Promise<number[]> {
+    const params = new URLSearchParams({ MaxRecords: String(maxRecords) });
+    if (allowOther) params.set('AllowOtherElements', 'true');
     return this.fetchCids(
-      `${this.pugBase}/compound/fastformula/${encodeURIComponent(formula)}/cids/JSON${params}`,
+      `${this.pugBase}/compound/fastformula/${encodeURIComponent(formula)}/cids/JSON?${params}`,
+      undefined,
+      maxRecords,
     );
   }
 
+  /** Substructure, superstructure, and 2D-similarity search, bounded server-side by
+   * `maxRecords`. Same cap contract as {@link searchByFormula}. */
   searchByStructure(
     mode: 'substructure' | 'superstructure' | 'similarity',
     query: string,
     queryType: 'smiles' | 'cid',
-    threshold?: number,
+    threshold: number | undefined,
+    maxRecords: number,
   ): Promise<number[]> {
     const endpoint =
       mode === 'similarity'
@@ -582,21 +614,28 @@ export class PubChemClient {
           ? 'fastsubstructure'
           : 'fastsuperstructure';
 
-    const thresholdParam = mode === 'similarity' ? `?Threshold=${threshold ?? 90}` : '';
+    const params = new URLSearchParams({ MaxRecords: String(maxRecords) });
+    if (mode === 'similarity') params.set('Threshold', String(threshold ?? 90));
 
     if (queryType === 'cid') {
       return this.fetchCids(
-        `${this.pugBase}/compound/${endpoint}/cid/${query}/cids/JSON${thresholdParam}`,
+        `${this.pugBase}/compound/${endpoint}/cid/${query}/cids/JSON?${params}`,
+        undefined,
+        maxRecords,
       );
     }
 
     // POST for SMILES to avoid encoding issues
-    const url = `${this.pugBase}/compound/${endpoint}/smiles/cids/JSON${thresholdParam}`;
-    return this.fetchCids(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ smiles: query }).toString(),
-    });
+    const url = `${this.pugBase}/compound/${endpoint}/smiles/cids/JSON?${params}`;
+    return this.fetchCids(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ smiles: query }).toString(),
+      },
+      maxRecords,
+    );
   }
 
   // ── Compound Data ───────────────────────────────────────────────

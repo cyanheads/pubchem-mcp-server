@@ -42,6 +42,7 @@ describe('searchCompounds handler — superstructure search', () => {
       'c1ccccc1',
       'smiles',
       90,
+      21,
     );
     expect(enrichment.totalFound).toBe(2);
     expect(result.results).toHaveLength(2);
@@ -57,7 +58,13 @@ describe('searchCompounds handler — superstructure search', () => {
     });
     const result = await searchCompounds.handler(input, ctx);
 
-    expect(mockClient.searchByStructure).toHaveBeenCalledWith('superstructure', '2244', 'cid', 90);
+    expect(mockClient.searchByStructure).toHaveBeenCalledWith(
+      'superstructure',
+      '2244',
+      'cid',
+      90,
+      21,
+    );
     expect(result.results).toHaveLength(3);
   });
 });
@@ -278,7 +285,7 @@ describe('searchCompounds handler — cid-query validation (#26)', () => {
     const result = await searchCompounds.handler(input, ctx);
 
     expect(result.results).toHaveLength(2);
-    expect(mockClient.searchByStructure).toHaveBeenCalledWith('similarity', '2244', 'cid', 90);
+    expect(mockClient.searchByStructure).toHaveBeenCalledWith('similarity', '2244', 'cid', 90, 21);
   });
 
   it('does not apply the CID shape check to smiles queries', async () => {
@@ -297,6 +304,7 @@ describe('searchCompounds handler — cid-query validation (#26)', () => {
       'not-a-cid-but-a-smiles',
       'smiles',
       90,
+      21,
     );
   });
 });
@@ -330,7 +338,7 @@ describe('searchCompounds handler — security', () => {
     const result = await searchCompounds.handler(input, ctx);
 
     expect(result.results).toHaveLength(0);
-    expect(mockClient.searchByFormula).toHaveBeenCalledWith('../../etc/passwd', false);
+    expect(mockClient.searchByFormula).toHaveBeenCalledWith('../../etc/passwd', false, 21);
   });
 
   it('passes oversized formula string to client without crash', async () => {
