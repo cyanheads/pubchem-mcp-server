@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-07-28 12:57:36
+Generated on: 2026-07-28 14:44:51
 
 ```text
 pubchem-mcp-server/
@@ -25,6 +25,7 @@ pubchem-mcp-server/
 │   ├── 0.2.x/
 │   ├── 0.3.x/
 │   ├── 0.4.x/
+│   ├── 0.5.x/
 │   └── template.md
 ├── claude-plans/
 ├── docs/

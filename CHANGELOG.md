@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.5.0](changelog/0.5.x/0.5.0.md) — 2026-07-28 · ⚠️ Breaking
+
+Bound pubchem_search_compounds fast searches with PubChem's MaxRecords instead of pulling the full match set, reporting a totalFoundAtLeast floor when saturated; add offset pagination to pubchem_get_bioactivity. Breaking: outputSchema.required changes on both tools.
+
 ## [0.4.3](changelog/0.4.x/0.4.3.md) — 2026-07-28
 
 Fix content[] truncation that hid data structuredContent already returned; fix assay/taxonomy field mapping in pubchem_get_summary; remove implementation and audience leaks from tool/resource descriptions
