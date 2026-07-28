@@ -132,9 +132,9 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       lines.push(`**${xref.type}** (${countInfo})`);
 
       if (xref.ids.length > 0) {
-        const display = xref.ids.slice(0, 20);
-        const more = xref.ids.length > 20 ? `, ... (+${xref.ids.length - 20} more)` : '';
-        lines.push(`  ${display.join(', ')}${more}`);
+        // Rendered in full: the handler already capped ids at maxPerType and the header
+        // discloses that cap, so a second slice here would hide IDs structuredContent returned.
+        lines.push(`  ${xref.ids.join(', ')}`);
       } else {
         lines.push('  None found');
       }

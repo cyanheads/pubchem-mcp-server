@@ -168,25 +168,28 @@ describe('getCompoundXrefs handler — truncation boundary', () => {
   });
 });
 
-describe('getCompoundXrefs format — display cap', () => {
-  it('shows all IDs up to 20 without ellipsis', () => {
-    const ids = Array.from({ length: 20 }, (_, i) => i + 1);
-    const blocks = getCompoundXrefs.format!({
-      cid: 2244,
-      xrefs: [{ type: 'PubMedID', ids, totalAvailable: 20, truncated: false }],
-    });
-    const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).not.toContain('+');
-    expect(text).toContain('20 total');
-  });
-
-  it('shows ellipsis when more than 20 IDs in display', () => {
+describe('getCompoundXrefs format — structuredContent parity', () => {
+  it('renders every returned ID, past the old 20-item display cap (#37)', () => {
     const ids = Array.from({ length: 25 }, (_, i) => i + 1);
     const blocks = getCompoundXrefs.format!({
       cid: 2244,
       xrefs: [{ type: 'PubMedID', ids, totalAvailable: 25, truncated: false }],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('+5 more');
+    for (const id of ids) expect(text).toMatch(new RegExp(`\\b${id}\\b`));
+    expect(text).not.toContain('more)');
+    expect(text).toContain('25 total');
+  });
+
+  it('renders all IDs the handler kept while disclosing the maxPerType cap', () => {
+    const ids = Array.from({ length: 50 }, (_, i) => i + 1);
+    const blocks = getCompoundXrefs.format!({
+      cid: 2244,
+      xrefs: [{ type: 'PubMedID', ids, totalAvailable: 3000, truncated: true }],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    for (const id of ids) expect(text).toMatch(new RegExp(`\\b${id}\\b`));
+    // The only disclosed omission is the handler's cap — the IDs it returned are all present.
+    expect(text).toContain('50 of 3000 total — truncated');
   });
 });
