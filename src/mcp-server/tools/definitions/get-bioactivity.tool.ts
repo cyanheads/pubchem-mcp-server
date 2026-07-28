@@ -43,13 +43,21 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       .describe(
         'Filter to assays against this target protein accession (UniProt/GenBank), e.g. "P35354". Obtain accessions from pubchem_search_assays or the targetAccession field of an unfiltered result here.',
       ),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .default(0)
+      .describe(
+        'Zero-based index of the first assay to return, applied after the outcome and target filters. Pass the nextOffset from a previous call to read the following page. Default: 0.',
+      ),
     maxResults: z
       .number()
       .min(1)
       .max(100)
       .default(20)
       .describe(
-        'Max assay results to return (1-100). Well-studied compounds have thousands of records. Default: 20.',
+        'Max assay results to return per page (1-100). Well-studied compounds have thousands of records; use offset to reach the ones past this page. Default: 20.',
       ),
   }),
   output: z.object({
@@ -95,9 +103,14 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       )
       .describe('Assay results matching the filter.'),
   }),
-  // Agent-facing context — filter echo, the filtered/returned cap boundary, and a notice
-  // distinguishing "no data" from "filter excluded everything". Reaches structuredContent
-  // and content[]; keys disjoint from output (cid/totalAssays live there).
+  // Agent-facing context — filter echo, the page boundary, and a notice distinguishing
+  // "no data" from "filter excluded everything". Reaches structuredContent and content[];
+  // keys disjoint from output (cid/totalAssays live there).
+  //
+  // Bounded-total convention: a reported total states only what the server actually
+  // observed, and pairs with an `…AtLeast` floor when the exact figure is unknowable.
+  // Every count here is exact and needs no such twin — PubChem's assay summary has no
+  // pagination of its own, so the full table is in hand before any filter runs.
   enrichment: {
     outcomeFilter: z.string().describe('Outcome filter applied: active, inactive, or all.'),
     targetFilter: z
@@ -106,13 +119,19 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       .describe('Target filter applied (gene ID and/or protein accession), when set.'),
     filteredCount: z
       .number()
-      .describe('Assays matching the outcome and target filters, before the maxResults cap.'),
-    returnedCount: z.number().describe('Assays returned after the maxResults cap.'),
-    truncated: z
-      .boolean()
+      .describe(
+        'Exact number of assays matching the outcome and target filters, across all pages.',
+      ),
+    returnedCount: z.number().describe('Assays returned on this page.'),
+    offset: z.number().describe('Zero-based index of the first assay returned.'),
+    nextOffset: z
+      .number()
       .optional()
-      .describe('True when results were capped at maxResults — more matching assays exist.'),
-    shown: z.number().optional().describe('Assays returned after the maxResults cap.'),
+      .describe(
+        'Offset to pass on the next call to continue past this page. Omitted when no further assays match.',
+      ),
+    truncated: z.boolean().optional().describe('True when matching assays remain past this page.'),
+    shown: z.number().optional().describe('Assays returned on this page.'),
     cap: z.number().optional().describe('The maxResults cap that was applied.'),
     notice: z
       .string()
@@ -151,13 +170,18 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       filtered = filtered.filter((r) => r.targetAccession === input.targetAccession);
     }
 
-    const results = filtered.slice(0, input.maxResults);
+    // Offset is applied client-side: PubChem's assay summary endpoint accepts no
+    // offset/start/limit/page parameter, so getAssaySummary already holds every row.
+    const results = filtered.slice(input.offset, input.offset + input.maxResults);
+    const nextOffset = input.offset + results.length;
+    const hasMore = nextOffset < filtered.length;
 
     ctx.log.info('Bioactivity fetched', {
       cid: input.cid,
       total: allRows.length,
       active: activeCount,
       filtered: filtered.length,
+      offset: input.offset,
       returned: results.length,
     });
 
@@ -165,8 +189,10 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       outcomeFilter: input.outcomeFilter,
       filteredCount: filtered.length,
       returnedCount: results.length,
+      offset: input.offset,
     });
     if (targetLabel) ctx.enrich({ targetFilter: targetLabel });
+    if (hasMore) ctx.enrich({ nextOffset });
     if (allRows.length === 0) {
       ctx.enrich.notice(
         `No bioactivity data found for CID ${input.cid}. The compound may be uncharacterized, or verify the CID with pubchem_search_compounds.`,
@@ -177,8 +203,16 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
           ? `CID ${input.cid} has ${allRows.length} assay(s) but none match the target filter (${targetLabel})${input.outcomeFilter !== 'all' ? ` with outcomeFilter="${input.outcomeFilter}"` : ''}. Verify the target identifier appears in this compound's assays, or widen the filter.`
           : `CID ${input.cid} has ${allRows.length} assay(s) but none match outcomeFilter="${input.outcomeFilter}". Use outcomeFilter="all" to see them.`,
       );
-    } else if (filtered.length > results.length) {
-      ctx.enrich.truncated({ shown: results.length, cap: input.maxResults });
+    } else if (results.length === 0) {
+      ctx.enrich.notice(
+        `offset ${input.offset} is past the ${filtered.length} assay(s) matching the filter. Pass an offset below ${filtered.length}.`,
+      );
+    } else if (hasMore) {
+      ctx.enrich.truncated({
+        shown: results.length,
+        cap: input.maxResults,
+        guidance: `Showing assays ${input.offset + 1}-${nextOffset} of ${filtered.length}. Pass offset=${nextOffset} for the next page.`,
+      });
     }
 
     return {

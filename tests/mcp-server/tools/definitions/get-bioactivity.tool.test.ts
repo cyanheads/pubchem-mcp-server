@@ -121,6 +121,8 @@ describe('getBioactivity handler — enrichment', () => {
     expect(enrichment.outcomeFilter).toBe('active');
     expect(enrichment.filteredCount).toBe(30);
     expect(enrichment.returnedCount).toBe(10);
+    expect(enrichment.offset).toBe(0);
+    expect(enrichment.nextOffset).toBe(10);
     expect(enrichment.truncated).toBe(true);
     expect(enrichment.shown).toBe(10);
     expect(enrichment.cap).toBe(10);
@@ -149,6 +151,80 @@ describe('getBioactivity handler — enrichment', () => {
     expect(enrichment.filteredCount).toBe(0);
     expect(enrichment.notice).toBeDefined();
     expect(enrichment.notice).toContain('outcomeFilter="active"');
+  });
+});
+
+describe('getBioactivity handler — offset pagination (#33)', () => {
+  const page = (n: number) => Array.from({ length: n }, (_, i) => ({ ...activeRow, aid: i + 1 }));
+
+  it('returns the slice starting at offset', async () => {
+    mockClient.getAssaySummary.mockResolvedValueOnce(page(30));
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({ cid: 2244, offset: 10, maxResults: 5 });
+    const result = await getBioactivity.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.results.map((r) => r.aid)).toEqual([11, 12, 13, 14, 15]);
+    expect(enrichment.offset).toBe(10);
+    expect(enrichment.returnedCount).toBe(5);
+    expect(enrichment.filteredCount).toBe(30);
+    expect(enrichment.nextOffset).toBe(15);
+    expect(enrichment.notice).toContain('offset=15');
+  });
+
+  it('walks the whole filtered set without repeating or skipping a row', async () => {
+    const seen: number[] = [];
+    for (let offset = 0; offset < 30; offset += 12) {
+      mockClient.getAssaySummary.mockResolvedValueOnce(page(30));
+      const ctx = createMockContext();
+      const input = getBioactivity.input.parse({ cid: 2244, offset, maxResults: 12 });
+      const result = await getBioactivity.handler(input, ctx);
+      seen.push(...result.results.map((r) => r.aid));
+    }
+
+    expect(seen).toEqual(Array.from({ length: 30 }, (_, i) => i + 1));
+  });
+
+  it('applies offset after the outcome filter, not before', async () => {
+    const rows = [inactiveRow, activeRow, inactiveRow, { ...activeRow, aid: 1001 }];
+    mockClient.getAssaySummary.mockResolvedValueOnce(rows);
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'active', offset: 1 });
+    const result = await getBioactivity.handler(input, ctx);
+
+    // Two Active rows survive the filter; offset 1 lands on the second of those.
+    expect(result.results.map((r) => r.aid)).toEqual([1001]);
+  });
+
+  it('marks the last page as complete rather than truncated', async () => {
+    mockClient.getAssaySummary.mockResolvedValueOnce(page(30));
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({ cid: 2244, offset: 25, maxResults: 10 });
+    const result = await getBioactivity.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.results.map((r) => r.aid)).toEqual([26, 27, 28, 29, 30]);
+    expect(enrichment.nextOffset).toBeUndefined();
+    expect(enrichment.truncated).toBeUndefined();
+    expect(enrichment.notice).toBeUndefined();
+  });
+
+  it('explains an offset that runs past the filtered set', async () => {
+    mockClient.getAssaySummary.mockResolvedValueOnce(page(3));
+    const ctx = createMockContext();
+    const input = getBioactivity.input.parse({ cid: 2244, offset: 50 });
+    const result = await getBioactivity.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.results).toEqual([]);
+    expect(enrichment.filteredCount).toBe(3);
+    expect(enrichment.returnedCount).toBe(0);
+    expect(enrichment.notice).toContain('offset 50 is past the 3 assay(s)');
+    expect(enrichment.truncated).toBeUndefined();
+  });
+
+  it('rejects a negative offset', () => {
+    expect(() => getBioactivity.input.parse({ cid: 2244, offset: -1 })).toThrow();
   });
 });
 
