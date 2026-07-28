@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.5.1-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/pubchem-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.29.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/pubchem-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/pubchem-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.3.0-f472b6.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.5.2-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/pubchem-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.29.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/pubchem-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/pubchem-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.3.0-f472b6.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -52,6 +52,7 @@ Search PubChem for chemical compounds across five search modes.
 - **Formula search** — find compounds by molecular formula in Hill notation
 - **Substructure/superstructure** — find compounds containing or contained within a query structure
 - **2D similarity** — find structurally similar compounds by Tanimoto similarity (configurable threshold)
+- Caps at 200 CIDs per page; `offset` pages further, to a ceiling of 10,000. Identifier lookups page over the set already resolved; formula and structure searches widen their bounded upstream request to reach a page, so deep pages cost more upstream
 - Optionally hydrate results with properties to avoid a follow-up details call
 
 ---
@@ -96,6 +97,7 @@ Get a compound's interaction data by CID.
 
 - Drug-drug interactions (DrugBank), drug-food interactions, and chemical-target binding/activity (BindingDB, ChEMBL, and others)
 - Select which interaction kinds to fetch and cap entries per kind
+- Paged per kind: each reports its source-record total and its own `nextOffset`, and `offset` reaches the records past a page
 - Each entry carries its originating source — coverage is richest for approved drugs
 
 ---

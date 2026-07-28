@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.5.2](changelog/0.5.x/0.5.2.md) — 2026-07-28
+
+Add offset pagination to pubchem_search_compounds and pubchem_get_compound_interactions, completing #38; switch the interactions SDQ query to a select projection for exact per-kind totals.
+
 ## [0.5.1](changelog/0.5.x/0.5.1.md) — 2026-07-28
 
 Add offset pagination to pubchem_get_compound_xrefs and pubchem_search_assays; add synonymOffset/descriptionOffset paging plus PUG View fan-out disclosure to pubchem_get_compound_details; fix README overclaims on synonym coverage and bioactivity paging.
