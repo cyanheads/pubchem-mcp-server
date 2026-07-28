@@ -9,7 +9,8 @@ import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 
 export const assayResource = resource('pubchem://assay/{aid}', {
   name: 'pubchem-assay',
-  description: 'Summary for a PubChem BioAssay by AID (mirrors pubchem_get_summary for assays).',
+  description:
+    'Summary for a PubChem BioAssay by AID — name, description, source, protocol, and substance counts.',
   mimeType: 'application/json',
   params: z.object({
     aid: z.coerce.number().int().positive().describe('PubChem Assay ID.'),

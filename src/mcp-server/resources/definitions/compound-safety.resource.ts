@@ -9,7 +9,7 @@ import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 export const compoundSafetyResource = resource('pubchem://compound/{cid}/safety', {
   name: 'pubchem-compound-safety',
   description:
-    'GHS hazard classification for a PubChem compound by CID (mirrors pubchem_get_compound_safety).',
+    'GHS hazard classification for a PubChem compound by CID — signal word, pictograms, hazard (H) and precautionary (P) statements. Not every compound carries a deposited classification.',
   mimeType: 'application/json',
   params: z.object({
     cid: z.coerce.number().int().positive().describe('PubChem Compound ID.'),

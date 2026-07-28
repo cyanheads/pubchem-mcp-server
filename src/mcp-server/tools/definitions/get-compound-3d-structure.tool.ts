@@ -21,7 +21,7 @@ const DEFAULT_SDF_LINE_CAP = 500;
 export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', {
   title: 'Get Compound 3D Structure',
   description:
-    'Get a compound\'s default 3D conformer — atomic coordinates and bonds — for one CID. format="json" (default) returns parsed atoms and bonds the model can reason over directly; format="sdf" returns the raw V2000 SDF text for passthrough to docking, rendering, or conformer tools. Optionally lists alternate conformer IDs. Not every compound has computed 3D coordinates (large molecules, mixtures, and some salts do not).',
+    'Get a compound\'s default 3D conformer — atomic coordinates and bonds — for one CID. format="json" (default) returns atoms and bonds parsed into structured fields; format="sdf" returns the raw V2000 SDF text for passthrough to docking, rendering, or conformer tools. Optionally lists alternate conformer IDs. Not every compound has computed 3D coordinates (large molecules, mixtures, and some salts do not).',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -43,7 +43,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       .boolean()
       .default(false)
       .describe(
-        'List the IDs of additional computed conformers beyond the default. Adds one extra API call. Default: false.',
+        'List the IDs of additional computed conformers beyond the default. Slower than the default response. Default: false.',
       ),
     maxAtoms: z
       .number()

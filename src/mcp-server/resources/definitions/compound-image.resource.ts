@@ -9,7 +9,7 @@ import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 export const compoundImageResource = resource('pubchem://compound/{cid}/image', {
   name: 'pubchem-compound-image',
   description:
-    'A 2D structure diagram (PNG) for a PubChem compound by CID (mirrors pubchem_get_compound_image).',
+    'A 2D structure diagram (PNG, 300x300) for a PubChem compound by CID. Use pubchem_get_compound_image to choose the image size.',
   mimeType: 'image/png',
   params: z.object({
     cid: z.coerce.number().int().positive().describe('PubChem Compound ID.'),

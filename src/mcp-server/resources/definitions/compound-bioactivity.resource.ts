@@ -12,7 +12,7 @@ const MAX_RESULTS = 25;
 export const compoundBioactivityResource = resource('pubchem://compound/{cid}/bioactivity', {
   name: 'pubchem-compound-bioactivity',
   description:
-    'Bioassay activity profile for a PubChem compound by CID (mirrors pubchem_get_bioactivity). Returns up to 25 assays; use the tool to filter and page.',
+    'Bioassay activity profile for a PubChem compound by CID. Returns up to 25 assays; use pubchem_get_bioactivity to filter by outcome or molecular target and to raise the cap.',
   mimeType: 'application/json',
   params: z.object({
     cid: z.coerce.number().int().positive().describe('PubChem Compound ID.'),

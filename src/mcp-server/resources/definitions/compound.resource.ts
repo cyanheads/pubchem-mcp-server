@@ -11,7 +11,7 @@ import { DEFAULT_PROPERTIES } from '@/services/pubchem/types.js';
 export const compoundResource = resource('pubchem://compound/{cid}', {
   name: 'pubchem-compound',
   description:
-    'Core physicochemical properties for a PubChem compound by CID (mirrors pubchem_get_compound_details).',
+    'Core physicochemical properties for a PubChem compound by CID. Use pubchem_get_compound_details to select properties or add descriptions, synonyms, drug-likeness, and classification.',
   mimeType: 'application/json',
   params: z.object({
     cid: z.coerce.number().int().positive().describe('PubChem Compound ID.'),
