@@ -115,7 +115,7 @@ function computeDrugLikeness(properties: Record<string, unknown>): DrugLikenessA
 export const getCompoundDetails = tool('pubchem_get_compound_details', {
   title: 'Get Compound Details',
   description:
-    'Get detailed compound information by CID. Returns physicochemical properties (molecular weight, SMILES, InChIKey, XLogP, TPSA, etc.), optionally with a textual description (pharmacology, mechanism, therapeutic use), all known synonyms, drug-likeness assessment (Lipinski/Veber rules), and/or pharmacological classification (FDA classes, MeSH classes, ATC codes). Efficiently batches up to 100 CIDs.',
+    'Get detailed compound information by CID. Returns physicochemical properties (molecular weight, SMILES, InChIKey, XLogP, TPSA, etc.), optionally with a textual description (pharmacology, mechanism, therapeutic use), all known synonyms, drug-likeness assessment (Lipinski/Veber rules), and/or pharmacological classification (FDA classes, MeSH classes, ATC codes). Accepts up to 100 CIDs per call.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -127,7 +127,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .min(1)
       .max(100)
       .describe(
-        'PubChem Compound IDs to fetch (1-100). Batched efficiently. Resolve from names/SMILES with pubchem_search_compounds.',
+        'PubChem Compound IDs to fetch (1-100). Resolve from names/SMILES with pubchem_search_compounds.',
       ),
     properties: z
       .array(propertyEnum)
@@ -148,13 +148,13 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .max(20)
       .default(3)
       .describe(
-        'Max number of distinct description entries per compound (1-20). PubChem returns near-duplicate summaries from many depositors; we dedup and cap to keep responses focused. Default: 3.',
+        'Max number of distinct description entries per compound (1-20). PubChem returns near-duplicate summaries from many depositors; duplicates are collapsed before this cap applies. Default: 3.',
       ),
     includeSynonyms: z
       .boolean()
       .default(false)
       .describe(
-        'Fetch all known names and synonyms (trade names, systematic names, registry numbers). One API call per CID — slower than the property batch for large CID lists.',
+        'Fetch all known names and synonyms (trade names, systematic names, registry numbers). Slower for large CID lists.',
       ),
     maxSynonyms: z
       .number()
@@ -169,7 +169,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .boolean()
       .default(false)
       .describe(
-        'Compute drug-likeness assessment: Lipinski Rule of Five (MW, XLogP, HBD, HBA) and Veber rules (TPSA, rotatable bonds). No extra API calls — computed from properties.',
+        'Compute drug-likeness assessment: Lipinski Rule of Five (MW, XLogP, HBD, HBA) and Veber rules (TPSA, rotatable bonds). Computed from the returned properties, so it adds no latency.',
       ),
     includeClassification: z
       .boolean()
@@ -451,12 +451,16 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         lines.push('\n**Classification:**');
         if (cls.fdaClasses.length > 0) lines.push(`  FDA: ${cls.fdaClasses.join(', ')}`);
         if (cls.fdaMechanisms.length > 0) lines.push(`  MoA: ${cls.fdaMechanisms.join(', ')}`);
+        /**
+         * MeSH classes render in full — structuredContent carries the whole list uncapped.
+         * Each value is a multi-sentence scope note that routinely contains both "; " and
+         * ", ", so no inline separator can mark an entry boundary unambiguously. One entry
+         * per line instead: inlineData collapses embedded newlines, so a value cannot forge
+         * a bullet of its own and the line break is an unforgeable entry boundary.
+         */
         if (cls.meshClasses.length > 0) {
-          const meshDisplay =
-            cls.meshClasses.length > 3
-              ? `${cls.meshClasses.slice(0, 3).join('; ')} (+${cls.meshClasses.length - 3} more)`
-              : cls.meshClasses.join('; ');
-          lines.push(`  MeSH: ${meshDisplay}`);
+          lines.push('  MeSH:');
+          for (const meshClass of cls.meshClasses) lines.push(`    - ${inlineData(meshClass)}`);
         }
         if (cls.atcCodes.length > 0) {
           const atcDisplay = cls.atcCodes
@@ -498,7 +502,15 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         const total = c.synonymsTotal ?? c.synonyms.length;
         const more = total - c.synonyms.length;
         const suffix = more > 0 ? ` (+${more} more)` : '';
-        const syns = c.synonyms.map(inlineData).join(', ');
+        /**
+         * Pipe-separated: CAS-style inverted names ("Benzoic acid, 2-(acetyloxy)-") carry
+         * their own ", ", which would split one synonym into two. " | " is this formatter's
+         * existing inline multi-value separator. A bare "|" does turn up in depositor
+         * synonyms as mangled Greek letters ("17|A-Oestradiol"), so the delimiter is the
+         * space-padded form; that exact sequence was absent from every synonym sampled,
+         * but unlike the MeSH line break it is a rare-collision separator, not a proof.
+         */
+        const syns = c.synonyms.map(inlineData).join(' | ');
         blocks.push(`\n**Synonyms** (${total} total): ${syns}${suffix}`);
       }
 

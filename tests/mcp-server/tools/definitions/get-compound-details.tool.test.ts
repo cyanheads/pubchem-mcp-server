@@ -430,7 +430,7 @@ describe('getCompoundDetails format', () => {
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).toContain('non-steroidal');
     expect(text).toContain('Description (DrugBank)');
-    expect(text).toContain('Aspirin, ASA');
+    expect(text).toContain('Aspirin | ASA');
   });
 
   it('renders truncation marker when descriptions exceed cap (#7 regression)', () => {

@@ -274,24 +274,67 @@ describe('getCompoundDetails format — additional cases', () => {
     expect(text).toContain('+5 more');
   });
 
-  it('renders MeSH class truncation at 3 items', () => {
+  it('renders every MeSH class structuredContent carries (#37)', () => {
+    // structuredContent applies no cap to meshClasses, so format() must not either.
+    const meshClasses = [
+      'Anti-Inflammatory Agents, Non-Steroidal',
+      'Antipyretics',
+      'Cyclooxygenase Inhibitors',
+      'Fibrinolytic Agents',
+      'Platelet Aggregation Inhibitors',
+    ];
     const blocks = getCompoundDetails.format!({
       compounds: [
         {
           cid: 2244,
           found: true,
           properties: {},
-          classification: {
-            atcCodes: [],
-            fdaClasses: [],
-            fdaMechanisms: [],
-            meshClasses: ['A', 'B', 'C', 'D'],
-          },
+          classification: { atcCodes: [], fdaClasses: [], fdaMechanisms: [], meshClasses },
         },
       ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('(+1 more)');
+    for (const cls of meshClasses) expect(text).toContain(cls);
+    expect(text).not.toContain('more)');
+  });
+
+  it('keeps a MeSH class containing "; " as one recoverable entry', () => {
+    // Aspirin's real NSAID scope note ends "...platelet-inhibitory actions; other mechanisms
+    // may contribute...". Under the old '; ' joiner that internal semicolon was
+    // indistinguishable from an entry boundary.
+    const meshClasses = [
+      'Anti-inflammatory agents that are non-steroidal in nature. They act by blocking the synthesis of prostaglandins; other mechanisms may contribute to their anti-inflammatory effects.',
+      'Drugs that are used to reduce body temperature in fever.',
+    ];
+    const blocks = getCompoundDetails.format!({
+      compounds: [
+        {
+          cid: 2244,
+          found: true,
+          properties: {},
+          classification: { atcCodes: [], fdaClasses: [], fdaMechanisms: [], meshClasses },
+        },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    const rendered = text
+      .split('\n')
+      .filter((l) => l.startsWith('    - '))
+      .map((l) => l.slice('    - '.length));
+    // Two inputs must round-trip to exactly two entries, each intact.
+    expect(rendered).toEqual(meshClasses);
+  });
+
+  it('keeps a synonym containing ", " as one recoverable entry', () => {
+    // CAS inverted names ("Benzoic acid, 2-(acetyloxy)-") carry their own comma.
+    const synonyms = ['aspirin', 'Benzoic acid, 2-(acetyloxy)-', '1H-Purine-2,6-dione'];
+    const blocks = getCompoundDetails.format!({
+      compounds: [{ cid: 2244, found: true, properties: {}, synonyms, synonymsTotal: 3 }],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    const line = text.split('\n').find((l) => l.includes('**Synonyms**'))!;
+    const rendered = line.slice(line.indexOf('): ') + 3).split(' | ');
+    expect(rendered).toEqual(synonyms);
   });
 
   it('renders isomeric SMILES only when different from canonical', () => {
