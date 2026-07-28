@@ -303,6 +303,7 @@ describe('searchCompounds handler — bounded fast searches (#41)', () => {
     expect(enrichment.totalFoundAtLeast).toBe(4);
     expect(enrichment.truncated).toBe(true);
     expect(enrichment.notice).toContain('no match count');
+    expect(enrichment.nextOffset).toBe(3);
   });
 
   it('reports an exact total when the bounded search returns fewer than the cap', async () => {
@@ -339,7 +340,8 @@ describe('searchCompounds handler — bounded fast searches (#41)', () => {
     expect(result.results.map((r) => r.cid)).toEqual([2244, 3672]);
     expect(enrichment.totalFound).toBe(4);
     expect(enrichment.totalFoundAtLeast).toBeUndefined();
-    expect(enrichment.notice).toContain('Showing 2 of 4 matches');
+    expect(enrichment.notice).toContain('Showing matches 1-2 of 4');
+    expect(enrichment.nextOffset).toBe(2);
   });
 });
 

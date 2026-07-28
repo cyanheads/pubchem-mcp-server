@@ -24,7 +24,7 @@ const propertyEnum = z.enum(COMPOUND_PROPERTIES as unknown as [string, ...string
 export const searchCompounds = tool('pubchem_search_compounds', {
   title: 'Search Compounds',
   description:
-    'Search PubChem for chemical compounds by identifier (name, SMILES, or InChIKey, batched up to 25), molecular formula in Hill notation, substructure or superstructure containment, or 2D Tanimoto similarity. Optionally hydrate results with properties to avoid a follow-up pubchem_get_compound_details call.',
+    'Search PubChem for chemical compounds by identifier (name, SMILES, or InChIKey, batched up to 25), molecular formula in Hill notation, substructure or superstructure containment, or 2D Tanimoto similarity. Returns a page of CIDs — reach matches past maxResults with offset. Optionally hydrate results with properties to avoid a follow-up pubchem_get_compound_details call.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -81,12 +81,23 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .describe(
         'Similarity search only. Minimum Tanimoto similarity (70-100). 90+ for close analogs, 70-80 for scaffold hops. Default: 90.',
       ),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .max(10000)
+      .default(0)
+      .describe(
+        'Zero-based index of the first CID to return. Pass the nextOffset from a previous call to read the following page. Identifier lookups resolve every match up front, so paging them is free; formula, substructure, superstructure, and similarity searches have to ask PubChem for offset + maxResults records to reach a page, so deep pages cost progressively more upstream — hence the 10000 ceiling. Default: 0.',
+      ),
     maxResults: z
       .number()
       .min(1)
       .max(200)
       .default(20)
-      .describe('Maximum CIDs to return (1-200). Default: 20.'),
+      .describe(
+        'Maximum CIDs to return per page (1-200). Use offset to reach matches past this page. Default: 20.',
+      ),
     properties: z
       .array(propertyEnum)
       .optional()
@@ -121,8 +132,9 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         'Identifier-mode only: input identifiers that resolved to no CID. Omitted when every identifier resolved and for non-identifier searches.',
       ),
   }),
-  // Agent-facing context — search strategy echo, total before cap, and an empty-result
-  // notice. Reaches structuredContent and content[] automatically; not in the domain return.
+  // Agent-facing context — search strategy echo, total, the page boundary, and a notice
+  // covering unresolved identifiers, an empty page, and further pages. Reaches
+  // structuredContent and content[] automatically; not in the domain return.
   //
   // Bounded-total convention: a reported total states only what the server actually
   // observed. `totalFound` carries a true count and appears only when the whole match set
@@ -140,25 +152,29 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .number()
       .optional()
       .describe(
-        'Exact number of matching CIDs, before the maxResults cap. Omitted when a formula, substructure, superstructure, or similarity search filled its page — PubChem returns no match count for those, so totalFoundAtLeast reports a floor instead.',
+        'Exact number of matching CIDs across all pages. Omitted when a formula, substructure, superstructure, or similarity search saturated the records it requested — PubChem returns no match count for those, so totalFoundAtLeast reports a floor instead.',
       ),
     totalFoundAtLeast: z
       .number()
       .optional()
       .describe(
-        'Lower bound on matching CIDs, reported in place of totalFound when the exact count is unavailable. At least this many match, and the true total may be higher; raise maxResults to retrieve more.',
+        'Lower bound on matching CIDs, reported in place of totalFound when the exact count is unavailable. At least this many match, and the true total may be higher; page further with offset to observe more.',
       ),
-    truncated: z
-      .boolean()
+    offset: z.number().describe('Zero-based index of the first CID returned.'),
+    nextOffset: z
+      .number()
       .optional()
-      .describe('True when CIDs were capped at maxResults — more matches exist than returned.'),
-    shown: z.number().optional().describe('CIDs returned after the maxResults cap.'),
+      .describe(
+        'Offset to pass on the next call to continue past this page. Omitted when no further matches remain.',
+      ),
+    truncated: z.boolean().optional().describe('True when matching CIDs remain past this page.'),
+    shown: z.number().optional().describe('CIDs returned on this page.'),
     cap: z.number().optional().describe('The maxResults cap that was applied.'),
     notice: z
       .string()
       .optional()
       .describe(
-        'Recovery guidance when no compounds matched — echoes search strategy and suggests how to broaden. Absent when results were returned.',
+        'Recovery guidance when no compounds matched, when the offset runs past the matches observed, when identifiers failed to resolve, or when further pages remain. Absent when this page is complete and every identifier resolved.',
       ),
   },
   errors: [
@@ -194,10 +210,12 @@ export const searchCompounds = tool('pubchem_search_compounds', {
   async handler(input, ctx) {
     const client = getPubChemClient();
     let allCids: number[] = [];
-    // Formula and structure searches are bounded server-side. One record past the cap is
-    // enough to prove more matches exist without moving the rest of PubChem's match set,
-    // which for a common substructure runs to 16.3 MB of CIDs.
-    const recordCap = input.maxResults + 1;
+    // Formula and structure searches are bounded server-side. One record past the requested
+    // page is enough to prove more matches exist without moving the rest of PubChem's match
+    // set, which for a common substructure runs to 16.3 MB of CIDs. The window has to cover
+    // the offset too — these endpoints take a record count, not a start position, and their
+    // ordering is a stable prefix, so reaching page N means asking for everything up to it.
+    const recordCap = input.offset + input.maxResults + 1;
     let boundedSearch = false;
     const identifierMap = new Map<number, string>();
     // Identifier-mode resolution tracking (#29): inputs that resolved to no CID, and
@@ -294,28 +312,37 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       }
     }
 
-    // Deduplicate and cap
+    // Deduplicate, then take the requested page.
     const uniqueCids = [...new Set(allCids)];
     const observedTotal = uniqueCids.length;
-    const cappedCids = uniqueCids.slice(0, input.maxResults);
+    const pagedCids = uniqueCids.slice(input.offset, input.offset + input.maxResults);
 
     // A bounded search that came back short of its cap returned everything PubChem had, so
     // the count is exact. A saturated one only proves a floor.
     const totalIsExact = !boundedSearch || allCids.length < recordCap;
+    // The stride comes from the page that was returned, never from maxResults — that input
+    // accepts a fractional value, which would emit a nextOffset this tool's own integer
+    // offset validator then rejects.
+    const nextOffset = input.offset + pagedCids.length;
+    // A saturated bounded search proved a record beyond the window it asked for, so more
+    // remain even though observedTotal cannot say how many.
+    const hasMore = !totalIsExact || nextOffset < observedTotal;
 
     ctx.log.info('Search completed', {
       searchType: input.searchType,
       observedTotal,
       totalIsExact,
-      returned: cappedCids.length,
+      offset: input.offset,
+      returned: pagedCids.length,
     });
 
-    // Agent-facing context: search strategy echo, total, and empty-result notice.
+    // Agent-facing context: search strategy echo, total, page boundary, and notices.
     ctx.enrich(
       totalIsExact
-        ? { searchType: input.searchType, totalFound: observedTotal }
-        : { searchType: input.searchType, totalFoundAtLeast: observedTotal },
+        ? { searchType: input.searchType, totalFound: observedTotal, offset: input.offset }
+        : { searchType: input.searchType, totalFoundAtLeast: observedTotal, offset: input.offset },
     );
+    if (hasMore) ctx.enrich({ nextOffset });
 
     // Identifier-mode signals (#29): name inputs that did not resolve and flag CID
     // collisions, so a partial miss is never silent. Empty for other search types.
@@ -332,21 +359,32 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       );
     }
 
-    if (cappedCids.length === 0) {
-      ctx.enrich.notice(
-        noticeParts.length > 0
-          ? noticeParts.join(' ')
-          : `No compounds matched the ${input.searchType} search. Try a different identifier, broaden the formula, lower the similarity threshold, or verify the SMILES/CID.`,
-      );
-    } else if (observedTotal > cappedCids.length) {
+    if (pagedCids.length === 0) {
+      // An empty page is either "nothing matched" or "the offset ran past the matches" —
+      // say which, and name the bound the caller can page back inside.
+      if (observedTotal === 0) {
+        if (noticeParts.length === 0) {
+          noticeParts.push(
+            `No compounds matched the ${input.searchType} search. Try a different identifier, broaden the formula, lower the similarity threshold, or verify the SMILES/CID.`,
+          );
+        }
+      } else {
+        // Reachable only with an exact total: a saturated bounded search observed
+        // offset + maxResults + 1 records, so its page is never empty.
+        noticeParts.push(
+          `offset ${input.offset} is past the ${observedTotal} match(es) found. Pass an offset below ${observedTotal}.`,
+        );
+      }
+      ctx.enrich.notice(noticeParts.join(' '));
+    } else if (hasMore) {
       // Truncated: fold any identifier notice into the truncation guidance (notice is
       // last-wins, so compose rather than emit two). Without an exact total there is no
-      // "of N" to quote — say more exist and stop.
+      // "of N" to quote — say more exist, and still hand over the next offset.
       const truncationGuidance = totalIsExact
-        ? `Showing ${cappedCids.length} of ${observedTotal} matches — raise maxResults (max 200) for more.`
-        : `Showing ${cappedCids.length} matches; more exist, but PubChem reports no match count for a ${input.searchType} search — raise maxResults (max 200) for more.`;
+        ? `Showing matches ${input.offset + 1}-${nextOffset} of ${observedTotal}. Pass offset=${nextOffset} for the next page.`
+        : `Showing matches ${input.offset + 1}-${nextOffset}; more exist, but PubChem reports no match count for a ${input.searchType} search. Pass offset=${nextOffset} for the next page.`;
       ctx.enrich.truncated({
-        shown: cappedCids.length,
+        shown: pagedCids.length,
         cap: input.maxResults,
         guidance:
           noticeParts.length > 0
@@ -359,12 +397,12 @@ export const searchCompounds = tool('pubchem_search_compounds', {
 
     // Optionally hydrate with properties
     let propsMap: Map<number, Record<string, unknown>> | undefined;
-    if (input.properties && input.properties.length > 0 && cappedCids.length > 0) {
-      const rows = await client.getProperties(cappedCids, input.properties);
+    if (input.properties && input.properties.length > 0 && pagedCids.length > 0) {
+      const rows = await client.getProperties(pagedCids, input.properties);
       propsMap = new Map(rows.map((r) => [r.CID, r]));
     }
 
-    const results = cappedCids.map((cid) => {
+    const results = pagedCids.map((cid) => {
       const result: {
         cid: number;
         identifier?: string;

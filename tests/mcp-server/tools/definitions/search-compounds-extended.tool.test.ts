@@ -469,3 +469,235 @@ describe('searchCompounds format — additional cases', () => {
     expect(text).toContain('aspirin');
   });
 });
+
+describe('searchCompounds handler — offset paging (#38)', () => {
+  it('grows the bounded upstream request to cover the offset', async () => {
+    mockClient.searchByStructure.mockResolvedValueOnce(Array.from({ length: 26 }, (_, i) => i + 1));
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'substructure',
+      query: 'c1ccccc1',
+      queryType: 'smiles',
+      offset: 20,
+      maxResults: 5,
+    });
+    const result = await searchCompounds.handler(input, ctx);
+
+    // offset + maxResults + 1 — the endpoint takes a record count, not a start position.
+    expect(mockClient.searchByStructure).toHaveBeenCalledWith(
+      'substructure',
+      'c1ccccc1',
+      'smiles',
+      90,
+      26,
+    );
+    expect(result.results.map((r) => r.cid)).toEqual([21, 22, 23, 24, 25]);
+  });
+
+  it('reports more matches beyond a saturated bounded page even without an exact total', async () => {
+    // 26 records for a cap of 26 — saturated, so a further match exists past the window.
+    mockClient.searchByFormula.mockResolvedValueOnce(Array.from({ length: 26 }, (_, i) => i + 1));
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'formula',
+      formula: 'C6H12O6',
+      offset: 20,
+      maxResults: 5,
+    });
+    await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.totalFound).toBeUndefined();
+    expect(enrichment.totalFoundAtLeast).toBe(26);
+    expect(enrichment.offset).toBe(20);
+    expect(enrichment.nextOffset).toBe(25);
+    expect(enrichment.notice).toContain('Showing matches 21-25');
+  });
+
+  it('pages identifier lookups over the already-resolved set without a second request', async () => {
+    mockClient.searchByName.mockResolvedValueOnce([10, 20, 30, 40, 50]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin'],
+      offset: 2,
+      maxResults: 2,
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(mockClient.searchByName).toHaveBeenCalledTimes(1);
+    expect(mockClient.searchByName).toHaveBeenCalledWith('aspirin');
+    expect(result.results.map((r) => r.cid)).toEqual([30, 40]);
+    expect(enrichment.totalFound).toBe(5);
+    expect(enrichment.nextOffset).toBe(4);
+  });
+
+  it('omits nextOffset and truncated on the terminal page', async () => {
+    mockClient.searchByName.mockResolvedValueOnce([10, 20, 30]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin'],
+      offset: 2,
+      maxResults: 2,
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.results.map((r) => r.cid)).toEqual([30]);
+    expect(enrichment.nextOffset).toBeUndefined();
+    expect(enrichment.truncated).toBeUndefined();
+    expect(enrichment.notice).toBeUndefined();
+  });
+
+  it('names the valid bound when the offset runs past the matches found', async () => {
+    mockClient.searchByFormula.mockResolvedValueOnce([1, 2, 3]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'formula',
+      formula: 'C6H12O6',
+      offset: 50,
+      maxResults: 10,
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.results).toEqual([]);
+    expect(enrichment.totalFound).toBe(3);
+    expect(enrichment.notice).toBe(
+      'offset 50 is past the 3 match(es) found. Pass an offset below 3.',
+    );
+  });
+
+  it('keeps a saturated bounded page non-empty, so the empty-page bound is always exact', async () => {
+    // Cap is 100 + 10 + 1 = 111; a full 111 back is saturated, and the page still fills.
+    mockClient.searchByStructure.mockResolvedValueOnce(
+      Array.from({ length: 111 }, (_, i) => i + 1),
+    );
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'similarity',
+      query: '2244',
+      queryType: 'cid',
+      offset: 100,
+      maxResults: 10,
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.results).toHaveLength(10);
+    expect(enrichment.totalFoundAtLeast).toBe(111);
+    expect(enrichment.nextOffset).toBe(110);
+  });
+
+  it('keeps continuing when duplicates shrink a saturated page below its cap', async () => {
+    // Cap is 4; PubChem returns 4 records but one is a repeat, so the deduped set is exactly the
+    // page. The saturation is what proves a further match exists — the deduped count cannot.
+    mockClient.searchByFormula.mockResolvedValueOnce([1, 2, 3, 1]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'formula',
+      formula: 'C6H12O6',
+      maxResults: 3,
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.results.map((r) => r.cid)).toEqual([1, 2, 3]);
+    expect(enrichment.truncated).toBe(true);
+    expect(enrichment.nextOffset).toBe(3);
+  });
+
+  it('still reports unresolved identifiers on a page past the first (#29)', async () => {
+    mockClient.searchByName.mockResolvedValueOnce([10, 20, 30]).mockResolvedValueOnce([]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin', 'notreal1zzz'],
+      offset: 2,
+      maxResults: 2,
+    });
+    const result = await searchCompounds.handler(input, ctx);
+
+    expect(result.unresolvedIdentifiers).toEqual(['notreal1zzz']);
+    expect(getEnrichment(ctx).notice).toContain('notreal1zzz');
+  });
+
+  it('hydrates properties for the page returned, not the first page', async () => {
+    mockClient.searchByName.mockResolvedValueOnce([10, 20, 30, 40]);
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 30, MolecularFormula: 'H2O' }]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin'],
+      offset: 2,
+      maxResults: 1,
+      properties: ['MolecularFormula'],
+    });
+    await searchCompounds.handler(input, ctx);
+
+    expect(mockClient.getProperties).toHaveBeenCalledWith([30], ['MolecularFormula']);
+  });
+
+  it('walks every page without repeating or skipping a CID', async () => {
+    const all = [10, 20, 30, 40, 50];
+    const collected: number[] = [];
+    let offset: number | undefined = 0;
+
+    for (let page = 0; page < 5 && offset !== undefined; page++) {
+      mockClient.searchByName.mockResolvedValueOnce(all);
+      const ctx = createMockContext();
+      const result = await searchCompounds.handler(
+        searchCompounds.input.parse({
+          searchType: 'identifier',
+          identifierType: 'name',
+          identifiers: ['aspirin'],
+          offset,
+          maxResults: 2,
+        }),
+        ctx,
+      );
+      collected.push(...result.results.map((r) => r.cid));
+      offset = getEnrichment(ctx).nextOffset as number | undefined;
+    }
+
+    expect(collected).toEqual(all);
+  });
+
+  it('emits an integer nextOffset even when maxResults is fractional (#44)', async () => {
+    mockClient.searchByName.mockResolvedValueOnce([10, 20, 30, 40]);
+    const ctx = createMockContext();
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin'],
+      maxResults: 2.5,
+    });
+    await searchCompounds.handler(input, ctx);
+    const nextOffset = getEnrichment(ctx).nextOffset as number;
+
+    // Stride comes from the page returned, so the tool's own integer offset validator accepts it.
+    expect(Number.isInteger(nextOffset)).toBe(true);
+    expect(() =>
+      searchCompounds.input.parse({
+        searchType: 'identifier',
+        identifierType: 'name',
+        identifiers: ['aspirin'],
+        offset: nextOffset,
+      }),
+    ).not.toThrow();
+  });
+
+  it('rejects a negative, fractional, or out-of-range offset', () => {
+    const base = { searchType: 'formula', formula: 'C6H12O6' };
+    expect(() => searchCompounds.input.parse({ ...base, offset: -1 })).toThrow();
+    expect(() => searchCompounds.input.parse({ ...base, offset: 1.5 })).toThrow();
+    expect(() => searchCompounds.input.parse({ ...base, offset: 10001 })).toThrow();
+    expect(() => searchCompounds.input.parse({ ...base, offset: 10000 })).not.toThrow();
+  });
+});
