@@ -9,6 +9,7 @@
 import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PubChemClient } from '@/services/pubchem/pubchem-client.js';
+import type { GHSClassification } from '@/services/pubchem/types.js';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -19,6 +20,15 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function textResponse(text: string, status = 200): Response {
   return new Response(text, { status, headers: { 'Content-Type': 'text/plain' } });
+}
+
+/** PUG View's fault envelope. Both "no such CID" and "no data under this heading" arrive as
+ * HTTP 404 PUGVIEW.NotFound — only Message separates them. */
+function pugViewFault(message: string, status = 404): Response {
+  return new Response(JSON.stringify({ Fault: { Code: 'PUGVIEW.NotFound', Message: message } }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -40,7 +50,7 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
       jsonResponse({
         Record: {
           RecordType: 'CID',
-          RecordNumber: 702,
+          RecordNumber: 2244,
           Reference: [{ ReferenceNumber: 1, SourceName: 'European Chemicals Agency' }],
           Section: [
             {
@@ -65,23 +75,38 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
                       },
                     },
                     {
+                      // Verbatim from CID 2244 (aspirin). PubChem interposes the
+                      // depositor-agreement percentage between the code and the colon, and
+                      // appends the GHS hazard class in brackets.
                       Name: 'GHS Hazard Statements',
                       Value: {
                         StringWithMarkup: [
-                          { String: 'H225: Highly flammable liquid and vapour' },
-                          { String: 'H319: Causes serious eye irritation' },
+                          {
+                            String:
+                              'H302 (95.6%): Harmful if swallowed [Warning Acute toxicity, oral]',
+                          },
+                          {
+                            String:
+                              'H315 (20.6%): Causes skin irritation [Warning Skin corrosion/irritation]',
+                          },
                         ],
                       },
                     },
                     {
-                      // PubChem's real shape: a single comma-separated code list (codes
-                      // only, no text), with combined `+` codes and a terminal Oxford "and".
+                      // Verbatim from CID 2244 (aspirin) — both strings, including the
+                      // trailing "(click each P-code to see the statement)" prose PubChem
+                      // appends to every list. Splitting on the delimiter and anchoring each
+                      // token drops whichever code that prose is glued to.
                       Name: 'Precautionary Statement Codes',
                       Value: {
                         StringWithMarkup: [
                           {
                             String:
-                              'P261, P264, P264+P265, P270, P280, P301+P312, P301+P317, P305+P351+P338, P318, P405, and P501',
+                              'P261, P264, P264+P265, P270, P271, P280, P301+P317, P302+P352, P304+P340, P305+P351+P338, P319, P321, P330, P332+P317, P337+P317, P362+P364, P403+P233, P405, and P501 (click each P-code to see the statement)',
+                          },
+                          {
+                            String:
+                              'P203, P233, P260, P264, P264+P265, P270, P271, P280, P284, P301+P317, P304+P340, P305+P351+P338, P308+P316, P318, P319, P321, P330, P337+P317, P342+P316, P403, P405, and P501 (click each P-code to see the statement)',
                           },
                         ],
                       },
@@ -96,56 +121,274 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
     );
 
     const client = new PubChemClient();
-    const result = await client.getSafetyData(702);
+    const result = await client.getSafetyData(2244);
 
-    expect(result).not.toBeNull();
-    expect(result!.signalWord).toBe('Danger');
-    expect(result!.pictograms).toContain('Flammable');
-    expect(result!.hazardStatements).toContainEqual({
-      code: 'H225',
-      statement: 'Highly flammable liquid and vapour',
+    expect(result.status).toBe('ok');
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+    expect(ghs.signalWord).toBe('Danger');
+    expect(ghs.pictograms).toContain('Flammable');
+    // The depositor-agreement percentage is skipped rather than failing the parse — requiring
+    // the colon to follow the code immediately dropped every annotated statement.
+    expect(ghs.hazardStatements).toContainEqual({
+      code: 'H302',
+      statement: 'Harmful if swallowed [Warning Acute toxicity, oral]',
     });
-    expect(result!.hazardStatements).toContainEqual({
-      code: 'H319',
-      statement: 'Causes serious eye irritation',
+    expect(ghs.hazardStatements).toContainEqual({
+      code: 'H315',
+      statement: 'Causes skin irritation [Warning Skin corrosion/irritation]',
     });
     // Precautionary codes decode to their exact UN GHS Rev. 10 Annex 3 text via the table.
-    expect(result!.precautionaryStatements).toContainEqual({
+    expect(ghs.precautionaryStatements).toContainEqual({
       code: 'P261',
       statement: 'Avoid breathing dust/fume/gas/mist/vapours/spray.',
+      decoded: true,
     });
     // P280 carries the current Rev. 10 form — adds hearing protection and the trailing "/…".
-    expect(result!.precautionaryStatements).toContainEqual({
+    expect(ghs.precautionaryStatements).toContainEqual({
       code: 'P280',
       statement:
         'Wear protective gloves/protective clothing/eye protection/face protection/hearing protection/…',
+      decoded: true,
     });
     // A P316-family code (Rev. 8+, actively deposited by PubChem) decodes to its Rev. 10 text.
-    expect(result!.precautionaryStatements).toContainEqual({
+    expect(ghs.precautionaryStatements).toContainEqual({
       code: 'P318',
       statement: 'IF exposed or concerned, get medical advice.',
+      decoded: true,
     });
     // Combined `+` codes (pairs and triples) are preserved as single entries and decoded
     // from their own combined-key text, not a runtime join of individual codes.
-    expect(result!.precautionaryStatements).toContainEqual({
+    expect(ghs.precautionaryStatements).toContainEqual({
       code: 'P264+P265',
       statement: 'Wash hands thoroughly after handling. Do not touch eyes.',
+      decoded: true,
     });
-    expect(result!.precautionaryStatements).toContainEqual({
+    expect(ghs.precautionaryStatements).toContainEqual({
       code: 'P305+P351+P338',
       statement:
         'IF IN EYES: Rinse cautiously with water for several minutes. Remove contact lenses, if present and easy to do. Continue rinsing.',
+      decoded: true,
     });
-    // Codes with no Rev. 10 text fall back to "": P501 (free-fill disposal method) and
-    // P301+P312 (P312 was deleted in Rev. 10, superseded by the P316–P319 family).
-    expect(result!.precautionaryStatements).toContainEqual({ code: 'P501', statement: '' });
-    expect(result!.precautionaryStatements).toContainEqual({ code: 'P301+P312', statement: '' });
-    // The terminal "and P501" is parsed without the leading conjunction.
-    expect(result!.precautionaryStatements.map((p) => p.code)).not.toContain('and P501');
-    expect(result!.source).toBe('European Chemicals Agency');
+    // Codes with no Rev. 10 text report decoded:false alongside the "" fallback (#34), so a
+    // consumer can tell an undecoded code from a statement the depositor left empty:
+    // P321 (free-fill first-aid reference) and P501 (free-fill disposal method).
+    expect(ghs.precautionaryStatements).toContainEqual({
+      code: 'P321',
+      statement: '',
+      decoded: false,
+    });
+    // P501 is the final code in both lists, so the appended prose is glued to it — it must
+    // still be reported rather than dropped along with the prose.
+    expect(ghs.precautionaryStatements).toContainEqual({
+      code: 'P501',
+      statement: '',
+      decoded: false,
+    });
+    // The terminal Oxford "and" and the trailing prose contribute no codes of their own.
+    const codes = ghs.precautionaryStatements.map((p) => p.code);
+    expect(codes).not.toContain('and P501');
+    expect(codes.every((c) => /^P\d{3}(\+P\d{3})*$/.test(c))).toBe(true);
+    expect(ghs.source).toBe('European Chemicals Agency');
   });
 
-  it('returns null when no GHS Classification section exists', async () => {
+  /** Builds a minimal GHS record around one hazard-statement list and one precautionary list. */
+  function ghsRecord(cid: number, hazards: string[], precautionary: string[]) {
+    return {
+      Record: {
+        RecordType: 'CID',
+        RecordNumber: cid,
+        Section: [
+          {
+            TOCHeading: 'GHS Classification',
+            Information: [
+              { Name: 'Signal', Value: { StringWithMarkup: [{ String: 'Danger' }] } },
+              {
+                Name: 'GHS Hazard Statements',
+                Value: { StringWithMarkup: hazards.map((String_) => ({ String: String_ })) },
+              },
+              {
+                Name: 'Precautionary Statement Codes',
+                Value: { StringWithMarkup: precautionary.map((String_) => ({ String: String_ })) },
+              },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
+  it('keeps the final P-code when PubChem appends prose to the list', async () => {
+    // Verbatim from CID 702 (ethanol). The list ends "…, and P501 (click each P-code to see
+    // the statement)" — the prose is attached to the last code, not to a token of its own.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        ghsRecord(
+          702,
+          ['H225: Highly Flammable liquid and vapor [Danger Flammable liquids]'],
+          [
+            'P210, P233, P240, P241, P242, P243, P280, P303+P361+P353, P370+P378, P403+P235, and P501 (click each P-code to see the statement)',
+          ],
+        ),
+      ),
+    );
+
+    const client = new PubChemClient();
+    const result = await client.getSafetyData(702);
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+    const codes = ghs.precautionaryStatements.map((p) => p.code);
+
+    expect(codes).toContain('P501');
+    expect(codes).toEqual([
+      'P210',
+      'P233',
+      'P240',
+      'P241',
+      'P242',
+      'P243',
+      'P280',
+      'P303+P361+P353',
+      'P370+P378',
+      'P403+P235',
+      'P501',
+    ]);
+  });
+
+  it('extracts P-codes independently of the delimiter and the appended wording', async () => {
+    // The parse must not depend on commas or on the exact prose PubChem appends, so a change
+    // to either costs no data.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        ghsRecord(
+          1,
+          ['H302: Harmful if swallowed'],
+          ['P210; P264+P265; P405; P501 (see each P-code for the full statement text)'],
+        ),
+      ),
+    );
+
+    const client = new PubChemClient();
+    const result = await client.getSafetyData(1);
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+
+    expect(ghs.precautionaryStatements.map((p) => p.code)).toEqual([
+      'P210',
+      'P264+P265',
+      'P405',
+      'P501',
+    ]);
+  });
+
+  it('parses hazard statements carrying a depositor-agreement percentage', async () => {
+    // Verbatim from CID 962 (water), whose depositors report only the annotated form — the
+    // record surfaced zero hazard statements because every one failed the parse.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        ghsRecord(
+          962,
+          [
+            'H315 (100%): Causes skin irritation [Warning Skin corrosion/irritation]',
+            'H319 (100%): Causes serious eye irritation [Warning Serious eye damage/eye irritation]',
+            'H335 (100%): May cause respiratory irritation [Warning Specific target organ toxicity, single exposure; Respiratory tract irritation]',
+          ],
+          ['P261, P264, P271, P280, and P501 (click each P-code to see the statement)'],
+        ),
+      ),
+    );
+
+    const client = new PubChemClient();
+    const result = await client.getSafetyData(962);
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+
+    expect(ghs.hazardStatements.map((h) => h.code)).toEqual(['H315', 'H319', 'H335']);
+    expect(ghs.hazardStatements[0]!.statement).toBe(
+      'Causes skin irritation [Warning Skin corrosion/irritation]',
+    );
+  });
+
+  it('still parses a hazard statement with no percentage annotation', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(ghsRecord(1, ['H302: Harmful if swallowed [Warning Acute toxicity, oral]'], [])),
+    );
+
+    const client = new PubChemClient();
+    const result = await client.getSafetyData(1);
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+
+    expect(ghs.hazardStatements).toEqual([
+      { code: 'H302', statement: 'Harmful if swallowed [Warning Acute toxicity, oral]' },
+    ]);
+  });
+
+  it('parses subcategory-suffixed codes and asterisk-annotated statements', async () => {
+    // Verbatim shapes from CID 23954 (H361f), CID 24261 (H350i), CID 887 (H360FD) and the
+    // asterisk marker CID 241/887 carry. A suffixed code names a narrower classification than
+    // its base, and on CID 23954 H361f is deposited with no bare H361 to fall back on.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        ghsRecord(
+          23954,
+          [
+            'H361f: Suspected of damaging fertility [Warning Reproductive toxicity]',
+            'H350i: May cause cancer by inhalation [Danger Carcinogenicity]',
+            'H360FD (100%): May damage fertility; May damage the unborn child [Danger Reproductive toxicity]',
+            'H370 **: Causes damage to organs [Danger Specific target organ toxicity, single exposure]',
+            'H361d ***: Suspected of damaging the unborn child [Warning Reproductive toxicity]',
+          ],
+          [],
+        ),
+      ),
+    );
+
+    const client = new PubChemClient();
+    const result = await client.getSafetyData(23954);
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+
+    expect(ghs.hazardStatements).toEqual([
+      {
+        code: 'H361f',
+        statement: 'Suspected of damaging fertility [Warning Reproductive toxicity]',
+      },
+      { code: 'H350i', statement: 'May cause cancer by inhalation [Danger Carcinogenicity]' },
+      {
+        code: 'H360FD',
+        statement:
+          'May damage fertility; May damage the unborn child [Danger Reproductive toxicity]',
+      },
+      {
+        code: 'H370',
+        statement:
+          'Causes damage to organs [Danger Specific target organ toxicity, single exposure]',
+      },
+      {
+        code: 'H361d',
+        statement: 'Suspected of damaging the unborn child [Warning Reproductive toxicity]',
+      },
+    ]);
+  });
+
+  it('keeps a suffixed code distinct from its base code', async () => {
+    // H360 and H360D are different classifications, so dedup-by-code must not collapse them.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        ghsRecord(
+          6228,
+          [
+            'H360: May damage fertility or the unborn child [Danger Reproductive toxicity]',
+            'H360D: May damage the unborn child [Danger Reproductive toxicity]',
+          ],
+          [],
+        ),
+      ),
+    );
+
+    const client = new PubChemClient();
+    const result = await client.getSafetyData(6228);
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+
+    expect(ghs.hazardStatements.map((h) => h.code)).toEqual(['H360', 'H360D']);
+  });
+
+  it('reports no_ghs_data when no GHS Classification section exists', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         Record: {
@@ -159,10 +402,10 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
     const client = new PubChemClient();
     const result = await client.getSafetyData(999);
 
-    expect(result).toBeNull();
+    expect(result).toEqual({ status: 'no_ghs_data' });
   });
 
-  it('returns null when GHS section has no parseable data', async () => {
+  it('reports no_ghs_data when GHS section has no parseable data', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         Record: {
@@ -181,16 +424,37 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
     const client = new PubChemClient();
     const result = await client.getSafetyData(1);
 
-    expect(result).toBeNull();
+    expect(result).toEqual({ status: 'no_ghs_data' });
   });
 
-  it('returns null on 404', async () => {
+  // #42 — PUG View answers both outcomes with HTTP 404 PUGVIEW.NotFound. Collapsing them made
+  // a mistyped CID indistinguishable from a real compound carrying no safety classification.
+  it('reports cid_not_found when PUG View has no record for the CID', async () => {
+    fetchMock.mockResolvedValueOnce(pugViewFault('No record found'));
+
+    const client = new PubChemClient();
+    const result = await client.getSafetyData(999999999);
+
+    expect(result).toEqual({ status: 'cid_not_found' });
+  });
+
+  it('reports no_ghs_data when the CID exists but the heading carries no data', async () => {
+    fetchMock.mockResolvedValueOnce(pugViewFault('No data found'));
+
+    const client = new PubChemClient();
+    const result = await client.getSafetyData(11979316);
+
+    expect(result).toEqual({ status: 'no_ghs_data' });
+  });
+
+  it('falls back to no_ghs_data when a 404 carries no recognizable fault message', async () => {
     fetchMock.mockResolvedValueOnce(textResponse('Not Found', 404));
 
     const client = new PubChemClient();
     const result = await client.getSafetyData(999999999);
 
-    expect(result).toBeNull();
+    // Understating what is known beats sending the caller after a "wrong" CID that is fine.
+    expect(result).toEqual({ status: 'no_ghs_data' });
   });
 
   it('deduplicates hazard statement codes across depositors', async () => {
@@ -238,11 +502,10 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
     const client = new PubChemClient();
     const result = await client.getSafetyData(1);
 
-    if (result) {
-      // H302 must appear only once
-      const h302Count = result.hazardStatements.filter((h) => h.code === 'H302').length;
-      expect(h302Count).toBe(1);
-    }
+    expect(result.status).toBe('ok');
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+    // H302 must appear only once
+    expect(ghs.hazardStatements.filter((h) => h.code === 'H302')).toHaveLength(1);
   });
 });
 

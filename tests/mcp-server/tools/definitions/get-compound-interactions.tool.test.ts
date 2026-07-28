@@ -93,6 +93,27 @@ describe('getCompoundInteractions handler', () => {
     expect(() => getCompoundInteractions.input.parse({ cid: 1, kinds: [] })).toThrow();
     expect(() => getCompoundInteractions.input.parse({ cid: 1, maxEntries: 51 })).toThrow();
   });
+
+  // #43 — `severity` was advertised on every entry but no fetch path could populate it: the
+  // drugbankddi SDQ collection has no severity-bearing column to project.
+  it('does not advertise a severity field on interaction entries (#43)', () => {
+    const entryShape = getCompoundInteractions.output.shape.entries.element.shape;
+
+    expect(Object.keys(entryShape).sort()).toEqual(['kind', 'partner', 'source', 'text']);
+  });
+
+  it('drops a severity key rather than passing it through to structuredContent (#43)', async () => {
+    const withSeverity = { ...ddi, severity: 'major' } as InteractionEntry;
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [withSeverity],
+      failedKinds: [],
+    });
+    const ctx = createMockContext();
+    const input = getCompoundInteractions.input.parse({ cid: 2244 });
+    const result = await getCompoundInteractions.handler(input, ctx);
+
+    expect(getCompoundInteractions.output.parse(result).entries[0]).not.toHaveProperty('severity');
+  });
 });
 
 describe('getCompoundInteractions format', () => {

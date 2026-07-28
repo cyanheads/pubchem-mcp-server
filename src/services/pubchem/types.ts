@@ -100,10 +100,31 @@ export interface PugViewInformation {
 export interface GHSClassification {
   hazardStatements: Array<{ code: string; statement: string }>;
   pictograms: string[];
-  precautionaryStatements: Array<{ code: string; statement: string }>;
+  precautionaryStatements: Array<{
+    code: string;
+    /** Standard statement text, or "" when `decoded` is false. */
+    statement: string;
+    /** Whether `statement` carries the standard text for this code. False when the code is
+     * absent from the static table — PubChem deposits precautionary statements as bare codes,
+     * so an undecoded code is a decoder-coverage gap or a free-fill placeholder, never a
+     * statement the depositor left blank. */
+    decoded: boolean;
+  }>;
   signalWord?: string;
   source?: string;
 }
+
+/** Outcome of a GHS safety lookup for one CID.
+ *
+ * PUG View answers "no such compound" and "this compound has no Safety and Hazards data" with
+ * the same HTTP 404, discriminated only by the fault message ("No record found" vs "No data
+ * found"). The two need opposite recovery advice — verify the identifier, versus accept that
+ * the compound carries no deposited classification — so they are kept apart here rather than
+ * collapsed into one absent value. */
+export type SafetyLookup =
+  | { status: 'ok'; ghs: GHSClassification }
+  | { status: 'no_ghs_data' }
+  | { status: 'cid_not_found' };
 
 /** Parsed bioactivity row from assay summary table */
 export interface BioactivityRow {
@@ -122,9 +143,6 @@ export interface InteractionEntry {
   /** Interacting compound, food, or target name as the source reports it. Absent for food
    * interactions and any entry where the source carries no distinct partner. */
   partner?: string;
-  /** Raw severity as the source reports it. Not normalized across sources, and frequently
-   * unset — most sources embed severity in the statement text rather than a discrete field. */
-  severity?: string;
   /** Originating source (e.g. "DrugBank", "BindingDB"). */
   source: string;
   /** The interaction statement. */

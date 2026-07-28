@@ -17,18 +17,23 @@ export const compoundSafetyResource = resource('pubchem://compound/{cid}/safety'
 
   async handler(params) {
     const client = getPubChemClient();
-    const data = await client.getSafetyData(params.cid);
-    if (!data) return { cid: params.cid, hasData: false };
+    const lookup = await client.getSafetyData(params.cid);
+    // A resource returns raw JSON with no notice surface, so `status` is the only way a reader
+    // can tell a mistyped CID from a compound that genuinely carries no GHS classification.
+    if (lookup.status !== 'ok') {
+      return { cid: params.cid, hasData: false, status: lookup.status };
+    }
     return {
       cid: params.cid,
       hasData: true,
+      status: lookup.status,
       ghs: {
-        signalWord: data.signalWord,
-        pictograms: data.pictograms,
-        hazardStatements: data.hazardStatements,
-        precautionaryStatements: data.precautionaryStatements,
+        signalWord: lookup.ghs.signalWord,
+        pictograms: lookup.ghs.pictograms,
+        hazardStatements: lookup.ghs.hazardStatements,
+        precautionaryStatements: lookup.ghs.precautionaryStatements,
       },
-      source: data.source,
+      source: lookup.ghs.source,
     };
   },
 });

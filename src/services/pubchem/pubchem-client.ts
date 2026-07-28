@@ -21,12 +21,30 @@ import type {
   PugViewInformation,
   PugViewResponse,
   PugViewSection,
+  SafetyLookup,
   SynonymResponse,
   XrefResponse,
 } from './types.js';
 
 const isNotFound = (error: unknown): boolean =>
   error instanceof McpError && error.code === JsonRpcErrorCode.NotFound;
+
+/** Distinguishes the two outcomes PUG View hides behind a single HTTP 404.
+ *
+ * `heading=`-filtered PUG View requests answer both "this CID has no record" and "this CID's
+ * record has no data under that heading" with 404 `PUGVIEW.NotFound`. The only discriminator
+ * is the fault message: "No record found" for a nonexistent CID, "No data found" for a real
+ * compound the heading doesn't cover. `fetchResponse` parses that message onto `data.fault`,
+ * so no extra request is needed to tell them apart.
+ *
+ * Defaults to false when the message is missing or unrecognized: claiming a compound has no
+ * data understates what is known, while wrongly claiming a CID does not exist sends the caller
+ * chasing a correct identifier. */
+const isMissingRecord = (error: unknown): boolean => {
+  if (!isNotFound(error)) return false;
+  const { fault } = ((error as McpError).data ?? {}) as { fault?: unknown };
+  return typeof fault === 'string' && fault.includes('No record found');
+};
 
 // ── Rate Limiter ─────────────────────────────────────────────────────
 
@@ -194,11 +212,26 @@ function extractGHSInfo(section: PugViewSection): PugViewInformation[] {
   return infos;
 }
 
-/** Parse "H225: Highly flammable..." into { code, statement } */
+/** Parse "H225: Highly flammable..." into { code, statement }.
+ *
+ * Two upstream annotations sit between the code and the separator, and neither may fail the
+ * parse: the depositor-agreement percentage ("H319 (100%): Causes serious eye irritation
+ * [Warning …]") and the asterisk marker some depositors append ("H370 **: Causes damage to
+ * organs"). Requiring the separator to follow the code immediately discarded every annotated
+ * statement, which on records that deposit only the annotated form left the compound with no
+ * hazard statements at all.
+ *
+ * The code itself may carry a subcategory suffix — H350i (by inhalation), H360D/H360FD,
+ * H361f/H361fd — naming a narrower classification than its base code, and on some records it
+ * is the only form deposited. Allowing up to two trailing letters keeps those as their own
+ * entries instead of dropping the statement; a suffixed code is deliberately distinct from
+ * its base, so both survive the later dedup-by-code. */
 function parseCodedStatement(text: string): { code: string; statement: string } | undefined {
-  const match = text.match(/^([HP]\d{3}(?:\+[HP]\d{3})*)\s*[:\-–]\s*(.+)/);
+  const match = text.match(
+    /^([HP]\d{3}[A-Za-z]{0,2}(?:\+[HP]\d{3}[A-Za-z]{0,2})*)\s*(?:(?:\([^)]*\)|\*+)\s*)*[:\-–]\s*(.+)/,
+  );
   if (match?.[1] && match[2]) return { code: match[1], statement: match[2].trim() };
-  const codeOnly = text.match(/^([HP]\d{3}(?:\+[HP]\d{3})*)$/);
+  const codeOnly = text.match(/^([HP]\d{3}[A-Za-z]{0,2}(?:\+[HP]\d{3}[A-Za-z]{0,2})*)$/);
   if (codeOnly?.[1]) return { code: codeOnly[1], statement: '' };
   return;
 }
@@ -213,9 +246,30 @@ function parseCodedStatement(text: string): { code: string; statement: string } 
  * §A3.2.5.2 prescribes. Codes carrying a free-fill "…" the label author must supply (P501
  * disposal method, P411 temperature, P320/P321 first-aid reference) and codes deleted in
  * Rev. 10 (P201, P202, and the P310–P315 family superseded by P316–P319) are omitted — they
- * fall back to "". The one placeholder resolved rather than omitted is P264, rendered with its
- * near-universal "hands" body-part fill ("Wash hands thoroughly after handling.") in place of
- * the bare "Wash [and …] …" template — a decode a reader can act on. */
+ * fall back to "" and are reported as `decoded: false`. The one placeholder resolved rather
+ * than omitted is P264, rendered with its near-universal "hands" body-part fill ("Wash hands
+ * thoroughly after handling.") in place of the bare "Wash [and …] …" template — a decode a
+ * reader can act on.
+ *
+ * Codes are added only against Rev. 10 itself. PubChem's own P-code reference
+ * (pubchem.ncbi.nlm.nih.gov/ghs) is NOT a usable source despite being the upstream: it is
+ * transcribed from an older revision and disagrees with Rev. 10 across this very block —
+ * P210 "hot surface", P234 "original container", P240 "Ground/bond …", P242 "Use only
+ * non-sparking tools", P243 "…against static discharge" are all pre-Rev.-10 forms.
+ *
+ * Placeholders get one of three treatments, so read the existing entries before adding a code.
+ * Resolved: P264 alone, filled to its near-universal "hands" body-part. Verbatim: P280 and P352
+ * keep the standard's own slash-list ("gloves/…/hearing protection/…") and decode true, because
+ * the enumeration is itself the guidance. Omitted: codes whose blank only the label author can
+ * fill (P501 disposal method, P411 temperature, P320/P321 first-aid reference).
+ *
+ * P241 is absent for a source reason, not a placeholder one — on shape alone it belongs with
+ * the verbatim group. Its Rev. 10 text has not been read from a Rev. 10 source: UNECE serves
+ * Annex 3 only as blocked PDFs, and every reachable transcription is older — the same lag that
+ * disqualifies PubChem's page above, which disagrees with Rev. 10 on P210/P234/P240/P242/P243
+ * in this very block. Adding it from a pre-Rev.-10 transcription would ship safety text this
+ * table claims is Rev. 10 and is not. Add it verbatim, alongside P280, once Rev. 10 Annex 3
+ * itself is in hand. */
 const PRECAUTIONARY_STATEMENTS: Record<string, string> = {
   // General (P1xx)
   P101: 'If medical advice is needed, have product container or label at hand.',
@@ -329,20 +383,31 @@ const PRECAUTIONARY_STATEMENTS: Record<string, string> = {
   P502: 'Refer to manufacturer or supplier for information on recovery or recycling.',
 };
 
-/** Parse PubChem's comma-separated precautionary code list — e.g.
- * "P261, P264+P265, P305+P351+P338, P405, and P501" — into { code, statement } entries.
- * PubChem deposits precautionary statements as bare codes (no text), so each code is decoded
- * to its standard UN GHS statement via PRECAUTIONARY_STATEMENTS, falling back to "" for any
- * code not in the table (free-fill placeholder or Rev. 10-deleted codes). Handles the terminal
- * Oxford "and", combined (`Pxxx+Pyyy`) and triple codes, and skips any token that isn't a
- * P-code. */
-function parsePrecautionaryCodes(text: string): Array<{ code: string; statement: string }> {
-  const entries: Array<{ code: string; statement: string }> = [];
-  for (const token of text.split(',')) {
-    const code = token.trim().replace(/^and\s+/i, '');
-    if (/^P\d{3}(?:\+P\d{3})*$/.test(code)) {
-      entries.push({ code, statement: PRECAUTIONARY_STATEMENTS[code] ?? '' });
-    }
+/** Matches one P-code — individual ("P261") or combined ("P305+P351+P338"). Greedy on the
+ * `+` groups so a combined code is captured whole rather than as its first component. */
+const P_CODE_PATTERN = /\bP\d{3}(?:\+P\d{3})*\b/g;
+
+/** Parse PubChem's precautionary code list — e.g. "P261, P264+P265, P405, and P501 (click each
+ * P-code to see the statement)" — into precautionary statement entries.
+ *
+ * The list is scanned for P-code shapes rather than split on the delimiter and matched against
+ * an anchored pattern. PubChem appends explanatory prose to the list, and an anchored per-token
+ * test rejects whichever token the prose is glued to — in practice the final code, silently
+ * dropping it from every record (most often P501, the disposal statement). Scanning makes the
+ * parse independent of both the delimiter and the wording of the prose, so a change to either
+ * costs no data. It also subsumes the terminal Oxford "and" without special-casing it.
+ *
+ * PubChem deposits precautionary statements as bare codes (no text), so each code is decoded to
+ * its standard UN GHS statement via PRECAUTIONARY_STATEMENTS. A code absent from the table
+ * (free-fill placeholder or Rev. 10-deleted code) yields `statement: ''` with `decoded: false`,
+ * so a consumer can tell an undecoded code from a genuinely empty statement. */
+function parsePrecautionaryCodes(
+  text: string,
+): Array<{ code: string; statement: string; decoded: boolean }> {
+  const entries: Array<{ code: string; statement: string; decoded: boolean }> = [];
+  for (const [code] of text.matchAll(P_CODE_PATTERN)) {
+    const statement = PRECAUTIONARY_STATEMENTS[code];
+    entries.push({ code, statement: statement ?? '', decoded: statement !== undefined });
   }
   return entries;
 }
@@ -642,17 +707,23 @@ export class PubChemClient {
     }
   }
 
-  async getSafetyData(cid: number): Promise<GHSClassification | null> {
+  /** Fetch a compound's GHS classification.
+   *
+   * Reports "this CID has no PubChem record" separately from "this compound has no deposited
+   * GHS classification" — a nonexistent CID and a real compound without safety data are
+   * different answers that call for different follow-up, and both used to surface as an
+   * absent result. */
+  async getSafetyData(cid: number): Promise<SafetyLookup> {
     try {
       const data = await this.fetchJson<PugViewResponse>(
         `${this.viewBase}/data/compound/${cid}/JSON?heading=Safety+and+Hazards`,
       );
 
       const sections = data.Record.Section;
-      if (!sections) return null;
+      if (!sections) return { status: 'no_ghs_data' };
 
       const ghsSection = findSection(sections, 'GHS Classification');
-      if (!ghsSection) return null;
+      if (!ghsSection) return { status: 'no_ghs_data' };
 
       const infos = extractGHSInfo(ghsSection);
       const result: GHSClassification = {
@@ -700,10 +771,11 @@ export class PubChemClient {
       }
 
       return result.signalWord || result.pictograms.length > 0 || result.hazardStatements.length > 0
-        ? result
-        : null;
+        ? { status: 'ok', ghs: result }
+        : { status: 'no_ghs_data' };
     } catch (error) {
-      if (isNotFound(error)) return null;
+      if (isMissingRecord(error)) return { status: 'cid_not_found' };
+      if (isNotFound(error)) return { status: 'no_ghs_data' };
       throw error;
     }
   }

@@ -51,12 +51,6 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
               .optional()
               .describe('Interacting compound, food, or target name as the source reports it.'),
             source: z.string().describe('Originating source (e.g. "DrugBank", "BindingDB").'),
-            severity: z
-              .string()
-              .optional()
-              .describe(
-                'Raw severity as the source reports it — not normalized across sources, and frequently unset (most sources embed severity in the statement text).',
-              ),
             text: z.string().describe('The interaction statement.'),
           })
           .describe('A single interaction entry.'),
@@ -132,8 +126,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
 
     for (const e of result.entries) {
       const partner = e.partner ? ` **${inlineData(e.partner)}**` : '';
-      const severity = e.severity ? ` [severity: ${inlineData(e.severity)}]` : '';
-      lines.push(`- (${e.kind})${partner}${severity} _(source: ${inlineData(e.source)})_`);
+      lines.push(`- (${e.kind})${partner} _(source: ${inlineData(e.source)})_`);
       // The interaction statement is upstream free text — render it as an
       // indented blockquote so the data/instruction boundary is explicit.
       for (const q of quoteData(e.text).split('\n')) lines.push(`  ${q}`);

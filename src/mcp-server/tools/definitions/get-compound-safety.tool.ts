@@ -5,7 +5,7 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
-import type { GHSClassification } from '@/services/pubchem/types.js';
+import type { SafetyLookup } from '@/services/pubchem/types.js';
 import { inlineData } from './untrusted-text.js';
 
 const ghsSchema = z
@@ -27,7 +27,16 @@ const ghsSchema = z
         z
           .object({
             code: z.string().describe('P-code (e.g. "P210").'),
-            statement: z.string().describe('Precautionary statement text.'),
+            statement: z
+              .string()
+              .describe(
+                'Standard precautionary statement text for the code. Empty string when "decoded" is false — PubChem deposits P-codes without text, so a blank statement means the code was not decoded, never that the depositor supplied an empty statement.',
+              ),
+            decoded: z
+              .boolean()
+              .describe(
+                'Whether "statement" carries the standard text. False for codes needing label-specific fill text the depositor must supply (disposal method, firefighting agent, first-aid reference) and for codes outside the decoder table; the code itself is still authoritative.',
+              ),
           })
           .describe('GHS precautionary statement entry.'),
       )
@@ -65,6 +74,11 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
             hasData: z
               .boolean()
               .describe('Whether GHS safety data is available for this compound.'),
+            status: z
+              .enum(['ok', 'no_ghs_data', 'cid_not_found'])
+              .describe(
+                'Outcome for this CID. "ok": GHS data returned. "no_ghs_data": the compound exists in PubChem but has no deposited GHS classification. "cid_not_found": PubChem has no record for this CID at all — the identifier is wrong, so verify it with pubchem_search_compounds rather than concluding the compound is unclassified.',
+              ),
             ghs: ghsSchema.optional(),
             source: z.string().optional().describe('Data source attribution.'),
           })
@@ -72,8 +86,9 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
       )
       .describe('Safety results, one per requested CID (input order preserved).'),
   }),
-  // Agent-facing context — requested/with-data counts and a cross-tool notice listing the CIDs
-  // that lack GHS data. Reaches structuredContent and content[]; keys disjoint from output.
+  // Agent-facing context — requested/with-data counts and a notice that names the CIDs behind
+  // each non-ok status separately. Reaches structuredContent and content[]; keys disjoint from
+  // output.
   enrichment: {
     requestedCount: z.number().describe('CIDs requested.'),
     withDataCount: z.number().describe('CIDs with GHS safety data available.'),
@@ -81,7 +96,7 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
       .string()
       .optional()
       .describe(
-        'Cross-tool guidance when one or more CIDs have no GHS data, pointing to an alternative source.',
+        'Recovery guidance when one or more CIDs returned no GHS data, listing the unrecognized CIDs to verify separately from the CIDs that exist but carry no deposited classification.',
       ),
   },
 
@@ -89,45 +104,59 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
     const client = getPubChemClient();
 
     // Fan out per CID, capped at MAX_IN_FLIGHT in flight.
-    const dataByCid = new Map<number, GHSClassification | null>();
+    const lookupByCid = new Map<number, SafetyLookup>();
     for (let i = 0; i < input.cids.length; i += MAX_IN_FLIGHT) {
       const chunk = input.cids.slice(i, i + MAX_IN_FLIGHT);
       const chunkData = await Promise.all(
         chunk.map(async (cid) => [cid, await client.getSafetyData(cid)] as const),
       );
-      for (const [cid, data] of chunkData) dataByCid.set(cid, data);
+      for (const [cid, lookup] of chunkData) lookupByCid.set(cid, lookup);
     }
 
     const results = input.cids.map((cid) => {
-      const data = dataByCid.get(cid) ?? null;
-      if (!data) return { cid, hasData: false as const };
+      const lookup = lookupByCid.get(cid) ?? { status: 'no_ghs_data' as const };
+      if (lookup.status !== 'ok') return { cid, hasData: false, status: lookup.status };
       return {
         cid,
-        hasData: true as const,
+        hasData: true,
+        status: lookup.status,
         ghs: {
-          signalWord: data.signalWord,
-          pictograms: data.pictograms,
-          hazardStatements: data.hazardStatements,
-          precautionaryStatements: data.precautionaryStatements,
+          signalWord: lookup.ghs.signalWord,
+          pictograms: lookup.ghs.pictograms,
+          hazardStatements: lookup.ghs.hazardStatements,
+          precautionaryStatements: lookup.ghs.precautionaryStatements,
         },
-        source: data.source,
+        source: lookup.ghs.source,
       };
     });
 
     const withDataCount = results.filter((r) => r.hasData).length;
+    const unknownCids = results.filter((r) => r.status === 'cid_not_found').map((r) => r.cid);
+    const noDataCids = results.filter((r) => r.status === 'no_ghs_data').map((r) => r.cid);
 
     ctx.log.info('Safety data fetched', {
       requested: input.cids.length,
       withData: withDataCount,
+      notFound: unknownCids.length,
     });
 
     ctx.enrich({ requestedCount: input.cids.length, withDataCount });
-    if (withDataCount < input.cids.length) {
-      const missing = results.filter((r) => !r.hasData).map((r) => r.cid);
-      ctx.enrich.notice(
-        `No GHS classification on file for ${missing.length} of ${input.cids.length} CID(s): ${missing.join(', ')}. Try pubchem_get_compound_details with includeDescription for hazard context, or those compounds may simply lack deposited safety data.`,
+
+    // Unknown CIDs lead: a wrong identifier invalidates the question, whereas a real compound
+    // without GHS data is a real answer. Collapsing the two is what made a mistyped CID read
+    // as a confident "no hazards on file".
+    const notices: string[] = [];
+    if (unknownCids.length > 0) {
+      notices.push(
+        `PubChem has no record for ${unknownCids.length} of ${input.cids.length} CID(s): ${unknownCids.join(', ')} — verify the CID with pubchem_search_compounds. Nothing was evaluated for these identifiers, so they say nothing about any compound's hazards.`,
       );
     }
+    if (noDataCids.length > 0) {
+      notices.push(
+        `No GHS classification on file for ${noDataCids.length} of ${input.cids.length} CID(s): ${noDataCids.join(', ')}. These compounds exist in PubChem but have no deposited safety data — try pubchem_get_compound_details with includeDescription for hazard context.`,
+      );
+    }
+    if (notices.length > 0) ctx.enrich.notice(notices.join(' '));
 
     return { results };
   },
@@ -140,11 +169,22 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
     const blocks: string[] = [];
     for (const r of result.results) {
       if (!r.hasData || !r.ghs) {
-        blocks.push(`## CID ${r.cid} — no GHS safety data`, '');
+        blocks.push(
+          ...(r.status === 'cid_not_found'
+            ? [
+                `## CID ${r.cid} — no PubChem record`,
+                '**Status:** cid_not_found — PubChem has no compound with this CID, so nothing was evaluated for safety. Verify it with pubchem_search_compounds.',
+              ]
+            : [
+                `## CID ${r.cid} — no GHS safety data`,
+                '**Status:** no_ghs_data — the compound exists in PubChem but has no deposited GHS classification.',
+              ]),
+          '',
+        );
         continue;
       }
 
-      const lines: string[] = [`## GHS Safety Data — CID ${r.cid}`];
+      const lines: string[] = [`## GHS Safety Data — CID ${r.cid}`, `**Status:** ${r.status}`];
       const g = r.ghs;
 
       if (g.signalWord) lines.push(`**Signal Word:** ${g.signalWord}`);
@@ -156,9 +196,14 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
       }
 
       if (g.precautionaryStatements.length > 0) {
-        lines.push('', '**Precautionary Statements:**');
+        lines.push(
+          '',
+          '**Precautionary Statements:** (PubChem deposits bare P-codes; any not decoded below is a decoder gap or a code needing label-specific fill text, not an empty statement)',
+        );
         for (const p of g.precautionaryStatements) {
-          lines.push(p.statement ? `  ${p.code}: ${inlineData(p.statement)}` : `  ${p.code}`);
+          lines.push(
+            p.decoded ? `  ${p.code}: ${inlineData(p.statement)}` : `  ${p.code}: (not decoded)`,
+          );
         }
       }
 
