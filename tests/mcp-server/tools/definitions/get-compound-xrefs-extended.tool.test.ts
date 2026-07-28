@@ -168,6 +168,142 @@ describe('getCompoundXrefs handler — truncation boundary', () => {
   });
 });
 
+describe('getCompoundXrefs handler — offset pagination (#38)', () => {
+  const idPage = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
+
+  it('returns the slice starting at offset and reports the page boundary', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce(idPage(30));
+    const ctx = createMockContext();
+    const input = getCompoundXrefs.input.parse({
+      cid: 2244,
+      xrefTypes: ['PubMedID'],
+      offset: 10,
+      maxPerType: 5,
+    });
+    const result = await getCompoundXrefs.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.xrefs[0]!.ids).toEqual([11, 12, 13, 14, 15]);
+    expect(result.xrefs[0]!.totalAvailable).toBe(30);
+    expect(result.xrefs[0]!.truncated).toBe(true);
+    expect(enrichment.offset).toBe(10);
+    expect(enrichment.nextOffset).toBe(15);
+    expect(enrichment.notice).toContain('offset=15');
+  });
+
+  it('applies the same offset to every requested type', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce(idPage(10)).mockResolvedValueOnce(['a', 'b', 'c']);
+    const ctx = createMockContext();
+    const input = getCompoundXrefs.input.parse({
+      cid: 2244,
+      xrefTypes: ['PubMedID', 'RN'],
+      offset: 2,
+      maxPerType: 3,
+    });
+    const result = await getCompoundXrefs.handler(input, ctx);
+
+    expect(result.xrefs[0]!.ids).toEqual([3, 4, 5]);
+    expect(result.xrefs[1]!.ids).toEqual(['c']);
+    expect(result.xrefs[1]!.truncated).toBe(false);
+  });
+
+  it('walks a type end to end without repeating or skipping an ID', async () => {
+    const seen: (string | number)[] = [];
+    for (let offset = 0; offset < 30; offset += 12) {
+      mockClient.getXrefs.mockResolvedValueOnce(idPage(30));
+      const ctx = createMockContext();
+      const input = getCompoundXrefs.input.parse({
+        cid: 2244,
+        xrefTypes: ['PubMedID'],
+        offset,
+        maxPerType: 12,
+      });
+      const result = await getCompoundXrefs.handler(input, ctx);
+      seen.push(...result.xrefs[0]!.ids);
+    }
+
+    expect(seen).toEqual(idPage(30));
+  });
+
+  it('marks the last page as complete rather than truncated', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce(idPage(30));
+    const ctx = createMockContext();
+    const input = getCompoundXrefs.input.parse({
+      cid: 2244,
+      xrefTypes: ['PubMedID'],
+      offset: 25,
+      maxPerType: 10,
+    });
+    const result = await getCompoundXrefs.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.xrefs[0]!.ids).toEqual([26, 27, 28, 29, 30]);
+    expect(result.xrefs[0]!.truncated).toBe(false);
+    expect(enrichment.nextOffset).toBeUndefined();
+    expect(enrichment.notice).toBeUndefined();
+  });
+
+  it('explains an offset that runs past every requested type', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce(idPage(3)).mockResolvedValueOnce(idPage(7));
+    const ctx = createMockContext();
+    const input = getCompoundXrefs.input.parse({
+      cid: 2244,
+      xrefTypes: ['PubMedID', 'GeneID'],
+      offset: 50,
+    });
+    const result = await getCompoundXrefs.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(result.xrefs.every((x) => x.ids.length === 0)).toBe(true);
+    expect(enrichment.notice).toContain('offset 50 is past every requested type');
+    expect(enrichment.notice).toContain('7 ID(s)');
+  });
+
+  it('keeps the nonexistent-CID notice distinct from the past-the-end notice', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce([]);
+    const ctx = createMockContext();
+    const input = getCompoundXrefs.input.parse({
+      cid: 999999999,
+      xrefTypes: ['PubMedID'],
+      offset: 50,
+    });
+    await getCompoundXrefs.handler(input, ctx);
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.notice).toContain('No cross-references found');
+    expect(enrichment.notice).not.toContain('is past');
+  });
+
+  it('defaults offset to 0 and rejects a negative offset', () => {
+    const parsed = getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['PubMedID'] });
+    expect(parsed.offset).toBe(0);
+    expect(() =>
+      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['PubMedID'], offset: -1 }),
+    ).toThrow();
+  });
+
+  it('emits a nextOffset the offset input accepts, even for a fractional maxPerType', async () => {
+    // maxPerType is unconstrained to integers, so a stride of maxPerType would hand back a
+    // fractional nextOffset that this tool's own int-validated offset rejects — a dead end.
+    mockClient.getXrefs.mockResolvedValueOnce(idPage(11));
+    const ctx = createMockContext();
+    const input = getCompoundXrefs.input.parse({
+      cid: 2244,
+      xrefTypes: ['RN'],
+      offset: 0,
+      maxPerType: 2.5,
+    });
+    await getCompoundXrefs.handler(input, ctx);
+    const nextOffset = getEnrichment(ctx).nextOffset as number;
+
+    expect(nextOffset).toBe(2);
+    expect(getEnrichment(ctx).notice).toContain('offset=2');
+    expect(() =>
+      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['RN'], offset: nextOffset }),
+    ).not.toThrow();
+  });
+});
+
 describe('getCompoundXrefs format — structuredContent parity', () => {
   it('renders every returned ID, past the old 20-item display cap (#37)', () => {
     const ids = Array.from({ length: 25 }, (_, i) => i + 1);
@@ -191,5 +327,30 @@ describe('getCompoundXrefs format — structuredContent parity', () => {
     for (const id of ids) expect(text).toMatch(new RegExp(`\\b${id}\\b`));
     // The only disclosed omission is the handler's cap — the IDs it returned are all present.
     expect(text).toContain('50 of 3000 total — truncated');
+  });
+
+  it('discloses a mid-list page that reaches the end of a type', () => {
+    const blocks = getCompoundXrefs.format!({
+      cid: 2244,
+      xrefs: [{ type: 'PubMedID', ids: [91, 92], totalAvailable: 92, truncated: false }],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    // Two of 92 shown, nothing after them — a window, but not truncated.
+    expect(text).toContain('2 of 92 total');
+    expect(text).not.toContain('truncated');
+  });
+
+  it('distinguishes an empty page from a type with no IDs at all', () => {
+    const empty = getCompoundXrefs.format!({
+      cid: 2244,
+      xrefs: [{ type: 'PubMedID', ids: [], totalAvailable: 92, truncated: false }],
+    });
+    expect((empty[0]! as { type: 'text'; text: string }).text).toContain('None on this page');
+
+    const none = getCompoundXrefs.format!({
+      cid: 2244,
+      xrefs: [{ type: 'PubMedID', ids: [], totalAvailable: 0, truncated: false }],
+    });
+    expect((none[0]! as { type: 'text'; text: string }).text).toContain('None found');
   });
 });

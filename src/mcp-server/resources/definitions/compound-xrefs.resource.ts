@@ -13,7 +13,7 @@ const MAX_PER_TYPE = 25;
 export const compoundXrefsResource = resource('pubchem://compound/{cid}/xrefs', {
   name: 'pubchem-compound-xrefs',
   description:
-    'External cross-references (CAS RN, registry IDs, PubMed) for a PubChem compound by CID, up to 25 per type. Use pubchem_get_compound_xrefs for the full set of xref types and a higher per-type cap.',
+    'External cross-references (CAS RN, registry IDs, PubMed) for a PubChem compound by CID, up to 25 per type. Use pubchem_get_compound_xrefs for the full set of xref types, a higher per-type cap, and to page through the rest with offset.',
   mimeType: 'application/json',
   params: z.object({
     cid: z.coerce.number().int().positive().describe('PubChem Compound ID.'),
