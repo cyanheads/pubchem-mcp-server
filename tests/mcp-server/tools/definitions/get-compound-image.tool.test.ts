@@ -23,7 +23,7 @@ describe('getCompoundImage handler', () => {
   it('fetches large image by default', async () => {
     const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer;
     mockClient.getImage.mockResolvedValueOnce(pngBytes);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompoundImage.errors });
     const input = getCompoundImage.input.parse({ cid: 2244 });
     const result = await getCompoundImage.handler(input, ctx);
 
@@ -38,7 +38,7 @@ describe('getCompoundImage handler', () => {
   it('fetches small image when specified', async () => {
     const pngBytes = new Uint8Array([0x89]).buffer;
     mockClient.getImage.mockResolvedValueOnce(pngBytes);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompoundImage.errors });
     const input = getCompoundImage.input.parse({ cid: 2244, size: 'small' });
     const result = await getCompoundImage.handler(input, ctx);
 

@@ -4,7 +4,12 @@
  * @module services/pubchem/pubchem-client
  */
 
-import { JsonRpcErrorCode, McpError, notFound } from '@cyanheads/mcp-ts-core/errors';
+import {
+  JsonRpcErrorCode,
+  McpError,
+  notFound,
+  serviceUnavailable,
+} from '@cyanheads/mcp-ts-core/errors';
 import { httpErrorFromResponse } from '@cyanheads/mcp-ts-core/utils';
 import type {
   AidListResponse,
@@ -1265,8 +1270,7 @@ export class PubChemClient {
     try {
       parsed = JSON.parse(body);
     } catch {
-      throw new McpError(
-        JsonRpcErrorCode.ServiceUnavailable,
+      throw serviceUnavailable(
         `PubChem SDQ returned unparseable JSON for collection "${collection}"`,
         { collection, cid, snippet: body.slice(0, 200) },
       );
@@ -1275,8 +1279,7 @@ export class PubChemClient {
     const set = (parsed as SdqResponse).SDQOutputSet?.[0];
     if (!set) return empty;
     if (set.status?.error) {
-      throw new McpError(
-        JsonRpcErrorCode.ServiceUnavailable,
+      throw serviceUnavailable(
         `PubChem SDQ rejected the query for collection "${collection}": ${set.status.error}`,
         { collection, cid, sdqError: set.status.error },
       );

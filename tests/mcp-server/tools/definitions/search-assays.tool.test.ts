@@ -22,7 +22,7 @@ beforeEach(() => {
 describe('searchAssays handler', () => {
   it('searches assays by gene symbol', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([1000, 2000, 3000]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'genesymbol',
       targetQuery: 'EGFR',
@@ -40,7 +40,7 @@ describe('searchAssays handler', () => {
   it('caps results at maxResults', async () => {
     const manyAids = Array.from({ length: 200 }, (_, i) => i + 1);
     mockClient.searchAssaysByTarget.mockResolvedValueOnce(manyAids);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'geneid',
       targetQuery: '1956',
@@ -55,7 +55,7 @@ describe('searchAssays handler', () => {
 
   it('handles no results and populates notice enrichment', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'proteinaccession',
       targetQuery: 'XXXXXX',
@@ -72,7 +72,7 @@ describe('searchAssays handler', () => {
 
   it('does not populate notice when assays found', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([500, 600]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'genesymbol',
       targetQuery: 'TP53',
@@ -89,7 +89,7 @@ describe('searchAssays handler — offset pagination (#38)', () => {
 
   it('returns the slice starting at offset', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce(aidPage(30));
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'genesymbol',
       targetQuery: 'EGFR',
@@ -110,7 +110,7 @@ describe('searchAssays handler — offset pagination (#38)', () => {
     const seen: number[] = [];
     for (let offset = 0; offset < 30; offset += 12) {
       mockClient.searchAssaysByTarget.mockResolvedValueOnce(aidPage(30));
-      const ctx = createMockContext();
+      const ctx = createMockContext({ errors: searchAssays.errors });
       const input = searchAssays.input.parse({
         targetType: 'genesymbol',
         targetQuery: 'EGFR',
@@ -126,7 +126,7 @@ describe('searchAssays handler — offset pagination (#38)', () => {
 
   it('marks the last page as complete rather than truncated', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce(aidPage(30));
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'genesymbol',
       targetQuery: 'EGFR',
@@ -144,7 +144,7 @@ describe('searchAssays handler — offset pagination (#38)', () => {
 
   it('explains an offset that runs past the result set', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce(aidPage(3));
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'genesymbol',
       targetQuery: 'EGFR',
@@ -161,7 +161,7 @@ describe('searchAssays handler — offset pagination (#38)', () => {
 
   it('keeps the no-match notice distinct from the past-the-end notice', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'genesymbol',
       targetQuery: 'NOTATARGET',

@@ -50,7 +50,7 @@ describe('getCompoundImage handler — output', () => {
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
     const buffer = bytes.buffer;
     mockClient.getImage.mockResolvedValueOnce(buffer);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompoundImage.errors });
     const input = getCompoundImage.input.parse({ cid: 2244 });
     const result = await getCompoundImage.handler(input, ctx);
 
@@ -61,7 +61,7 @@ describe('getCompoundImage handler — output', () => {
 
   it('returns correct dimensions for small size', async () => {
     mockClient.getImage.mockResolvedValueOnce(new Uint8Array([0x89]).buffer);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompoundImage.errors });
     const input = getCompoundImage.input.parse({ cid: 2244, size: 'small' });
     const result = await getCompoundImage.handler(input, ctx);
 
@@ -71,7 +71,7 @@ describe('getCompoundImage handler — output', () => {
 
   it('returns correct dimensions for large size', async () => {
     mockClient.getImage.mockResolvedValueOnce(new Uint8Array([0x89]).buffer);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompoundImage.errors });
     const input = getCompoundImage.input.parse({ cid: 2244, size: 'large' });
     const result = await getCompoundImage.handler(input, ctx);
 
@@ -87,7 +87,7 @@ describe('getCompoundImage handler — output', () => {
         recovery: { hint: 'Verify the CID with pubchem_search_compounds before retrying.' },
       }),
     );
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompoundImage.errors });
     const input = getCompoundImage.input.parse({ cid: 999999999 });
 
     await expect(getCompoundImage.handler(input, ctx)).rejects.toMatchObject({
@@ -101,7 +101,7 @@ describe('getCompoundImage handler — output', () => {
 
   it('passes correct size parameter to client', async () => {
     mockClient.getImage.mockResolvedValueOnce(new Uint8Array([0]).buffer);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompoundImage.errors });
     const input = getCompoundImage.input.parse({ cid: 702, size: 'small' });
     await getCompoundImage.handler(input, ctx);
 

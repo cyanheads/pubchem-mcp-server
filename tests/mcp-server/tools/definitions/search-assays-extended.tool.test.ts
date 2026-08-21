@@ -23,7 +23,7 @@ beforeEach(() => {
 describe('searchAssays handler — all target types', () => {
   it('searches by proteinname', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([100, 200]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'proteinname',
       targetQuery: 'Epidermal growth factor receptor',
@@ -42,7 +42,7 @@ describe('searchAssays handler — all target types', () => {
 
   it('searches by proteinaccession', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([300, 400, 500]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'proteinaccession',
       targetQuery: 'P00533',
@@ -55,7 +55,7 @@ describe('searchAssays handler — all target types', () => {
 
   it('searches by geneid', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([600]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'geneid',
       targetQuery: '5743',
@@ -192,7 +192,7 @@ describe('searchAssays handler — input validation', () => {
 describe('searchAssays handler — enrichment details', () => {
   it('enrichment notice contains targetQuery and targetType when no assays found', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'genesymbol',
       targetQuery: 'NONEXISTENT_GENE_XYZ',
@@ -208,7 +208,7 @@ describe('searchAssays handler — enrichment details', () => {
   it('totalFound reflects capped pre-maxResults count', async () => {
     const manyAids = Array.from({ length: 150 }, (_, i) => i + 1);
     mockClient.searchAssaysByTarget.mockResolvedValueOnce(manyAids);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'genesymbol',
       targetQuery: 'TP53',
@@ -225,7 +225,7 @@ describe('searchAssays handler — enrichment details', () => {
 describe('searchAssays handler — security', () => {
   it('passes injection strings as targetQuery without interpreting them', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const injected = "'; DROP TABLE assays; --";
     const input = searchAssays.input.parse({
       targetType: 'proteinname',
@@ -239,7 +239,7 @@ describe('searchAssays handler — security', () => {
 
   it('handles unicode in targetQuery without crashing', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const input = searchAssays.input.parse({
       targetType: 'proteinname',
       targetQuery: '受体激酶',
@@ -252,7 +252,7 @@ describe('searchAssays handler — security', () => {
 
   it('handles very long targetQuery without crashing', async () => {
     mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchAssays.errors });
     const longQuery = 'EGFR'.repeat(1000);
     const input = searchAssays.input.parse({
       targetType: 'genesymbol',

@@ -28,7 +28,7 @@ beforeEach(() => {
 describe('searchCompounds handler', () => {
   it('resolves identifiers by name', async () => {
     mockClient.searchByName.mockResolvedValueOnce([2244]).mockResolvedValueOnce([3672]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -46,7 +46,7 @@ describe('searchCompounds handler', () => {
 
   it('resolves identifiers by SMILES', async () => {
     mockClient.searchBySmiles.mockResolvedValueOnce([2244]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'smiles',
@@ -61,7 +61,7 @@ describe('searchCompounds handler', () => {
 
   it('resolves identifiers by InChIKey', async () => {
     mockClient.searchByInchiKey.mockResolvedValueOnce([2244]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'inchikey',
@@ -76,7 +76,7 @@ describe('searchCompounds handler', () => {
 
   it('searches by formula', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([5988, 79025]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'C6H12O6',
@@ -90,7 +90,7 @@ describe('searchCompounds handler', () => {
 
   it('passes allowOtherElements for formula search', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([1]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'C6H12O6',
@@ -103,7 +103,7 @@ describe('searchCompounds handler', () => {
 
   it('searches by similarity', async () => {
     mockClient.searchByStructure.mockResolvedValueOnce([2244, 3672, 1983]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'similarity',
       query: '2244',
@@ -119,7 +119,7 @@ describe('searchCompounds handler', () => {
 
   it('searches by substructure', async () => {
     mockClient.searchByStructure.mockResolvedValueOnce([100, 200]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'substructure',
       query: 'c1ccccc1',
@@ -140,7 +140,7 @@ describe('searchCompounds handler', () => {
 
   it('deduplicates CIDs', async () => {
     mockClient.searchByName.mockResolvedValue([2244]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -156,7 +156,7 @@ describe('searchCompounds handler', () => {
   it('caps results at maxResults', async () => {
     // maxResults 2 means the client is asked for 3; a full 3 back proves more exist (#41).
     mockClient.searchByFormula.mockResolvedValueOnce([1, 2, 3]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'H2O',
@@ -172,7 +172,7 @@ describe('searchCompounds handler', () => {
 
   it('populates notice enrichment when no results found', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'XXXXXX',
@@ -187,7 +187,7 @@ describe('searchCompounds handler', () => {
 
   it('does not populate notice when results found', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([1, 2]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'C6H12O6',
@@ -203,7 +203,7 @@ describe('searchCompounds handler', () => {
     mockClient.getProperties.mockResolvedValueOnce([
       { CID: 2244, MolecularFormula: 'C9H8O4', MolecularWeight: 180.16 },
     ]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -267,7 +267,7 @@ describe('searchCompounds handler', () => {
 describe('searchCompounds handler — bounded fast searches (#41)', () => {
   it('asks PubChem for one record past maxResults instead of the whole match set', async () => {
     mockClient.searchByStructure.mockResolvedValueOnce([1, 2, 3]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'substructure',
       query: 'c1ccccc1C(=O)O',
@@ -288,7 +288,7 @@ describe('searchCompounds handler — bounded fast searches (#41)', () => {
   it('reports a floor, not a total, when the bounded search comes back saturated', async () => {
     // 4 CIDs for a cap of 4 — the true match count is unknowable from this response.
     mockClient.searchByStructure.mockResolvedValueOnce([1, 2, 3, 4]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'substructure',
       query: 'c1ccccc1C(=O)O',
@@ -308,7 +308,7 @@ describe('searchCompounds handler — bounded fast searches (#41)', () => {
 
   it('reports an exact total when the bounded search returns fewer than the cap', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([5988, 79025, 107526]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'C6H12O6',
@@ -326,7 +326,7 @@ describe('searchCompounds handler — bounded fast searches (#41)', () => {
 
   it('keeps identifier totals exact — those lookups are never bounded', async () => {
     mockClient.searchByName.mockResolvedValueOnce([2244, 3672, 1983, 5090]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',

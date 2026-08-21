@@ -1,10 +1,9 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-07-28 16:43:15
+Generated on: 2026-08-21 22:20:42
 
 ```text
 pubchem-mcp-server/
-├── .claude/
 ├── .claude-plugin/
 │   └── plugin.json
 ├── .codex-plugin/
@@ -15,6 +14,8 @@ pubchem-mcp-server/
 │   │   ├── bug_report.yml
 │   │   ├── config.yml
 │   │   └── feature_request.yml
+│   ├── CODE_OF_CONDUCT.md
+│   ├── CONTRIBUTING.md
 │   ├── FUNDING.yml
 │   └── SECURITY.md
 ├── .vscode/

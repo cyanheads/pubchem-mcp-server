@@ -43,7 +43,7 @@ const SDF = [
 describe('getCompound3dStructure handler', () => {
   it('format=json returns parsed atoms and bonds, omits sdf, no conformer call', async () => {
     mockClient.getSdf3d.mockResolvedValueOnce(SDF);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompound3dStructure.errors });
     const input = getCompound3dStructure.input.parse({ cid: 2244, format: 'json' });
     const result = await getCompound3dStructure.handler(input, ctx);
 
@@ -58,7 +58,7 @@ describe('getCompound3dStructure handler', () => {
 
   it('format=sdf returns raw text and counts, omits parsed atoms/bonds', async () => {
     mockClient.getSdf3d.mockResolvedValueOnce(SDF);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompound3dStructure.errors });
     const input = getCompound3dStructure.input.parse({ cid: 2244, format: 'sdf' });
     const result = await getCompound3dStructure.handler(input, ctx);
 
@@ -71,7 +71,7 @@ describe('getCompound3dStructure handler', () => {
   it('includeAlternateConformerIds sets conformerId and alternates', async () => {
     mockClient.getSdf3d.mockResolvedValueOnce(SDF);
     mockClient.getConformerIds.mockResolvedValueOnce(['A', 'B', 'C']);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompound3dStructure.errors });
     const input = getCompound3dStructure.input.parse({
       cid: 2244,
       includeAlternateConformerIds: true,
@@ -84,7 +84,7 @@ describe('getCompound3dStructure handler', () => {
 
   it('propagates a not-found thrown by the service', async () => {
     mockClient.getSdf3d.mockRejectedValueOnce(new Error('No 3D conformer available for CID 1.'));
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompound3dStructure.errors });
     const input = getCompound3dStructure.input.parse({ cid: 1 });
 
     await expect(getCompound3dStructure.handler(input, ctx)).rejects.toThrow('No 3D conformer');
@@ -146,7 +146,7 @@ const bigSdf = [
 describe('getCompound3dStructure — output controls (#28)', () => {
   it('default output is full for a small compound — no caps hit, no truncation disclosure', async () => {
     mockClient.getSdf3d.mockResolvedValueOnce(SDF);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompound3dStructure.errors });
     const input = getCompound3dStructure.input.parse({ cid: 2244 });
     const result = await getCompound3dStructure.handler(input, ctx);
 
@@ -157,7 +157,7 @@ describe('getCompound3dStructure — output controls (#28)', () => {
 
   it('caps atoms and bonds, discloses truncation, and preserves the totals', async () => {
     mockClient.getSdf3d.mockResolvedValueOnce(SDF);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompound3dStructure.errors });
     const input = getCompound3dStructure.input.parse({ cid: 2244, maxAtoms: 2, maxBonds: 1 });
     const result = await getCompound3dStructure.handler(input, ctx);
 
@@ -193,7 +193,7 @@ describe('getCompound3dStructure — output controls (#28)', () => {
 
   it('line-caps a large raw SDF by default and discloses it', async () => {
     mockClient.getSdf3d.mockResolvedValueOnce(bigSdf);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompound3dStructure.errors });
     const input = getCompound3dStructure.input.parse({ cid: 2244, format: 'sdf' });
     const result = await getCompound3dStructure.handler(input, ctx);
 
@@ -207,7 +207,7 @@ describe('getCompound3dStructure — output controls (#28)', () => {
 
   it('returns the full raw SDF when includeRawSdf is set', async () => {
     mockClient.getSdf3d.mockResolvedValueOnce(bigSdf);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompound3dStructure.errors });
     const input = getCompound3dStructure.input.parse({
       cid: 2244,
       format: 'sdf',
@@ -221,7 +221,7 @@ describe('getCompound3dStructure — output controls (#28)', () => {
 
   it('leaves a small raw SDF unchanged by default (under the line cap)', async () => {
     mockClient.getSdf3d.mockResolvedValueOnce(SDF);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getCompound3dStructure.errors });
     const input = getCompound3dStructure.input.parse({ cid: 2244, format: 'sdf' });
     const result = await getCompound3dStructure.handler(input, ctx);
 

@@ -28,7 +28,7 @@ beforeEach(() => {
 describe('searchCompounds handler — superstructure search', () => {
   it('searches by superstructure', async () => {
     mockClient.searchByStructure.mockResolvedValueOnce([500, 600]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'superstructure',
       query: 'c1ccccc1',
@@ -50,7 +50,7 @@ describe('searchCompounds handler — superstructure search', () => {
 
   it('searches by superstructure with cid queryType', async () => {
     mockClient.searchByStructure.mockResolvedValueOnce([1, 2, 3]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'superstructure',
       query: '2244',
@@ -72,7 +72,7 @@ describe('searchCompounds handler — superstructure search', () => {
 describe('searchCompounds handler — identifier batch edge cases', () => {
   it('handles identifier that resolves to no CIDs', async () => {
     mockClient.searchByName.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -88,7 +88,7 @@ describe('searchCompounds handler — identifier batch edge cases', () => {
 
   it('deduplicates across multiple identifiers resolving to overlapping CIDs', async () => {
     mockClient.searchByName.mockResolvedValueOnce([2244, 3672]).mockResolvedValueOnce([3672, 4999]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -107,7 +107,7 @@ describe('searchCompounds handler — identifier batch edge cases', () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([2519])
       .mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -126,7 +126,7 @@ describe('searchCompounds handler — identifier batch edge cases', () => {
 
   it('omits unresolvedIdentifiers when every identifier resolves (#29)', async () => {
     mockClient.searchByName.mockResolvedValueOnce([962]).mockResolvedValueOnce([2519]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -142,7 +142,7 @@ describe('searchCompounds handler — identifier batch edge cases', () => {
   it('signals a CID collision when two distinct identifiers resolve to the same CID (#29)', async () => {
     // Both names resolve to CID 2244 — the result row can echo only one.
     mockClient.searchByName.mockResolvedValueOnce([2244]).mockResolvedValueOnce([2244]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -199,7 +199,7 @@ describe('searchCompounds handler — boundary values', () => {
 
   it('accepts minimum maxResults of 1', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([1, 2, 3]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'C6H12O6',
@@ -213,7 +213,7 @@ describe('searchCompounds handler — boundary values', () => {
   it('accepts maximum maxResults of 200', async () => {
     const manyIds = Array.from({ length: 200 }, (_, i) => i + 1);
     mockClient.searchByFormula.mockResolvedValueOnce(manyIds);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'C6H12O6',
@@ -326,7 +326,7 @@ describe('searchCompounds handler — security', () => {
   it('passes injection strings as identifiers without interpreting them', async () => {
     // SQL/script injection in identifier — must be passed through opaquely, not interpreted
     mockClient.searchByName.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const injected = "'; DROP TABLE compounds; --";
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
@@ -343,7 +343,7 @@ describe('searchCompounds handler — security', () => {
 
   it('passes path traversal strings in formula without crashing', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: '../../etc/passwd',
@@ -358,7 +358,7 @@ describe('searchCompounds handler — security', () => {
     // 10KB formula string — handler must not crash on oversized input
     const bigFormula = 'C'.repeat(10000);
     mockClient.searchByFormula.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: bigFormula,
@@ -370,7 +370,7 @@ describe('searchCompounds handler — security', () => {
 
   it('handles unicode identifiers without crashing', async () => {
     mockClient.searchByName.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -395,7 +395,7 @@ describe('searchCompounds handler — security', () => {
 describe('searchCompounds handler — properties hydration edge cases', () => {
   it('skips properties fetch when result set is empty', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'XXXXXX',
@@ -411,7 +411,7 @@ describe('searchCompounds handler — properties hydration edge cases', () => {
     mockClient.getProperties.mockResolvedValueOnce([
       { CID: 2244, MolecularFormula: 'C9H8O4', MolecularWeight: 180.16 },
     ]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -486,7 +486,7 @@ describe('searchCompounds format — additional cases', () => {
 describe('searchCompounds handler — offset paging (#38)', () => {
   it('grows the bounded upstream request to cover the offset', async () => {
     mockClient.searchByStructure.mockResolvedValueOnce(Array.from({ length: 26 }, (_, i) => i + 1));
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'substructure',
       query: 'c1ccccc1',
@@ -510,7 +510,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
   it('reports more matches beyond a saturated bounded page even without an exact total', async () => {
     // 26 records for a cap of 26 — saturated, so a further match exists past the window.
     mockClient.searchByFormula.mockResolvedValueOnce(Array.from({ length: 26 }, (_, i) => i + 1));
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'C6H12O6',
@@ -529,7 +529,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
 
   it('pages identifier lookups over the already-resolved set without a second request', async () => {
     mockClient.searchByName.mockResolvedValueOnce([10, 20, 30, 40, 50]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -549,7 +549,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
 
   it('omits nextOffset and truncated on the terminal page', async () => {
     mockClient.searchByName.mockResolvedValueOnce([10, 20, 30]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -568,7 +568,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
 
   it('names the valid bound when the offset runs past the matches found', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([1, 2, 3]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'C6H12O6',
@@ -590,7 +590,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
     mockClient.searchByStructure.mockResolvedValueOnce(
       Array.from({ length: 111 }, (_, i) => i + 1),
     );
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'similarity',
       query: '2244',
@@ -610,7 +610,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
     // Cap is 4; PubChem returns 4 records but one is a repeat, so the deduped set is exactly the
     // page. The saturation is what proves a further match exists — the deduped count cannot.
     mockClient.searchByFormula.mockResolvedValueOnce([1, 2, 3, 1]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'formula',
       formula: 'C6H12O6',
@@ -626,7 +626,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
 
   it('still reports unresolved identifiers on a page past the first (#29)', async () => {
     mockClient.searchByName.mockResolvedValueOnce([10, 20, 30]).mockResolvedValueOnce([]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -643,7 +643,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
   it('hydrates properties for the page returned, not the first page', async () => {
     mockClient.searchByName.mockResolvedValueOnce([10, 20, 30, 40]);
     mockClient.getProperties.mockResolvedValueOnce([{ CID: 30, MolecularFormula: 'H2O' }]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'identifier',
       identifierType: 'name',
@@ -664,7 +664,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
 
     for (let page = 0; page < 5 && offset !== undefined; page++) {
       mockClient.searchByName.mockResolvedValueOnce(all);
-      const ctx = createMockContext();
+      const ctx = createMockContext({ errors: searchCompounds.errors });
       const result = await searchCompounds.handler(
         searchCompounds.input.parse({
           searchType: 'identifier',
@@ -687,7 +687,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
      * stride derivation itself: taking it from the cap rather than from the returned page
      * would reopen the dead end regardless of what the schema accepts. */
     mockClient.searchByName.mockResolvedValueOnce([10, 20, 30, 40]);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = {
       ...searchCompounds.input.parse({
         searchType: 'identifier',

@@ -3,6 +3,7 @@
  * @module mcp-server/resources/definitions/compound-safety.resource.test
  */
 
+import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { compoundSafetyResource } from '@/mcp-server/resources/definitions/compound-safety.resource.js';
 
@@ -17,6 +18,26 @@ vi.mock('@/services/pubchem/pubchem-client.js', () => ({
 beforeEach(() => {
   vi.resetAllMocks();
 });
+
+/**
+ * The resource declares no `output` schema, so `handler` types as `unknown`. This is the
+ * payload it actually returns — kept next to the assertions that read it.
+ */
+type SafetyPayload = {
+  cid: number;
+  hasData: boolean;
+  status: string;
+  source?: string;
+  ghs?: {
+    signalWord: string;
+    pictograms: string[];
+    hazardStatements: { code: string; statement: string }[];
+    precautionaryStatements: { code: string; statement: string; decoded: boolean }[];
+  };
+};
+
+const readSafety = async (cid: number): Promise<SafetyPayload> =>
+  (await compoundSafetyResource.handler({ cid }, createMockContext())) as SafetyPayload;
 
 const ghs = {
   signalWord: 'Danger',
@@ -33,7 +54,7 @@ describe('compoundSafetyResource handler', () => {
   it('returns GHS data for a compound that has it', async () => {
     mockClient.getSafetyData.mockResolvedValueOnce({ status: 'ok', ghs });
 
-    const result = await compoundSafetyResource.handler({ cid: 702 });
+    const result = await readSafety(702);
 
     expect(result).toMatchObject({ cid: 702, hasData: true, status: 'ok', source: 'ECHA' });
     expect(result.ghs?.signalWord).toBe('Danger');
@@ -44,7 +65,7 @@ describe('compoundSafetyResource handler', () => {
   it('carries the decoded flag through to the raw JSON payload', async () => {
     mockClient.getSafetyData.mockResolvedValueOnce({ status: 'ok', ghs });
 
-    const result = await compoundSafetyResource.handler({ cid: 702 });
+    const result = await readSafety(702);
 
     expect(result.ghs?.precautionaryStatements).toEqual([
       { code: 'P210', statement: 'Keep away from heat', decoded: true },
@@ -57,7 +78,7 @@ describe('compoundSafetyResource handler', () => {
   it('reports cid_not_found for a CID PubChem has no record for', async () => {
     mockClient.getSafetyData.mockResolvedValueOnce({ status: 'cid_not_found' });
 
-    const result = await compoundSafetyResource.handler({ cid: 999999999 });
+    const result = await readSafety(999999999);
 
     expect(result).toEqual({ cid: 999999999, hasData: false, status: 'cid_not_found' });
   });
@@ -65,7 +86,7 @@ describe('compoundSafetyResource handler', () => {
   it('reports no_ghs_data for a real compound with no deposited classification', async () => {
     mockClient.getSafetyData.mockResolvedValueOnce({ status: 'no_ghs_data' });
 
-    const result = await compoundSafetyResource.handler({ cid: 11979316 });
+    const result = await readSafety(11979316);
 
     expect(result).toEqual({ cid: 11979316, hasData: false, status: 'no_ghs_data' });
   });
@@ -75,8 +96,8 @@ describe('compoundSafetyResource handler', () => {
       .mockResolvedValueOnce({ status: 'cid_not_found' })
       .mockResolvedValueOnce({ status: 'no_ghs_data' });
 
-    const unknown = await compoundSafetyResource.handler({ cid: 999999999 });
-    const noData = await compoundSafetyResource.handler({ cid: 11979316 });
+    const unknown = await readSafety(999999999);
+    const noData = await readSafety(11979316);
 
     expect(unknown.status).not.toBe(noData.status);
   });
