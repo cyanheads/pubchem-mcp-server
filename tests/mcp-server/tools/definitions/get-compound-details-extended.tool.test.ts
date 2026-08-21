@@ -304,6 +304,7 @@ describe('getCompoundDetails handler — synonym/description continuation (#38)'
     // The total stays the compound's full count, not the page length.
     expect(result.compounds[0]!.synonymsTotal).toBe(30);
     expect(enrichment.synonymOffset).toBe(10);
+    expect(enrichment.truncated).toBe(true);
     expect(enrichment.nextSynonymOffset).toBe(15);
     expect(enrichment.notice).toContain('synonymOffset=15');
   });
@@ -341,6 +342,7 @@ describe('getCompoundDetails handler — synonym/description continuation (#38)'
     const enrichment = getEnrichment(ctx);
 
     expect(result.compounds[0]!.synonyms).toHaveLength(5);
+    expect(enrichment.truncated).toBe(false);
     expect(enrichment.nextSynonymOffset).toBeUndefined();
     expect(enrichment.notice).toBeUndefined();
   });

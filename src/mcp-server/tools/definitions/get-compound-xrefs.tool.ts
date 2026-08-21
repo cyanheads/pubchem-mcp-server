@@ -88,6 +88,11 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
   // (cid/xrefs live there).
   enrichment: {
     offset: z.number().describe('Zero-based index of the first ID returned within each type.'),
+    truncated: z
+      .boolean()
+      .describe(
+        'True when at least one requested type has IDs remaining past this page. Which types, and how many IDs each holds in total, is in xrefs[].truncated / xrefs[].totalAvailable.',
+      ),
     nextOffset: z
       .number()
       .optional()
@@ -144,7 +149,7 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
     const nextOffset = input.offset + (remainingTypes[0]?.ids.length ?? 0);
     const largestTotal = Math.max(...xrefs.map((x) => x.totalAvailable));
 
-    ctx.enrich({ offset: input.offset });
+    ctx.enrich({ offset: input.offset, truncated: hasMore });
     if (hasMore) ctx.enrich({ nextOffset });
 
     // Empty-result signal (#30): every requested type came back empty — either the CID

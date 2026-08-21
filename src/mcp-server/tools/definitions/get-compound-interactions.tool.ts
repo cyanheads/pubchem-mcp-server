@@ -103,6 +103,11 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
   enrichment: {
     requestedKinds: z.string().describe('Interaction kinds requested (comma-separated).'),
     returnedCount: z.number().describe('Total interaction entries returned across all kinds.'),
+    truncated: z
+      .boolean()
+      .describe(
+        'True when at least one requested kind has source records remaining past this page. Which kinds, and how many records each holds, is in paging[].truncated / paging[].totalRecords.',
+      ),
     offset: z.number().describe('Zero-based start position read within each requested kind.'),
     nextOffset: z
       .number()
@@ -163,13 +168,15 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       };
     });
 
+    const remaining = paging.filter((p) => p.truncated);
+
     ctx.enrich({
       requestedKinds: input.kinds.join(', '),
       returnedCount: entries.length,
+      truncated: remaining.length > 0,
       offset: input.offset,
     });
 
-    const remaining = paging.filter((p) => p.truncated);
     // A single scalar nextOffset only means something when one kind is still going; with two
     // it would have to pick one and silently skip the other's records.
     const soleNextOffset = remaining.length === 1 ? remaining[0]?.nextOffset : undefined;

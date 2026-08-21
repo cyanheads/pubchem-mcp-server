@@ -309,6 +309,11 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .describe(
         'descriptionOffset to pass on the next call to continue past this page. Omitted when no compound in the batch has further descriptions.',
       ),
+    truncated: z
+      .boolean()
+      .describe(
+        'True when this response is not the whole picture: a compound has further synonyms or descriptions past this page, or CIDs were skipped by the per-call fan-out limit. Per-compound totals are in compounds[].synonymsTotal / compounds[].descriptionsTotal; the skipped CIDs are in skippedCids.',
+      ),
     notice: z
       .string()
       .optional()
@@ -447,10 +452,14 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     });
 
     const notices: string[] = [];
+    // One depth-0 signal for "you are not seeing everything" — the per-compound totals and
+    // the skipped-CID list say which part is missing.
+    let truncated = false;
 
     // #40 — the PUG View fan-out cap is otherwise invisible: a capped-out CID looks exactly
     // like a compound PubChem has no description for.
     if (viewCapEngaged) {
+      truncated = true;
       ctx.enrich({ enrichedCids: viewCids, skippedCids: skippedViewCids });
       notices.push(
         `Descriptions and classification were fetched for the first ${viewCids.length} of ${foundCids.length} found CIDs (limit: ${PUG_VIEW_CID_CAP} per call). CID ${skippedViewCids.join(', ')} returned without them — re-request those CIDs in a follow-up call.`,
@@ -464,7 +473,10 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         input.maxSynonyms,
       );
       ctx.enrich({ synonymOffset: input.synonymOffset });
-      if (page.hasMore) ctx.enrich({ nextSynonymOffset: page.nextOffset });
+      if (page.hasMore) {
+        truncated = true;
+        ctx.enrich({ nextSynonymOffset: page.nextOffset });
+      }
       if (page.allEmpty) {
         notices.push(
           `synonymOffset ${input.synonymOffset} is past every compound in this batch — the longest synonym list has ${page.largestTotal} entries. Pass a synonymOffset below ${page.largestTotal}.`,
@@ -481,7 +493,10 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         input.maxDescriptions,
       );
       ctx.enrich({ descriptionOffset: input.descriptionOffset });
-      if (page.hasMore) ctx.enrich({ nextDescriptionOffset: page.nextOffset });
+      if (page.hasMore) {
+        truncated = true;
+        ctx.enrich({ nextDescriptionOffset: page.nextOffset });
+      }
       if (page.allEmpty) {
         notices.push(
           `descriptionOffset ${input.descriptionOffset} is past every compound in this batch — the longest description list has ${page.largestTotal} entries. Pass a descriptionOffset below ${page.largestTotal}.`,
@@ -492,6 +507,8 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         );
       }
     }
+
+    ctx.enrich({ truncated });
 
     // One notice field, so the sources are composed rather than overwriting one another.
     if (notices.length > 0) ctx.enrich.notice(notices.join(' '));

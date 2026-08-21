@@ -187,6 +187,7 @@ describe('getCompoundXrefs handler — offset pagination (#38)', () => {
     expect(result.xrefs[0]!.totalAvailable).toBe(30);
     expect(result.xrefs[0]!.truncated).toBe(true);
     expect(enrichment.offset).toBe(10);
+    expect(enrichment.truncated).toBe(true);
     expect(enrichment.nextOffset).toBe(15);
     expect(enrichment.notice).toContain('offset=15');
   });
@@ -239,6 +240,7 @@ describe('getCompoundXrefs handler — offset pagination (#38)', () => {
 
     expect(result.xrefs[0]!.ids).toEqual([26, 27, 28, 29, 30]);
     expect(result.xrefs[0]!.truncated).toBe(false);
+    expect(enrichment.truncated).toBe(false);
     expect(enrichment.nextOffset).toBeUndefined();
     expect(enrichment.notice).toBeUndefined();
   });

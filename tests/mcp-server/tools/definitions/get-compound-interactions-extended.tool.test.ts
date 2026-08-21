@@ -135,6 +135,8 @@ describe('getCompoundInteractions — per-kind continuation', () => {
     const enrichment = getEnrichment(ctx);
 
     expect(result.paging.map((p) => p.nextOffset)).toEqual([1, 12]);
+    // A depth-0 signal still says records remain, even where no single nextOffset can.
+    expect(enrichment.truncated).toBe(true);
     // Two kinds advance to different positions — no single value can stand for both.
     expect(enrichment.nextOffset).toBeUndefined();
     expect(enrichment.notice).toContain('drug-drug: pass offset=1 of 1777 total');
@@ -142,7 +144,9 @@ describe('getCompoundInteractions — per-kind continuation', () => {
   });
 
   it('walks every page of a kind without repeating or skipping an entry', async () => {
-    const collected: InteractionEntry[] = [];
+    // The handler's own entry type, not the service's: Zod-derived optionals carry
+    // `| undefined`, which `exactOptionalPropertyTypes` will not assign to `partner?: string`.
+    const collected: Awaited<ReturnType<typeof getCompoundInteractions.handler>>['entries'] = [];
     const records = [1, 2, 3, 4, 5].map(ddi);
     let offset = 0;
 
