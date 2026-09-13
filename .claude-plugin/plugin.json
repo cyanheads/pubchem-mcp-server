@@ -1,13 +1,17 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "pubchem-mcp-server",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Search the PubChem chemical database for compounds, properties, safety data, bioactivity, cross-references, and entity summaries via MCP. STDIO or Streamable HTTP.",
   "author": {
-    "name": "cyanheads"
+    "name": "cyanheads",
+    "email": "casey@caseyjhand.com",
+    "url": "https://caseyjhand.com"
   },
   "homepage": "https://github.com/cyanheads/pubchem-mcp-server#readme",
   "repository": "https://github.com/cyanheads/pubchem-mcp-server",
   "license": "Apache-2.0",
+  "keywords": ["mcp", "mcp-server", "model-context-protocol", "pubchem", "chemistry", "cheminformatics"],
   "mcpServers": {
     "pubchem-mcp-server": {
       "command": "npx",

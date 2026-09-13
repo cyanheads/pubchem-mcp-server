@@ -6,7 +6,7 @@
     "url": "https://github.com/cyanheads/pubchem-mcp-server",
     "source": "github"
   },
-  "version": "0.6.1",
+  "version": "0.6.2",
   "remotes": [
     {
       "type": "streamable-http",
@@ -19,7 +19,7 @@
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@cyanheads/pubchem-mcp-server",
       "runtimeHint": "bun",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "packageArguments": [
         { "type": "positional", "value": "run" },
         { "type": "positional", "value": "start:stdio" }
@@ -42,12 +42,19 @@
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@cyanheads/pubchem-mcp-server",
       "runtimeHint": "bun",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "packageArguments": [
         { "type": "positional", "value": "run" },
         { "type": "positional", "value": "start:http" }
       ],
       "environmentVariables": [
+        {
+          "name": "MCP_SESSION_MODE",
+          "description": "HTTP session mode: stateless, stateful, or auto. Stateless is sufficient for PubChem; auto resolves to stateful.",
+          "format": "string",
+          "isRequired": false,
+          "default": "stateless"
+        },
         {
           "name": "MCP_HTTP_HOST",
           "description": "The hostname for the HTTP server.",
