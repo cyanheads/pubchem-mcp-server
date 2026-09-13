@@ -474,17 +474,19 @@ export class PubChemClient {
         const text = await response.text();
         const fault = parseFaultMessage(text) ?? text.slice(0, 300);
 
-        // Retry once on 5xx
-        if (response.status >= 500 && attempt < 1) {
-          await sleep(1000 * 2 ** attempt);
-          continue;
-        }
-
-        throw await httpErrorFromResponse(response, {
+        const error = await httpErrorFromResponse(response, {
           captureBody: false,
           service: 'PubChem',
           data: { fault, url },
         });
+
+        // Retry once on 5xx unless the framework marks the failure as permanent.
+        if (response.status >= 500 && error.data?.retryable !== false && attempt < 1) {
+          await sleep(1000 * 2 ** attempt);
+          continue;
+        }
+
+        throw error;
       } catch (error) {
         // HTTP errors are already classified — surface them, don't retry.
         if (error instanceof McpError) throw error;
