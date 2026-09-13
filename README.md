@@ -29,7 +29,7 @@
 
 ## Overview
 
-An MCP server over PubChem's PUG REST and PUG View APIs. Search chemical compounds by identifier, formula, or structure; fetch physicochemical properties, safety data, bioactivity, interactions, cross-references, and 3D structures; find bioassays by biological target. Runs as a stdio process, a local Streamable HTTP server, or the public hosted endpoint above.
+Chemical compound and bioassay data from PubChem's PUG REST and PUG View APIs. Search compounds by identifier, formula, or structure; fetch physicochemical properties, safety data, bioactivity, interactions, cross-references, and 3D structures; find bioassays by biological target. Runs as a stdio process, a local Streamable HTTP server, or the public hosted endpoint above.
 
 ### Tools
 
@@ -319,8 +319,6 @@ cp .env.example .env
 ```
 
 ## Configuration
-
-No API keys are required — PubChem's API is freely accessible.
 
 | Variable | Description | Default |
 |:---------|:------------|:--------|
