@@ -27,12 +27,14 @@
 
 ---
 
-## Tools
+## Overview
 
-Ten tools for querying PubChem's chemical information database:
+An MCP server over PubChem's PUG REST and PUG View APIs. Search chemical compounds by identifier, formula, or structure; fetch physicochemical properties, safety data, bioactivity, interactions, cross-references, and 3D structures; find bioassays by biological target. Runs as a stdio process, a local Streamable HTTP server, or the public hosted endpoint above.
 
-| Tool Name | Description |
-|:----------|:------------|
+### Tools
+
+| Tool | Description |
+|:---|:---|
 | `pubchem_search_compounds` | Search for compounds by name, SMILES, InChIKey, formula, substructure, superstructure, or 2D similarity. |
 | `pubchem_get_compound_details` | Get physicochemical properties, descriptions, synonyms, drug-likeness, and classification for compounds by CID. |
 | `pubchem_get_compound_image` | Fetch a 2D structure diagram (PNG) for a compound by CID. |
@@ -44,79 +46,12 @@ Ten tools for querying PubChem's chemical information database:
 | `pubchem_search_assays` | Find bioassays by biological target (gene symbol, protein, Gene ID, UniProt accession). |
 | `pubchem_get_summary` | Get summaries for PubChem entities: assays, genes, proteins, taxonomy. |
 
-### `pubchem_search_compounds`
+### Resources
 
-Search PubChem for chemical compounds across five search modes.
+Compound and assay records are also exposed as URI-templated resources, backed by the same client methods as the tools; many MCP clients are tool-only and never surface resources.
 
-- **Identifier lookup** — resolve compound names, SMILES, or InChIKeys to CIDs (batch up to 25)
-- **Formula search** — find compounds by molecular formula in Hill notation
-- **Substructure/superstructure** — find compounds containing or contained within a query structure
-- **2D similarity** — find structurally similar compounds by Tanimoto similarity (configurable threshold)
-- Caps at 200 CIDs per page; `offset` pages further, to a ceiling of 10,000. Identifier lookups page over the set already resolved; formula and structure searches widen their bounded upstream request to reach a page, so deep pages cost more upstream
-- Optionally hydrate results with properties to avoid a follow-up details call
-
----
-
-### `pubchem_get_compound_details`
-
-Get detailed compound information by CID.
-
-- Batches up to 100 CIDs in a single request
-- 27 available properties: molecular weight, SMILES, InChIKey, XLogP, TPSA, complexity, stereo counts, and more
-- Optionally includes textual descriptions (pharmacology, mechanism, therapeutic use) from PUG View — fetched for the first 10 CIDs of a batch, with the skipped CIDs named in the response
-- Optionally includes known synonyms (trade names, systematic names, registry numbers)
-- Synonyms and descriptions are paged: `synonymOffset` and `descriptionOffset` window every compound in the batch at the same position, reaching the entries past a page
-- Optionally computes drug-likeness assessment (Lipinski Rule of Five + Veber rules) from fetched properties
-- Optionally fetches pharmacological classification (FDA classes, mechanisms of action, MeSH classes, ATC codes)
-
----
-
-### `pubchem_get_bioactivity`
-
-Get a compound's bioactivity profile from PubChem BioAssay.
-
-- Returns assay outcomes (Active/Inactive/Inconclusive), target info (protein accessions, NCBI Gene IDs), and quantitative values (IC50, EC50, Ki)
-- Filter by outcome and/or a specific molecular target (NCBI Gene ID or protein accession)
-- Caps at 100 results per page; `offset` reaches the rest (well-studied compounds may have thousands)
-
----
-
-### `pubchem_get_summary`
-
-Get descriptive summaries for four PubChem entity types.
-
-- Assays (AID), genes (Gene ID), proteins (UniProt accession), taxonomy (Tax ID)
-- Up to 10 entities per call
-- Type-specific field extraction for clean, structured output
-
----
-
-### `pubchem_get_compound_interactions`
-
-Get a compound's interaction data by CID.
-
-- Drug-drug interactions (DrugBank), drug-food interactions, and chemical-target binding/activity (BindingDB, ChEMBL, and others)
-- Select which interaction kinds to fetch and cap entries per kind
-- Paged per kind: each reports its source-record total and its own `nextOffset`, and `offset` reaches the records past a page
-- Each entry carries its originating source — coverage is richest for approved drugs
-
----
-
-### `pubchem_get_compound_3d_structure`
-
-Get a compound's default 3D conformer by CID.
-
-- `format="json"` returns parsed atoms (element + x/y/z) and bonds for direct reasoning; `format="sdf"` returns raw V2000 SDF for passthrough to docking or rendering
-- `maxAtoms`/`maxBonds` bound the atom/bond preview and `includeRawSdf` opts into a large raw SDF past the safe line cap; `atomCount`/`bondCount` always report the totals and any capping is disclosed
-- Optionally lists alternate conformer IDs
-- Returns a typed not-found when PubChem has no computed 3D coordinates (large molecules, mixtures, some salts)
-
-## Resources
-
-Compound and assay records are also exposed as URI-templated MCP resources, backed by the same client methods as the tools:
-
-| URI Template | Returns |
-|:-------------|:--------|
+| Resource | Description |
+|:---|:---|
 | `pubchem://compound/{cid}` | Core physicochemical properties (JSON). |
 | `pubchem://compound/{cid}/safety` | GHS hazard classification (JSON). |
 | `pubchem://compound/{cid}/image` | 2D structure diagram (PNG). |
@@ -124,24 +59,160 @@ Compound and assay records are also exposed as URI-templated MCP resources, back
 | `pubchem://compound/{cid}/bioactivity` | Bioassay activity profile (JSON). |
 | `pubchem://assay/{aid}` | BioAssay summary (JSON). |
 
+## Capability reference
+
+### `pubchem_search_compounds` <sub>tool</sub>
+
+- Five search strategies: identifier (name/SMILES/InChIKey, batched 1-25), formula (Hill notation, optional `allowOtherElements`), substructure/superstructure containment, or 2D Tanimoto similarity (threshold 70-100, default 90)
+- Caps at 200 CIDs per page (default 20); `offset` pages to a ceiling of 10,000 — identifier lookups resolve every match up front so paging is free, while formula/structure/similarity searches cost more upstream per deep page
+- Optional `properties` hydration avoids a follow-up `pubchem_get_compound_details` call
+- Identifier mode reports `unresolvedIdentifiers` for inputs that resolved to no CID, plus notices when multiple inputs collide on one CID
+- Reports an exact `totalFound` when the full match set was observed, or a `totalFoundAtLeast` floor when a bounded upstream search saturated
+
+---
+
+### `pubchem_get_compound_details` <sub>tool</sub>
+
+- Up to 100 CIDs per call; 27 available properties, defaulting to a core set of 14 (formula, weight, IUPAC name, SMILES forms, InChIKey, XLogP, TPSA, H-bond/rotatable-bond counts, heavy atom count, charge, complexity)
+- Optional textual descriptions, paged via `descriptionOffset`/`maxDescriptions` (default 3, up to 20) — fetched only for the first 10 CIDs in the batch, remaining CIDs listed in `skippedCids`
+- Optional synonyms for every found CID, paged via `synonymOffset`/`maxSynonyms` (default 20, up to 100)
+- Optional drug-likeness assessment (Lipinski Rule of Five + Veber rules), computed from the returned properties at no extra latency
+- Optional pharmacological classification (FDA classes/mechanisms, MeSH classes, ATC codes) — same 10-CID fan-out cap as descriptions
+- Per-CID `found: false` distinguishes a nonexistent CID from a real compound PubChem simply has no data for
+
+---
+
+### `pubchem_get_compound_image` <sub>tool</sub>
+
+- Single CID; `size` is `"small"` (100x100) or `"large"` (300x300, default)
+- Returns base64-encoded PNG plus width/height
+- Typed `cid_not_found` error when PubChem has no record for the CID
+
+---
+
+### `pubchem_get_compound_3d_structure` <sub>tool</sub>
+
+- Single CID; `format="json"` (default) returns parsed atoms (element + x/y/z) and bonds, `format="sdf"` returns the raw V2000 SDF text
+- `maxAtoms`/`maxBonds` cap the JSON preview (default 200 each); `atomCount`/`bondCount` always report the full totals, with any capping disclosed via enrichment
+- `includeRawSdf` bypasses the default 500-line cap on the raw SDF text
+- Optional `includeAlternateConformerIds` lists conformer IDs beyond the default
+- Typed `no_3d_structure` error when PubChem has no computed 3D coordinates (large molecules, mixtures, some salts)
+
+---
+
+### `pubchem_get_compound_xrefs` <sub>tool</sub>
+
+- Single CID; one or more `xrefTypes` — string IDs (`RegistryID`, `RN` for CAS numbers, `PatentID`) and numeric IDs (`PubMedID`, `GeneID`, `ProteinGI`, `TaxonomyID`)
+- Paged per type: `maxPerType` up to 500 (default 50), with the same `offset` applied across every requested type
+- Each type reports its own `totalAvailable` and `truncated` flag
+- Empty-result notice distinguishes "this compound has none of the requested types" from a possibly-mistyped CID
+
+---
+
+### `pubchem_get_compound_safety` <sub>tool</sub>
+
+- Batch of 1-25 CIDs
+- Returns GHS signal word, pictograms, hazard statements (H-codes), and precautionary statements (P-codes), with source attribution
+- Per-CID `status`: `ok`, `no_ghs_data` (compound exists, no deposited classification), or `cid_not_found` (no PubChem record at all) — kept distinct so a bad CID never reads as "no hazards on file"
+- Precautionary statements carry a `decoded` flag — false for codes needing label-specific fill text or outside the decoder table; the code itself is still authoritative
+
+---
+
+### `pubchem_get_bioactivity` <sub>tool</sub>
+
+- Single CID; filter by `outcomeFilter` (`active`/`inactive`/`all`, default `all`) and/or `targetGeneId`/`targetAccession`
+- Caps at 100 results per page (default 20); `offset` reaches the rest
+- Reports `totalAssays`/`activeCount`/`inactiveCount` for the whole compound, plus `filteredCount`/`returnedCount` for the current page
+- Notices distinguish "no bioactivity data at all" from "the filter excluded everything" from "offset past the end"
+
+---
+
+### `pubchem_get_compound_interactions` <sub>tool</sub>
+
+- Single CID; one or more `kinds` — `drug-drug` (DrugBank), `drug-food`, `target` (binding/activity from BindingDB, ChEMBL, and others); default `["drug-drug"]`
+- `maxEntries` per kind per page (1-50, default 10); `offset` counts source records rather than returned entries, capped at 2,147,483,646
+- Each kind pages independently — `paging[]` reports per-kind `totalRecords`/`nextOffset`/`truncated`; the top-level `nextOffset` is populated only when exactly one requested kind still has records left
+- A kind that fails to retrieve is named in `failedKinds` without failing the kinds that succeeded
+
+---
+
+### `pubchem_search_assays` <sub>tool</sub>
+
+- Search by `targetType`: `genesymbol`/`proteinname` (text), `geneid` (NCBI Gene ID), `proteinaccession` (UniProt)
+- Caps at 200 AIDs per page (default 50); `offset` pages to the total found
+- Rejects a blank `targetQuery` and a non-numeric `geneid` query before the upstream call
+- Reports `totalFound` across all pages and distinguishes "no match" from "offset past the end"
+
+---
+
+### `pubchem_get_summary` <sub>tool</sub>
+
+- `entityType`: `assay` (AID), `gene` (NCBI Gene ID), `protein` (UniProt accession), or `taxonomy` (Tax ID); up to 10 identifiers per call
+- Per-identifier `found` flag; populated fields depend on `entityType` (taxonomy includes an ordered `lineage`, gene includes `symbol`/`taxonomy`)
+- Notice reports how many identifiers were not found and which ID type `entityType` expects
+
+---
+
+### `pubchem://compound/{cid}` <sub>resource</sub>
+
+- Core physicochemical properties (the same default 14-property set as `pubchem_get_compound_details`), as `application/json`
+- Throws a typed not-found when the CID doesn't exist in PubChem
+- Use `pubchem_get_compound_details` to select specific properties or add descriptions, synonyms, drug-likeness, and classification
+
+---
+
+### `pubchem://compound/{cid}/safety` <sub>resource</sub>
+
+- GHS hazard classification as `application/json`
+- `status` (`ok`/`no_ghs_data`/`cid_not_found`) is the only signal distinguishing a bad CID from a compound with no deposited classification — a resource read has no notice surface
+
+---
+
+### `pubchem://compound/{cid}/image` <sub>resource</sub>
+
+- 2D structure diagram, 300x300 PNG, returned as a base64 blob
+- Use `pubchem_get_compound_image` for the 100x100 size option
+
+---
+
+### `pubchem://compound/{cid}/xrefs` <sub>resource</sub>
+
+- Focused default set — `RN` (CAS), `RegistryID`, `PubMedID` — up to 25 IDs per type, as `application/json`
+- Use `pubchem_get_compound_xrefs` for the full set of xref types, a higher per-type cap, and offset paging
+
+---
+
+### `pubchem://compound/{cid}/bioactivity` <sub>resource</sub>
+
+- Up to 25 assays as `application/json`, plus `totalAssays`/`activeCount` for the whole compound
+- Use `pubchem_get_bioactivity` to filter by outcome or target, raise the cap, or page with offset
+
+---
+
+### `pubchem://assay/{aid}` <sub>resource</sub>
+
+- BioAssay summary as `application/json` — name, description, source, protocol, substance counts
+- Throws a typed not-found when the AID doesn't exist
+
 ## Features
 
-Built on [`@cyanheads/mcp-ts-core`](https://github.com/cyanheads/mcp-ts-core):
-
-- Declarative tool definitions — single file per tool, framework handles registration and validation
-- Unified error handling across all tools
-- Pluggable auth (`none`, `jwt`, `oauth`)
-- Swappable storage backends: `in-memory`, `filesystem`, `Supabase`, `Cloudflare KV/R2/D1`
-- Structured logging with optional OpenTelemetry tracing
-- Runs locally (stdio/HTTP) or containerized via Docker
+Built on [`@cyanheads/mcp-ts-core`](https://github.com/cyanheads/mcp-ts-core): stdio and Streamable HTTP transports, pluggable auth (`none` / `jwt` / `oauth`), swappable storage (`in-memory`, `filesystem`, `Supabase`, `Cloudflare KV/R2/D1`), structured logging with optional OpenTelemetry tracing.
 
 PubChem-specific:
 
-- Rate-limited client for PUG REST and PUG View APIs (5 req/s with automatic queuing)
-- Retry with exponential backoff on 5xx errors and network failures
-- All tools are read-only and idempotent — no API keys required
+- Covers both PUG REST (search, properties, cross-references, safety, bioactivity, interactions) and PUG View (textual descriptions, pharmacological classification) endpoints
+- Rate-limited client (5 req/s) with automatic request queuing, and retry with exponential backoff on 5xx errors and network failures
+- Hand-rolled V2000 SDF parser for 3D conformer atoms and bonds; drug-likeness (Lipinski/Veber) computed from already-fetched properties, adding no extra latency
+- All tools are read-only and idempotent — no API keys required, PubChem's API is freely accessible
 
-## Getting Started
+Agent-friendly output:
+
+- Discriminated output contracts — per-CID `status` (`ok` / `no_ghs_data` / `cid_not_found`) and `found` flags let callers branch on data instead of matching an error string
+- Graceful partial failure — batch tools return per-item results alongside `unresolvedIdentifiers`, `skippedCids`, and `failedKinds` rather than failing the whole call
+- Response shaping — truncation disclosure (`truncated`, `shown`/`cap`, `nextOffset`) on every capped list, plus a `totalFoundAtLeast` floor in place of a count when an upstream search saturates
+- Typed error reasons — validation and not-found failures declare a `reason` (e.g. `cid_not_found`, `missing_identifier_args`, `invalid_cid_query`) with actionable recovery text, not generic messages
+
+## Getting started
 
 ### Public Hosted Instance
 
@@ -160,7 +231,7 @@ A public instance is available at `https://pubchem.caseyjhand.com/mcp` — no in
 
 ### Self-Hosted / Local
 
-Add to your MCP client config (e.g., `claude_desktop_config.json`):
+Add the following to your MCP client configuration file.
 
 ```json
 {
@@ -177,9 +248,48 @@ Add to your MCP client config (e.g., `claude_desktop_config.json`):
 }
 ```
 
+Or with npx (no Bun required):
+
+```json
+{
+  "mcpServers": {
+    "pubchem-mcp-server": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@cyanheads/pubchem-mcp-server@latest"],
+      "env": {
+        "MCP_TRANSPORT_TYPE": "stdio"
+      }
+    }
+  }
+}
+```
+
+Or with Docker:
+
+```json
+{
+  "mcpServers": {
+    "pubchem-mcp-server": {
+      "type": "stdio",
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-e", "MCP_TRANSPORT_TYPE=stdio", "ghcr.io/cyanheads/pubchem-mcp-server:latest"]
+    }
+  }
+}
+```
+
+For Streamable HTTP, set the transport and start the server:
+
+```sh
+MCP_TRANSPORT_TYPE=http MCP_HTTP_PORT=3010 bun run start:http
+# Server listens at http://localhost:3010/mcp
+```
+
 ### Prerequisites
 
-- [Bun v1.4.0](https://bun.sh/) or higher (or Node.js v24+)
+- [Bun v1.4.0](https://bun.sh/) or higher (or Node.js v24+).
+- No API keys required — PubChem's API is freely accessible.
 
 ### Installation
 
@@ -189,16 +299,23 @@ Add to your MCP client config (e.g., `claude_desktop_config.json`):
 git clone https://github.com/cyanheads/pubchem-mcp-server.git
 ```
 
-1. **Navigate into the directory:**
+2. **Navigate into the directory:**
 
 ```sh
 cd pubchem-mcp-server
 ```
 
-1. **Install dependencies:**
+3. **Install dependencies:**
 
 ```sh
 bun install
+```
+
+4. **Configure environment (optional):**
+
+```sh
+cp .env.example .env
+# edit .env to override transport, session mode, storage, or logging defaults
 ```
 
 ## Configuration
@@ -209,53 +326,67 @@ No API keys are required — PubChem's API is freely accessible.
 |:---------|:------------|:--------|
 | `MCP_TRANSPORT_TYPE` | Transport: `stdio` or `http`. | `stdio` |
 | `MCP_HTTP_PORT` | Port for HTTP server. | `3000` (`3010` in Docker) |
-| `MCP_SESSION_MODE` | `stateless`, `stateful`, or `auto`. The example and Docker use `stateless`; no multi-round-trip input is needed. | `auto` (resolves to `stateful`) |
 | `MCP_HTTP_HOST` | Host for HTTP server. | `localhost` |
+| `MCP_SESSION_MODE` | `stateless`, `stateful`, or `auto`. PubChem needs no multi-round-trip input, so the example and Docker use `stateless`. | `auto` (resolves to `stateful`) |
 | `MCP_AUTH_MODE` | Auth mode: `none`, `jwt`, or `oauth`. | `none` |
 | `MCP_LOG_LEVEL` | Log level (RFC 5424). | `info` |
 | `STORAGE_PROVIDER_TYPE` | Storage backend. | `in-memory` |
 | `OTEL_ENABLED` | Enable OpenTelemetry. | `false` |
 
-## Running the Server
+See [`.env.example`](./.env.example) for the full list of optional overrides.
 
-### Local Development
+## Running the server
+
+### Local development
 
 - **Build and run:**
 
   ```sh
+  # One-time build
   bun run rebuild
-  bun run start:stdio   # or start:http
+
+  # Run the built server
+  bun run start:stdio
+  # or
+  bun run start:http
   ```
 
 - **Run checks and tests:**
 
   ```sh
-  bun run devcheck     # Lints, formats, type-checks
-  bun run test         # Runs test suite
+  bun run devcheck   # Lint, format, typecheck, security
+  bun run test       # Vitest test suite
+  bun run lint:mcp   # Validate MCP definitions against spec
   ```
 
 ### Docker
 
 ```sh
 docker build -t pubchem-mcp-server .
-docker run -p 3010:3010 pubchem-mcp-server
+docker run --rm -p 3010:3010 pubchem-mcp-server
 ```
 
-## Project Structure
+The Dockerfile defaults to HTTP transport, stateless session mode, and logs to `/var/log/pubchem-mcp-server`. OpenTelemetry peer dependencies are installed by default — build with `--build-arg OTEL_ENABLED=false` to omit them.
+
+## Project structure
 
 | Directory | Purpose |
 |:----------|:--------|
+| `src/index.ts` | `createApp()` entry point — registers tools/resources and inits the PubChem client. |
 | `src/mcp-server/tools/definitions/` | Tool definitions (`*.tool.ts`). |
-| `src/services/pubchem/` | PubChem API client with rate limiting and response parsing. |
+| `src/mcp-server/resources/definitions/` | Resource definitions (`*.resource.ts`). |
+| `src/services/pubchem/` | PubChem API client — rate limiting, retry, and response/SDF parsing. |
 | `scripts/` | Build, clean, devcheck, and tree generation scripts. |
+| `tests/` | Unit and integration tests. |
 
-## Development Guide
+## Development guide
 
 See [`CLAUDE.md`](./CLAUDE.md) for development guidelines and architectural rules. The short version:
 
 - Handlers throw, framework catches — no `try/catch` in tool logic
-- Use `ctx.log` for domain-specific logging
-- Register new tools in the `index.ts` barrel file
+- Use `ctx.log` for request-scoped logging
+- Wrap external API calls: validate the raw PubChem response → normalize to a domain type → return the output schema; never fabricate missing fields
+- Register new tools and resources in the `index.ts` barrel files
 
 ## Contributing
 
