@@ -13,6 +13,10 @@ import { initPubChemClient } from './services/pubchem/pubchem-client.js';
 await createApp({
   name: 'pubchem-mcp-server',
   title: 'pubchem-mcp-server',
+  /** No tool gates on `ctx.requestInput`, so nothing here needs a session to survive
+   * between round trips. Declared in code rather than left to `MCP_SESSION_MODE` so a
+   * deployment that never sets the variable still serves statelessly. */
+  sessionMode: 'stateless',
   tools: allToolDefinitions,
   resources: allResourceDefinitions,
   instructions:
