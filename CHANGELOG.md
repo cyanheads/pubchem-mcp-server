@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.6.3](changelog/0.6.x/0.6.3.md) — 2026-09-19 · 🛡️ Security
+
+Adopts mcp-ts-core through 0.13.6: input aliases on four tools, a declared stateless session mode, structured argument-rejection errors, and CodeQL fixes for regex backtracking and an upstream URL leak in error data.
+
 ## [0.6.2](changelog/0.6.x/0.6.2.md) — 2026-09-13
 
 Framework adoption and HTTP retry handling
