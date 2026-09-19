@@ -323,9 +323,9 @@ cp .env.example .env
 | Variable | Description | Default |
 |:---------|:------------|:--------|
 | `MCP_TRANSPORT_TYPE` | Transport: `stdio` or `http`. | `stdio` |
-| `MCP_HTTP_PORT` | Port for HTTP server. | `3000` (`3010` in Docker) |
-| `MCP_HTTP_HOST` | Host for HTTP server. | `localhost` |
-| `MCP_SESSION_MODE` | `stateless`, `stateful`, or `auto`. PubChem needs no multi-round-trip input, so the example and Docker use `stateless`. | `auto` (resolves to `stateful`) |
+| `MCP_HTTP_PORT` | Port for HTTP server. | `3010` |
+| `MCP_HTTP_HOST` | Host for HTTP server. | `127.0.0.1` |
+| `MCP_SESSION_MODE` | `stateless`, `stateful`, or `auto`. PubChem needs no multi-round-trip input, so the server declares `stateless`; the example and Docker set it to match. | `stateless` |
 | `MCP_AUTH_MODE` | Auth mode: `none`, `jwt`, or `oauth`. | `none` |
 | `MCP_LOG_LEVEL` | Log level (RFC 5424). | `info` |
 | `STORAGE_PROVIDER_TYPE` | Storage backend. | `in-memory` |
