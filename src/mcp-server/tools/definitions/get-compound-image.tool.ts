@@ -37,6 +37,9 @@ export const getCompoundImage = tool('pubchem_get_compound_image', {
     {
       reason: 'cid_not_found',
       code: JsonRpcErrorCode.NotFound,
+      // Raised by PubChemClient.getImage, which owns the 404 → typed not-found mapping
+      // because the image endpoint returns binary and cannot report absence in the body.
+      thrownBy: 'service',
       when: 'PubChem returned 404 for the requested CID',
       recovery: 'Verify the CID with pubchem_search_compounds before retrying.',
     },
