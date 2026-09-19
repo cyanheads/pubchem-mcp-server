@@ -51,6 +51,9 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
         'Max entries per kind per page (1-50). Well-studied drugs have a long tail of interactions; use offset to reach the ones past this page. Default: 10.',
       ),
   }),
+  // `maxEntries` is this tool's page size; the sibling search tools call the same
+  // concept `maxResults`, and only one page-size input exists here.
+  inputAliases: { maxResults: 'maxEntries' },
   output: z.object({
     cid: z.number().describe('PubChem Compound ID.'),
     entries: z

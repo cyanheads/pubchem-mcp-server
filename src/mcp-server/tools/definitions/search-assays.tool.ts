@@ -46,6 +46,9 @@ export const searchAssays = tool('pubchem_search_assays', {
         'Max AIDs to return per page (1-200). Popular targets may have thousands of assays; use offset to reach the ones past this page. Default: 50.',
       ),
   }),
+  // `targetQuery` is the only search term this tool takes, so the bare nouns a caller
+  // reaches for resolve to it with nothing to disambiguate against.
+  inputAliases: { query: 'targetQuery', target: 'targetQuery' },
   output: z.object({
     aids: z.array(z.number()).describe('PubChem Assay IDs.'),
   }),

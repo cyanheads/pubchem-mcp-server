@@ -61,6 +61,10 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
         'Max assay results to return per page (1-100). Well-studied compounds have thousands of records; use offset to reach the ones past this page. Default: 20.',
       ),
   }),
+  // The target filters are reached via pubchem_search_assays, whose targetType names
+  // them `geneid` and `proteinaccession`; a caller carrying an identifier across sends
+  // the bare noun. Each maps to exactly one declared filter.
+  inputAliases: { geneId: 'targetGeneId', accession: 'targetAccession' },
   output: z.object({
     cid: z.number().describe('PubChem Compound ID.'),
     totalAssays: z.number().describe('Total unique assays for this compound.'),

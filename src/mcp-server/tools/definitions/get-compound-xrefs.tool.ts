@@ -48,6 +48,10 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
         'Max IDs to return per xref type per page (1-500). A compound may have thousands of PubMed references; use offset to reach the ones past this page. Total count always reported. Default: 50.',
       ),
   }),
+  // Every other paging tool here names its page size `maxResults`; this one caps per
+  // xref type, so a caller arriving from pubchem_search_compounds reaches for the
+  // sibling spelling. One page-size input exists, so the mapping is unambiguous.
+  inputAliases: { maxResults: 'maxPerType' },
   output: z.object({
     cid: z.number().describe('PubChem Compound ID.'),
     xrefs: z
