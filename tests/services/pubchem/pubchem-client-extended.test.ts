@@ -366,6 +366,25 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
     ]);
   });
 
+  it('parses an unterminated asterisk run in linear time', async () => {
+    // The annotation group used to nest `\*+` inside a `*` loop, so a code followed by a
+    // run of asterisks and no `:` separator forced the engine to try every partition of
+    // that run — 26ms at 24 asterisks, doubling with each one added. A depositor field of
+    // this shape would pin the event loop for the life of the process.
+    const statement = `H370 ${'*'.repeat(5000)}`;
+    fetchMock.mockResolvedValueOnce(jsonResponse(ghsRecord(241, [statement], [])));
+
+    const client = new PubChemClient();
+    const started = performance.now();
+    const result = await client.getSafetyData(241);
+    const elapsedMs = performance.now() - started;
+
+    // No separator, so nothing parses out of it — the point is that it returns at all.
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+    expect(ghs.hazardStatements).toEqual([]);
+    expect(elapsedMs).toBeLessThan(200);
+  });
+
   it('keeps a suffixed code distinct from its base code', async () => {
     // H360 and H360D are different classifications, so dedup-by-code must not collapse them.
     fetchMock.mockResolvedValueOnce(

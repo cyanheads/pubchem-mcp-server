@@ -28,6 +28,17 @@ describe('inlineData', () => {
     expect(inlineData('N-(4-hydroxyphenyl)acetamide')).toBe('N-(4-hydroxyphenyl)acetamide');
     expect(inlineData('Homo sapiens')).toBe('Homo sapiens');
   });
+
+  it('escapes a backslash so it cannot re-arm the delimiter that follows it', () => {
+    // Escaping `*` to `\*` while leaving an upstream `\` alone produces `\\*`, which
+    // CommonMark reads as a literal backslash followed by a LIVE `*` — the emphasis the
+    // escape was meant to defuse. The backslash has to be escaped too.
+    expect(inlineData('\\*foo\\*')).toBe('\\\\\\*foo\\\\\\*');
+  });
+
+  it('escapes a lone backslash in ordinary text (SMILES stereo bonds)', () => {
+    expect(inlineData('C/C=C\\C')).toBe('C/C=C\\\\C');
+  });
 });
 
 describe('quoteData', () => {
@@ -52,6 +63,10 @@ describe('quoteData', () => {
 
   it('escapes inline emphasis inside the quote', () => {
     expect(quoteData('has **bold** inside')).toBe('> has \\*\\*bold\\*\\* inside');
+  });
+
+  it('escapes a backslash so it cannot re-arm the delimiter that follows it', () => {
+    expect(quoteData('\\*foo\\*')).toBe('> \\\\\\*foo\\\\\\*');
   });
 });
 

@@ -18,8 +18,15 @@
  * Underscore is intentionally excluded: CommonMark treats intraword `_` as
  * literal, so it is a far weaker vector than `*`, and escaping it collides with
  * the format-parity linter's underscored sentinels.
+ *
+ * The backslash is in the class because escaping is not idempotent against one
+ * the payload already carries: `\*` escaped to `\\*` reads as a literal
+ * backslash followed by a LIVE `*`, re-arming the delimiter the escape was meant
+ * to defuse. Escaping it to `\\` first keeps the following `\*` inert. It also
+ * matters on its own — a SMILES stereo bond (`C/C=C\C`) ends a line with a
+ * backslash, which CommonMark reads as a hard line break.
  */
-const INLINE_MARKDOWN = /[`*~]/g;
+const INLINE_MARKDOWN = /[\\`*~]/g;
 
 /**
  * Frame a single upstream value for safe inline interpolation into `content[]`

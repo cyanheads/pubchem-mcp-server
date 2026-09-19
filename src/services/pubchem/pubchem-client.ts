@@ -233,10 +233,16 @@ function extractGHSInfo(section: PugViewSection): PugViewInformation[] {
  * H361f/H361fd — naming a narrower classification than its base code, and on some records it
  * is the only form deposited. Allowing up to two trailing letters keeps those as their own
  * entries instead of dropping the statement; a suffixed code is deliberately distinct from
- * its base, so both survive the later dedup-by-code. */
+ * its base, so both survive the later dedup-by-code.
+ *
+ * The annotation group consumes exactly one annotation per iteration, with its leading
+ * whitespace attached and the trailing whitespace taken once after the loop. Writing it as
+ * `(?:(?:\([^)]*\)|\*+)\s*)*` instead nests `\*+` inside a `*` loop, so a code followed by a
+ * run of asterisks and no separator makes the engine try every partition of that run — the
+ * same statements match either way, but only this form matches them in linear time. */
 function parseCodedStatement(text: string): { code: string; statement: string } | undefined {
   const match = text.match(
-    /^([HP]\d{3}[A-Za-z]{0,2}(?:\+[HP]\d{3}[A-Za-z]{0,2})*)\s*(?:(?:\([^)]*\)|\*+)\s*)*[:\-–]\s*(.+)/,
+    /^([HP]\d{3}[A-Za-z]{0,2}(?:\+[HP]\d{3}[A-Za-z]{0,2})*)(?:\s*(?:\([^)]*\)|\*))*\s*[:\-–]\s*(.+)/,
   );
   if (match?.[1] && match[2]) return { code: match[1], statement: match[2].trim() };
   const codeOnly = text.match(/^([HP]\d{3}[A-Za-z]{0,2}(?:\+[HP]\d{3}[A-Za-z]{0,2})*)$/);
@@ -474,10 +480,15 @@ export class PubChemClient {
         const text = await response.text();
         const fault = parseFaultMessage(text) ?? text.slice(0, 300);
 
+        /** `data` reaches the client as `structuredContent.error.data`, and a PubChem
+         * request URL carries the caller's own query — a compound name, a SMILES string,
+         * an SDQ query blob. Only the parsed fault travels; the framework omits the URL
+         * by default and names the host in the message, which is enough to place the
+         * failure without echoing the request back. */
         const error = await httpErrorFromResponse(response, {
           captureBody: false,
           service: 'PubChem',
-          data: { fault, url },
+          data: { fault },
         });
 
         // Retry once on 5xx unless the framework marks the failure as permanent.

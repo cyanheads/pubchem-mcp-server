@@ -41,4 +41,25 @@ describe('PubChem HTTP retry classification', () => {
     await assertion;
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps the upstream request URL off client-facing error data', async () => {
+    // `error.data` is forwarded to the caller as `structuredContent.error.data`, and a
+    // PubChem request URL carries the caller's own query — a name, a SMILES string, an
+    // SDQ query blob. The fault stays; the URL does not.
+    fetchMock.mockImplementation(async () => new Response('Upstream failed', { status: 503 }));
+    const captured = new PubChemClient()
+      .getSynonyms(2244)
+      .then<never, { data?: Record<string, unknown> }>(
+        () => {
+          throw new Error('expected the 503 to reject');
+        },
+        (e: unknown) => e as { data?: Record<string, unknown> },
+      );
+    await vi.runAllTimersAsync();
+    const error = await captured;
+
+    expect(error.data).toBeDefined();
+    expect(error.data).not.toHaveProperty('url');
+    expect(error.data?.fault).toBe('Upstream failed');
+  });
 });
