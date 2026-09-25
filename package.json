@@ -36,7 +36,7 @@
     "bundle": "bun run build && npx -y @anthropic-ai/mcpb pack . dist/pubchem-mcp-server.mcpb && bun run scripts/clean-mcpb.ts dist/pubchem-mcp-server.mcpb",
     "changelog:build": "bun scripts/build-changelog.ts",
     "changelog:check": "bun scripts/build-changelog.ts --check",
-    "publish-mcp": "mcp-publisher publish",
+    "publish-mcp": "mcp-publisher login github -token \"$(security find-generic-password -a \"$USER\" -s mcp-publisher-github-pat -w)\" && mcp-publisher publish",
     "release:github": "bun scripts/release-github.ts",
     "test": "vitest run",
     "start:stdio": "node dist/index.js",
