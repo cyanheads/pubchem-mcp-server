@@ -85,11 +85,8 @@ const realCids = (cids: number[]): number[] => cids.filter((cid) => cid > 0);
  * Defaults to false when the message is missing or unrecognized: claiming a compound has no
  * data understates what is known, while wrongly claiming a CID does not exist sends the caller
  * chasing a correct identifier. */
-const isMissingRecord = (error: unknown): boolean => {
-  if (!isNotFound(error)) return false;
-  const { fault } = ((error as McpError).data ?? {}) as { fault?: unknown };
-  return typeof fault === 'string' && fault.includes('No record found');
-};
+const isMissingRecord = (error: unknown): boolean =>
+  isNotFound(error) && (faultOf(error)?.includes('No record found') ?? false);
 
 /** What a caller's cancellation surfaces as. `RequestCancelled` is never retried and the
  * framework logs it at `info`; raising it here keeps a withdrawn call from reading as the 30 s
