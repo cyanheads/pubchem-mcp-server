@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.6.4](changelog/0.6.x/0.6.4.md) — 2026-09-24
+
+pubchem_search_compounds names each mode's required fields and rejects a blank formula or query before calling PubChem, failed PubChem requests log their URL server-side, and integer inputs advertise minimum: 1 instead of exclusiveMinimum.
+
 ## [0.6.3](changelog/0.6.x/0.6.3.md) — 2026-09-19 · 🛡️ Security
 
 Adopts mcp-ts-core through 0.13.6: input aliases on four tools, a declared stateless session mode, structured argument-rejection errors, and CodeQL fixes for regex backtracking and an upstream URL leak in error data.

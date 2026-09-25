@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-09-19 15:59:53
+Generated on: 2026-09-25 03:55:17
 
 ```text
 pubchem-mcp-server/
@@ -195,8 +195,10 @@ pubchem-mcp-server/
 │   │           ├── get-summary.tool.test.ts
 │   │           ├── search-assays-extended.tool.test.ts
 │   │           ├── search-assays.tool.test.ts
+│   │           ├── search-compounds-contract.tool.test.ts
 │   │           ├── search-compounds-extended.tool.test.ts
 │   │           ├── search-compounds.tool.test.ts
+│   │           ├── tool-input-schemas.test.ts
 │   │           └── untrusted-text.test.ts
 │   └── services/
 │       └── pubchem/
