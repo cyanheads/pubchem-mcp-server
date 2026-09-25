@@ -13,7 +13,7 @@
 
 <div align="center">
 
-[![Install in Claude Desktop](https://img.shields.io/badge/Install_in-Claude_Desktop-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](https://github.com/cyanheads/pubchem-mcp-server/releases/latest/download/pubchem-mcp-server.mcpb) [![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=pubchem-mcp-server&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBjeWFuaGVhZHMvcHViY2hlbS1tY3Atc2VydmVyIl19) [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=for-the-badge&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect?url=vscode:mcp/install?%7B%22name%22%3A%22pubchem-mcp-server%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40cyanheads/pubchem-mcp-server%22%5D%7D)
+[![Install in Claude Desktop](https://img.shields.io/badge/Install_in-Claude_Desktop-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](https://github.com/cyanheads/pubchem-mcp-server/releases/latest/download/pubchem-mcp-server.mcpb) [![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=pubchem-mcp-server&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBjeWFuaGVhZHMvcHViY2hlbS1tY3Atc2VydmVyIl19) [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=for-the-badge&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect?url=vscode:mcp/install?%7B%22name%22%3A%22pubchem-mcp-server%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40cyanheads%2Fpubchem-mcp-server%22%5D%7D)
 
 [![Framework](https://img.shields.io/badge/Built%20on-@cyanheads/mcp--ts--core-67E8F9?style=flat-square)](https://www.npmjs.com/package/@cyanheads/mcp-ts-core)
 
@@ -64,6 +64,7 @@ Compound and assay records are also exposed as URI-templated resources, backed b
 ### `pubchem_search_compounds` <sub>tool</sub>
 
 - Five search strategies: identifier (name/SMILES/InChIKey, batched 1-25), formula (Hill notation, optional `allowOtherElements`), substructure/superstructure containment, or 2D Tanimoto similarity (threshold 70-100, default 90)
+- Each strategy needs its own fields — identifier: `identifierType` + `identifiers`; formula: `formula`; substructure/superstructure/similarity: `query` + `queryType` — and a missing or blank one is rejected before the upstream call
 - Caps at 200 CIDs per page (default 20); `offset` pages to a ceiling of 10,000 — identifier lookups resolve every match up front so paging is free, while formula/structure/similarity searches cost more upstream per deep page
 - Optional `properties` hydration avoids a follow-up `pubchem_get_compound_details` call
 - Identifier mode reports `unresolvedIdentifiers` for inputs that resolved to no CID, plus notices when multiple inputs collide on one CID

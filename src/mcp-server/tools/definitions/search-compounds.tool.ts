@@ -32,7 +32,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
   },
   input: z.object({
     searchType: searchTypeEnum.describe(
-      'Search strategy. "identifier": name/SMILES/InChIKey lookup. "formula": molecular formula. "substructure": find compounds containing the query as a substructure. "superstructure": find compounds that are themselves substructures of the query. "similarity": 2D Tanimoto similarity to the query.',
+      'Search strategy; each mode needs its own fields. "identifier": name/SMILES/InChIKey lookup — requires identifierType and identifiers. "formula": molecular formula — requires formula. "substructure": find compounds containing the query as a substructure. "superstructure": find compounds that are themselves substructures of the query. "similarity": 2D Tanimoto similarity to the query. substructure, superstructure, and similarity require query and queryType.',
     ),
     identifierType: identifierTypeEnum
       .optional()
@@ -189,13 +189,13 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     {
       reason: 'missing_formula',
       code: JsonRpcErrorCode.ValidationError,
-      when: 'searchType is "formula" but the formula field was omitted',
+      when: 'searchType is "formula" but the formula field was omitted or blank',
       recovery: 'Pass formula in Hill notation, for example "C6H12O6" or "CaH2O2".',
     },
     {
       reason: 'missing_structure_args',
       code: JsonRpcErrorCode.ValidationError,
-      when: 'substructure/superstructure/similarity search missing query or queryType',
+      when: 'substructure/superstructure/similarity search with query or queryType omitted, or a blank query',
       recovery:
         'Provide both query (SMILES string or CID as string) and queryType ("smiles" or "cid").',
     },
@@ -275,7 +275,9 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         break;
       }
       case 'formula': {
-        if (!input.formula) {
+        // Blank means missing: PubChem answers a whitespace-only formula with unrelated
+        // compounds. A padded formula passes through — PubChem trims it.
+        if (!input.formula?.trim()) {
           throw ctx.fail('missing_formula', undefined, {
             ...ctx.recoveryFor('missing_formula'),
           });
@@ -287,7 +289,8 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       case 'substructure':
       case 'superstructure':
       case 'similarity': {
-        if (!input.query || !input.queryType) {
+        // A whitespace-only SMILES query otherwise surfaces as an upstream HTTP 500.
+        if (!input.query?.trim() || !input.queryType) {
           throw ctx.fail('missing_structure_args', undefined, {
             ...ctx.recoveryFor('missing_structure_args'),
           });
