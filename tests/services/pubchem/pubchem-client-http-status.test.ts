@@ -1,8 +1,10 @@
 /**
- * @fileoverview Verifies PubChem's HTTP retry policy against framework classification.
+ * @fileoverview Verifies PubChem's HTTP retry policy against framework classification,
+ * and the server-side log line each failed request leaves behind.
  * @module tests/services/pubchem/pubchem-client-http-status
  */
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { logger, type RequestContext } from '@cyanheads/mcp-ts-core/utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PubChemClient } from '@/services/pubchem/pubchem-client.js';
 
@@ -11,13 +13,32 @@ const fetchMock = vi.fn<typeof fetch>();
 beforeEach(() => {
   vi.useFakeTimers();
   fetchMock.mockReset();
+  fetchMock.mockRejectedValue(new Error('unmocked fetch'));
   vi.stubGlobal('fetch', fetchMock);
 });
 
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
+
+/** Settles a client call while fake timers drive its retry sleep. */
+async function settle<T>(promise: Promise<T>): Promise<{ value?: T; error?: unknown }> {
+  const captured = promise.then(
+    (value) => ({ value }),
+    (error: unknown) => ({ error }),
+  );
+  await vi.runAllTimersAsync();
+  return captured;
+}
+
+/** The `extra` bag each call to a spied logger method carried. */
+function extrasOf(spy: { mock: { calls: unknown[][] } }): Array<Record<string, unknown>> {
+  return spy.mock.calls.map((call) => ({ ...(call[1] as RequestContext | undefined)?.extra }));
+}
+
+const SYNONYMS_URL = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/2244/synonyms/JSON';
 
 describe('PubChem HTTP retry classification', () => {
   it('retries an upstream 500 once and preserves its classified failure and fault', async () => {
@@ -61,5 +82,174 @@ describe('PubChem HTTP retry classification', () => {
     expect(error.data).toBeDefined();
     expect(error.data).not.toHaveProperty('url');
     expect(error.data?.fault).toBe('Upstream failed');
+  });
+});
+
+describe('PubChem failed-request logging (#50)', () => {
+  it('logs nothing from the client for a successful request', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    const debug = vi.spyOn(logger, 'debug');
+    fetchMock.mockResolvedValueOnce(
+      Response.json({ InformationList: { Information: [{ CID: 2244, Synonym: ['aspirin'] }] } }),
+    );
+
+    const { value } = await settle(new PubChemClient().getSynonyms(2244));
+
+    expect(value).toEqual(['aspirin']);
+    expect(warning).not.toHaveBeenCalled();
+    expect(debug).not.toHaveBeenCalled();
+  });
+
+  it('logs one warning with the URL after a 503 exhausts its retry, keeping url off error.data', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock.mockImplementation(async () => new Response('Upstream failed', { status: 503 }));
+
+    const { error } = await settle(new PubChemClient().getSynonyms(2244));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(extrasOf(warning)[0]).toMatchObject({ url: SYNONYMS_URL, method: 'GET', status: 503 });
+    expect((error as { data?: Record<string, unknown> }).data).not.toHaveProperty('url');
+  });
+
+  it('logs nothing for a 503 that recovers on retry', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock
+      .mockResolvedValueOnce(new Response('Upstream failed', { status: 503 }))
+      .mockResolvedValueOnce(
+        Response.json({ InformationList: { Information: [{ CID: 2244, Synonym: ['aspirin'] }] } }),
+      );
+
+    await settle(new PubChemClient().getSynonyms(2244));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it('logs a non-retried 501 at warning once', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock.mockImplementation(async () => new Response('Not implemented', { status: 501 }));
+
+    await settle(new PubChemClient().getSynonyms(2244));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(extrasOf(warning)[0]).toMatchObject({ url: SYNONYMS_URL, status: 501 });
+  });
+
+  it('logs a 400 at warning with the fault and the POST method', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock.mockResolvedValueOnce(
+      Response.json(
+        {
+          Fault: {
+            Code: 'PUGREST.BadRequest',
+            Message: 'Unable to standardize the given structure',
+          },
+        },
+        { status: 400 },
+      ),
+    );
+
+    const { error } = await settle(new PubChemClient().searchBySmiles('not-a-smiles'));
+
+    expect(error).toBeDefined();
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(extrasOf(warning)[0]).toMatchObject({
+      url: 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/cids/JSON',
+      method: 'POST',
+      status: 400,
+      fault: 'PUGREST.BadRequest: Unable to standardize the given structure',
+    });
+  });
+
+  it('logs a 404 at debug with the URL and never at warning', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    const debug = vi.spyOn(logger, 'debug');
+    fetchMock.mockResolvedValueOnce(
+      Response.json(
+        { Fault: { Code: 'PUGREST.NotFound', Message: 'No CID found' } },
+        { status: 404 },
+      ),
+    );
+
+    const { value } = await settle(new PubChemClient().getSynonyms(2244));
+
+    expect(value).toEqual([]);
+    expect(warning).not.toHaveBeenCalled();
+    expect(debug).toHaveBeenCalledTimes(1);
+    expect(extrasOf(debug)[0]).toMatchObject({ url: SYNONYMS_URL, method: 'GET', status: 404 });
+  });
+
+  it('logs one warning with the URL after a network error exhausts its retry', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+    const { error } = await settle(new PubChemClient().getSynonyms(2244));
+
+    expect(error).toBeInstanceOf(TypeError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(extrasOf(warning)[0]).toMatchObject({
+      url: SYNONYMS_URL,
+      method: 'GET',
+      error: 'fetch failed',
+    });
+  });
+
+  it('logs one warning with the URL after a timeout exhausts its retry', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+
+    const { error } = await settle(new PubChemClient().getSynonyms(2244));
+
+    expect((error as Error).message).toBe('PubChem request timed out (30s)');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(extrasOf(warning)[0]).toMatchObject({
+      url: SYNONYMS_URL,
+      error: 'PubChem request timed out (30s)',
+    });
+  });
+
+  it('logs nothing for a network error that recovers on retry', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        Response.json({ InformationList: { Information: [{ CID: 2244, Synonym: ['aspirin'] }] } }),
+      );
+
+    const { value } = await settle(new PubChemClient().getSynonyms(2244));
+
+    expect(value).toEqual(['aspirin']);
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'an SDQ status.error in a 2xx body',
+      () => Response.json({ SDQOutputSet: [{ status: { error: 'bad collection' } }] }),
+      /rejected the query/,
+    ],
+    [
+      'an unparseable SDQ body',
+      () => new Response('{"SDQOutputSet": [ {"rows": [', { status: 200 }),
+      /unparseable JSON/,
+    ],
+  ])('logs the SDQ URL at warning for %s', async (_label, respond, message) => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock.mockImplementation(async () => respond());
+
+    const { value } = await settle(new PubChemClient().getInteractions(2244, ['drug-drug'], 5, 0));
+
+    expect(value?.failedKinds).toEqual([
+      { kind: 'drug-drug', message: expect.stringMatching(message) },
+    ]);
+    expect(warning).toHaveBeenCalledTimes(1);
+    const extra = extrasOf(warning)[0];
+    expect(extra?.url).toMatch(/^https:\/\/pubchem\.ncbi\.nlm\.nih\.gov\/sdq\/sdqagent\.cgi\?/);
+    expect(decodeURIComponent(String(extra?.url))).toContain('"collection":"drugbankddi"');
+    expect(extra).toMatchObject({ method: 'GET', error: expect.stringMatching(message) });
   });
 });

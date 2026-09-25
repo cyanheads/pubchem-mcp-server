@@ -35,6 +35,7 @@ const fetchMock = vi.fn<typeof fetch>();
 
 beforeEach(() => {
   fetchMock.mockReset();
+  fetchMock.mockRejectedValue(new Error('unmocked fetch'));
   vi.stubGlobal('fetch', fetchMock);
 });
 

@@ -10,7 +10,7 @@ import {
   notFound,
   serviceUnavailable,
 } from '@cyanheads/mcp-ts-core/errors';
-import { httpErrorFromResponse } from '@cyanheads/mcp-ts-core/utils';
+import { httpErrorFromResponse, logger, requestContextService } from '@cyanheads/mcp-ts-core/utils';
 import type {
   AidListResponse,
   AssaySummaryTableResponse,
@@ -98,6 +98,26 @@ class RateLimiter {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Records a failed PubChem request, with its URL, in the server's own log. The error the
+ * caller receives deliberately omits the URL, so this line is the only place an operator can
+ * see which route failed. The module `logger` writes server-side only — `ctx.log` would also
+ * forward the line to the client as `notifications/message`. */
+function logFailedRequest(
+  level: 'debug' | 'warning',
+  url: string,
+  method: string,
+  detail: { status: number; fault: string } | { error: string },
+): void {
+  const summary = 'status' in detail ? `HTTP ${detail.status}` : detail.error;
+  logger[level](
+    `PubChem request failed: ${summary}`,
+    requestContextService.createRequestContext({
+      operation: 'PubChemClient.fetch',
+      additionalContext: { url, method, ...detail },
+    }),
+  );
+}
 
 /** PubChem returns different field names than the request parameter names for some properties.
  * Request IsomericSMILES → response key "SMILES" (includes stereochemistry).
@@ -466,6 +486,7 @@ export class PubChemClient {
    * one resilience contract — the divergence that left fetchBinary without retry or a clean
    * timeout message (#16) cannot recur. */
   private async fetchResponse(url: string, init?: RequestInit): Promise<Response> {
+    const method = init?.method ?? 'GET';
     for (let attempt = 0; ; attempt++) {
       await this.rateLimiter.acquire();
 
@@ -497,9 +518,14 @@ export class PubChemClient {
           continue;
         }
 
+        // A 404 is routine — most callers read it as "no data" — so it logs below warning.
+        logFailedRequest(response.status === 404 ? 'debug' : 'warning', url, method, {
+          status: response.status,
+          fault,
+        });
         throw error;
       } catch (error) {
-        // HTTP errors are already classified — surface them, don't retry.
+        // HTTP errors are already classified and logged — surface them, don't retry.
         if (error instanceof McpError) throw error;
 
         // Retry once on network errors
@@ -508,10 +534,14 @@ export class PubChemClient {
           continue;
         }
 
-        if (error instanceof Error && error.name === 'AbortError') {
-          throw new Error('PubChem request timed out (30s)');
-        }
-        throw error;
+        const failure =
+          error instanceof Error && error.name === 'AbortError'
+            ? new Error('PubChem request timed out (30s)')
+            : error;
+        logFailedRequest('warning', url, method, {
+          error: failure instanceof Error ? failure.message : String(failure),
+        });
+        throw failure;
       } finally {
         clearTimeout(timeoutId);
       }
@@ -1279,20 +1309,27 @@ export class PubChemClient {
       throw error;
     }
 
+    // Both rejections below arrive inside a 2xx, past fetchResponse's failure logging.
+    const reject = (message: string, data: Record<string, unknown>): never => {
+      logFailedRequest('warning', url, 'GET', { error: message });
+      throw serviceUnavailable(message, data);
+    };
+
     let parsed: unknown;
     try {
       parsed = JSON.parse(body);
     } catch {
-      throw serviceUnavailable(
-        `PubChem SDQ returned unparseable JSON for collection "${collection}"`,
-        { collection, cid, snippet: body.slice(0, 200) },
-      );
+      return reject(`PubChem SDQ returned unparseable JSON for collection "${collection}"`, {
+        collection,
+        cid,
+        snippet: body.slice(0, 200),
+      });
     }
 
     const set = (parsed as SdqResponse).SDQOutputSet?.[0];
     if (!set) return empty;
     if (set.status?.error) {
-      throw serviceUnavailable(
+      return reject(
         `PubChem SDQ rejected the query for collection "${collection}": ${set.status.error}`,
         { collection, cid, sdqError: set.status.error },
       );
