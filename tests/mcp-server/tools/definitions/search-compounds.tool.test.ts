@@ -56,7 +56,10 @@ describe('searchCompounds handler', () => {
     const enrichment = getEnrichment(ctx);
 
     expect(enrichment.totalFound).toBe(1);
-    expect(mockClient.searchBySmiles).toHaveBeenCalledWith('CC(=O)OC1=CC=CC=C1C(=O)O');
+    expect(mockClient.searchBySmiles).toHaveBeenCalledWith(
+      'CC(=O)OC1=CC=CC=C1C(=O)O',
+      expect.any(AbortSignal),
+    );
   });
 
   it('resolves identifiers by InChIKey', async () => {
@@ -71,7 +74,10 @@ describe('searchCompounds handler', () => {
     const enrichment = getEnrichment(ctx);
 
     expect(enrichment.totalFound).toBe(1);
-    expect(mockClient.searchByInchiKey).toHaveBeenCalledWith('BSYNRYMUTXBXSQ-UHFFFAOYSA-N');
+    expect(mockClient.searchByInchiKey).toHaveBeenCalledWith(
+      'BSYNRYMUTXBXSQ-UHFFFAOYSA-N',
+      expect.any(AbortSignal),
+    );
   });
 
   it('searches by formula', async () => {
@@ -85,7 +91,12 @@ describe('searchCompounds handler', () => {
     const enrichment = getEnrichment(ctx);
 
     expect(enrichment.totalFound).toBe(2);
-    expect(mockClient.searchByFormula).toHaveBeenCalledWith('C6H12O6', false, 21);
+    expect(mockClient.searchByFormula).toHaveBeenCalledWith(
+      'C6H12O6',
+      false,
+      21,
+      expect.any(AbortSignal),
+    );
   });
 
   it('passes allowOtherElements for formula search', async () => {
@@ -98,7 +109,12 @@ describe('searchCompounds handler', () => {
     });
     await searchCompounds.handler(input, ctx);
 
-    expect(mockClient.searchByFormula).toHaveBeenCalledWith('C6H12O6', true, 21);
+    expect(mockClient.searchByFormula).toHaveBeenCalledWith(
+      'C6H12O6',
+      true,
+      21,
+      expect.any(AbortSignal),
+    );
   });
 
   it('searches by similarity', async () => {
@@ -114,7 +130,14 @@ describe('searchCompounds handler', () => {
     const enrichment = getEnrichment(ctx);
 
     expect(enrichment.totalFound).toBe(3);
-    expect(mockClient.searchByStructure).toHaveBeenCalledWith('similarity', '2244', 'cid', 85, 21);
+    expect(mockClient.searchByStructure).toHaveBeenCalledWith(
+      'similarity',
+      '2244',
+      'cid',
+      85,
+      21,
+      expect.any(AbortSignal),
+    );
   });
 
   it('searches by substructure', async () => {
@@ -134,6 +157,7 @@ describe('searchCompounds handler', () => {
       'smiles',
       90,
       21,
+      expect.any(AbortSignal),
     );
     expect(enrichment.totalFound).toBe(2);
   });
@@ -165,7 +189,12 @@ describe('searchCompounds handler', () => {
     const result = await searchCompounds.handler(input, ctx);
     const enrichment = getEnrichment(ctx);
 
-    expect(mockClient.searchByFormula).toHaveBeenCalledWith('H2O', false, 3);
+    expect(mockClient.searchByFormula).toHaveBeenCalledWith(
+      'H2O',
+      false,
+      3,
+      expect.any(AbortSignal),
+    );
     expect(result.results).toHaveLength(2);
     expect(enrichment.truncated).toBe(true);
   });
@@ -282,6 +311,7 @@ describe('searchCompounds handler — bounded fast searches (#41)', () => {
       'smiles',
       90,
       4,
+      expect.any(AbortSignal),
     );
   });
 
@@ -317,7 +347,12 @@ describe('searchCompounds handler — bounded fast searches (#41)', () => {
     const result = await searchCompounds.handler(input, ctx);
     const enrichment = getEnrichment(ctx);
 
-    expect(mockClient.searchByFormula).toHaveBeenCalledWith('C6H12O6', false, 11);
+    expect(mockClient.searchByFormula).toHaveBeenCalledWith(
+      'C6H12O6',
+      false,
+      11,
+      expect.any(AbortSignal),
+    );
     expect(result.results.map((r) => r.cid)).toEqual([5988, 79025, 107526]);
     expect(enrichment.totalFound).toBe(3);
     expect(enrichment.totalFoundAtLeast).toBeUndefined();
@@ -336,7 +371,7 @@ describe('searchCompounds handler — bounded fast searches (#41)', () => {
     const result = await searchCompounds.handler(input, ctx);
     const enrichment = getEnrichment(ctx);
 
-    expect(mockClient.searchByName).toHaveBeenCalledWith('aspirin');
+    expect(mockClient.searchByName).toHaveBeenCalledWith('aspirin', expect.any(AbortSignal));
     expect(result.results.map((r) => r.cid)).toEqual([2244, 3672]);
     expect(enrichment.totalFound).toBe(4);
     expect(enrichment.totalFoundAtLeast).toBeUndefined();

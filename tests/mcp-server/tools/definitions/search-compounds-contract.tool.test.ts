@@ -216,3 +216,80 @@ describe('pubchem_search_compounds cross-mode fields and padding (#45 regression
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('pubchem_search_compounds rejected search query (#52)', () => {
+  const rejected = () =>
+    Response.json(
+      { Fault: { Code: 'PUGREST.ServerError', Message: 'Search status indicates failure' } },
+      { status: 500 },
+    );
+
+  type RejectedEnvelope = {
+    code: number;
+    data?: { reason?: string; fault?: string; recovery?: { hint?: string } };
+  };
+
+  function rejectionOf(result: Awaited<ReturnType<typeof runToolContract>>): RejectedEnvelope {
+    return errorOf(result) as RejectedEnvelope;
+  }
+
+  it('declares search_query_rejected as a service-thrown ValidationError', () => {
+    expect(searchCompounds.errors).toContainEqual(
+      expect.objectContaining({
+        reason: 'search_query_rejected',
+        code: JsonRpcErrorCode.ValidationError,
+        thrownBy: 'service',
+      }),
+    );
+  });
+
+  it('returns a malformed SMILES substructure query as search_query_rejected after one request', async () => {
+    fetchMock.mockImplementation(async () => rejected());
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'substructure',
+      query: 'not-a-smiles',
+      queryType: 'smiles',
+    });
+
+    const error = rejectionOf(result);
+    expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+    expect(error.data?.reason).toBe('search_query_rejected');
+    expect(error.data?.fault).toBe('PUGREST.ServerError: Search status indicates failure');
+    expect(error.data?.recovery?.hint).toMatch(/SMILES syntax/);
+    const text = textOf(result);
+    expect(text).toMatch(/Recovery: .*SMILES syntax/);
+    expect(text).toContain('search_query_rejected');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the CID for a CID similarity query with no record', async () => {
+    fetchMock.mockImplementation(async () => rejected());
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'similarity',
+      query: '999999999',
+      queryType: 'cid',
+    });
+
+    const error = rejectionOf(result);
+    expect(error.data?.reason).toBe('search_query_rejected');
+    expect(error.data?.recovery?.hint).toContain('CID 999999999');
+    expect(textOf(result)).toContain('pubchem_get_compound_details');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('points a malformed formula at Hill notation', async () => {
+    fetchMock.mockImplementation(async () => rejected());
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'formula',
+      formula: 'not-a-formula',
+    });
+
+    const error = rejectionOf(result);
+    expect(error.data?.reason).toBe('search_query_rejected');
+    expect(textOf(result)).toContain('Hill notation');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

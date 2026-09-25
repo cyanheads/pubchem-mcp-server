@@ -43,6 +43,7 @@ describe('searchCompounds handler — superstructure search', () => {
       'smiles',
       90,
       21,
+      expect.any(AbortSignal),
     );
     expect(enrichment.totalFound).toBe(2);
     expect(result.results).toHaveLength(2);
@@ -64,6 +65,7 @@ describe('searchCompounds handler — superstructure search', () => {
       'cid',
       90,
       21,
+      expect.any(AbortSignal),
     );
     expect(result.results).toHaveLength(3);
   });
@@ -298,7 +300,14 @@ describe('searchCompounds handler — cid-query validation (#26)', () => {
     const result = await searchCompounds.handler(input, ctx);
 
     expect(result.results).toHaveLength(2);
-    expect(mockClient.searchByStructure).toHaveBeenCalledWith('similarity', '2244', 'cid', 90, 21);
+    expect(mockClient.searchByStructure).toHaveBeenCalledWith(
+      'similarity',
+      '2244',
+      'cid',
+      90,
+      21,
+      expect.any(AbortSignal),
+    );
   });
 
   it('does not apply the CID shape check to smiles queries', async () => {
@@ -318,6 +327,7 @@ describe('searchCompounds handler — cid-query validation (#26)', () => {
       'smiles',
       90,
       21,
+      expect.any(AbortSignal),
     );
   });
 });
@@ -336,7 +346,7 @@ describe('searchCompounds handler — security', () => {
     const result = await searchCompounds.handler(input, ctx);
 
     // Handler must call the client with the raw identifier unchanged
-    expect(mockClient.searchByName).toHaveBeenCalledWith(injected);
+    expect(mockClient.searchByName).toHaveBeenCalledWith(injected, expect.any(AbortSignal));
     // No results, but no crash
     expect(result.results).toHaveLength(0);
   });
@@ -351,7 +361,12 @@ describe('searchCompounds handler — security', () => {
     const result = await searchCompounds.handler(input, ctx);
 
     expect(result.results).toHaveLength(0);
-    expect(mockClient.searchByFormula).toHaveBeenCalledWith('../../etc/passwd', false, 21);
+    expect(mockClient.searchByFormula).toHaveBeenCalledWith(
+      '../../etc/passwd',
+      false,
+      21,
+      expect.any(AbortSignal),
+    );
   });
 
   it('passes oversized formula string to client without crash', async () => {
@@ -379,7 +394,7 @@ describe('searchCompounds handler — security', () => {
     const result = await searchCompounds.handler(input, ctx);
 
     expect(result.results).toHaveLength(0);
-    expect(mockClient.searchByName).toHaveBeenCalledWith('阿司匹林');
+    expect(mockClient.searchByName).toHaveBeenCalledWith('阿司匹林', expect.any(AbortSignal));
   });
 
   it('error message does not expose internal server paths', async () => {
@@ -423,6 +438,7 @@ describe('searchCompounds handler — properties hydration edge cases', () => {
     expect(mockClient.getProperties).toHaveBeenCalledWith(
       [2244],
       ['MolecularFormula', 'MolecularWeight'],
+      expect.any(AbortSignal),
     );
     expect(result.results[0]!.properties).toEqual({
       MolecularFormula: 'C9H8O4',
@@ -503,6 +519,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
       'smiles',
       90,
       26,
+      expect.any(AbortSignal),
     );
     expect(result.results.map((r) => r.cid)).toEqual([21, 22, 23, 24, 25]);
   });
@@ -541,7 +558,7 @@ describe('searchCompounds handler — offset paging (#38)', () => {
     const enrichment = getEnrichment(ctx);
 
     expect(mockClient.searchByName).toHaveBeenCalledTimes(1);
-    expect(mockClient.searchByName).toHaveBeenCalledWith('aspirin');
+    expect(mockClient.searchByName).toHaveBeenCalledWith('aspirin', expect.any(AbortSignal));
     expect(result.results.map((r) => r.cid)).toEqual([30, 40]);
     expect(enrichment.totalFound).toBe(5);
     expect(enrichment.nextOffset).toBe(4);
@@ -654,7 +671,11 @@ describe('searchCompounds handler — offset paging (#38)', () => {
     });
     await searchCompounds.handler(input, ctx);
 
-    expect(mockClient.getProperties).toHaveBeenCalledWith([30], ['MolecularFormula']);
+    expect(mockClient.getProperties).toHaveBeenCalledWith(
+      [30],
+      ['MolecularFormula'],
+      expect.any(AbortSignal),
+    );
   });
 
   it('walks every page without repeating or skipping a CID', async () => {

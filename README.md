@@ -67,7 +67,8 @@ Compound and assay records are also exposed as URI-templated resources, backed b
 - Each strategy needs its own fields — identifier: `identifierType` + `identifiers`; formula: `formula`; substructure/superstructure/similarity: `query` + `queryType` — and a missing or blank one is rejected before the upstream call
 - Caps at 200 CIDs per page (default 20); `offset` pages to a ceiling of 10,000 — identifier lookups resolve every match up front so paging is free, while formula/structure/similarity searches cost more upstream per deep page
 - Optional `properties` hydration avoids a follow-up `pubchem_get_compound_details` call
-- Identifier mode reports `unresolvedIdentifiers` for inputs that resolved to no CID, plus notices when multiple inputs collide on one CID
+- Identifier mode reports `unresolvedIdentifiers` for inputs that resolved to no CID — no PubChem match, or a SMILES PubChem cannot interpret — while the rest of the batch still resolves, plus notices when multiple inputs collide on one CID
+- A query PubChem cannot search on (malformed SMILES or formula, a `*` wildcard atom, a CID with no record) fails fast with a `search_query_rejected` hint naming what to fix
 - Reports an exact `totalFound` when the full match set was observed, or a `totalFoundAtLeast` floor when a bounded upstream search saturated
 
 ---
@@ -203,6 +204,7 @@ PubChem-specific:
 
 - Covers both PUG REST (search, properties, cross-references, safety, bioactivity, interactions) and PUG View (textual descriptions, pharmacological classification) endpoints
 - Rate-limited client (5 req/s) with automatic request queuing, and retry with exponential backoff on 5xx errors and network failures
+- A cancelled tool call or resource read stops its PubChem work — queued requests, in-flight fetches, retry backoffs, and async-search polling — and fails with `RequestCancelled`
 - Hand-rolled V2000 SDF parser for 3D conformer atoms and bonds; drug-likeness (Lipinski/Veber) computed from already-fetched properties, adding no extra latency
 - All tools are read-only and idempotent — no API keys required, PubChem's API is freely accessible
 

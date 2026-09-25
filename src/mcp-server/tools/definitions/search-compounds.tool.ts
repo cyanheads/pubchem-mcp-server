@@ -5,7 +5,7 @@
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
-import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { COMPOUND_PROPERTIES } from '@/services/pubchem/types.js';
 
@@ -20,6 +20,27 @@ const searchTypeEnum = z.enum([
 const identifierTypeEnum = z.enum(['name', 'smiles', 'inchikey']);
 const queryTypeEnum = z.enum(['smiles', 'cid']);
 const propertyEnum = z.enum(COMPOUND_PROPERTIES as unknown as [string, ...string[]]);
+
+/** How identifier-mode notices and errors name each identifierType, and what to check when
+ * PubChem rejects one as unreadable. Only SMILES has been seen to draw that rejection. */
+const IDENTIFIER_FORMS: Record<
+  z.infer<typeof identifierTypeEnum>,
+  { label: string; guidance: string }
+> = {
+  smiles: {
+    label: 'SMILES',
+    guidance:
+      'Check the SMILES syntax (balanced ring closures and parentheses, valid element symbols) and remove any "*" wildcard atoms.',
+  },
+  name: {
+    label: 'compound names',
+    guidance: 'Check that identifierType="name" matches the identifier form.',
+  },
+  inchikey: {
+    label: 'InChIKeys',
+    guidance: 'Check that identifierType="inchikey" matches the identifier form.',
+  },
+};
 
 export const searchCompounds = tool('pubchem_search_compounds', {
   title: 'Search Compounds',
@@ -130,7 +151,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .array(z.string())
       .optional()
       .describe(
-        'Identifier-mode only: input identifiers that resolved to no CID. Omitted when every identifier resolved and for non-identifier searches.',
+        'Identifier-mode only: input identifiers that resolved to no CID — PubChem had no match, or could not interpret the input as identifierType (the notice says which). Omitted when every identifier resolved and for non-identifier searches.',
       ),
   }),
   // Agent-facing context — search strategy echo, total, the page boundary, and a notice
@@ -175,7 +196,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .string()
       .optional()
       .describe(
-        'Recovery guidance when no compounds matched, when the offset runs past the matches observed, when identifiers failed to resolve, or when further pages remain. Absent when this page is complete and every identifier resolved.',
+        'Recovery guidance when no compounds matched, when the offset runs past the matches observed, when identifiers had no match or could not be interpreted, when identifiers collided on one CID, or when further pages remain. Absent when this page is complete and every identifier resolved to its own CID.',
       ),
   },
   errors: [
@@ -206,6 +227,23 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       recovery:
         'Pass a positive integer CID string (e.g. "2244"), or set queryType "smiles" with a SMILES query.',
     },
+    {
+      reason: 'identifier_rejected',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'identifier search where PubChem rejected every identifier in the batch as unreadable (HTTP 400) — for SMILES, a string it could not standardize into a structure. A batch with any other outcome lists rejected inputs in unresolvedIdentifiers instead',
+      recovery:
+        'Check each identifier against identifierType: for SMILES, balanced ring closures and parentheses, valid element symbols, and no "*" wildcard atoms; otherwise set identifierType to the form the identifiers are in.',
+    },
+    {
+      reason: 'search_query_rejected',
+      code: JsonRpcErrorCode.ValidationError,
+      // Raised by PubChemClient.searchByFormula / searchByStructure, which know the query form
+      // the runtime hint names.
+      thrownBy: 'service',
+      when: 'PubChem failed a formula, substructure, superstructure, or similarity search with HTTP 500 "Search status indicates failure" — its answer for a malformed SMILES or formula, a SMILES with a "*" wildcard atom, or a CID with no record',
+      recovery:
+        'Fix the SMILES syntax or remove "*" atoms, write the formula in Hill notation (e.g. "C6H12O6"), or confirm the CID exists with pubchem_get_compound_details.',
+    },
   ],
 
   async handler(input, ctx) {
@@ -219,10 +257,11 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     const recordCap = input.offset + input.maxResults + 1;
     let boundedSearch = false;
     const identifierMap = new Map<number, string>();
-    // Identifier-mode resolution tracking (#29): inputs that resolved to no CID, and
-    // CIDs claimed by more than one distinct input (the output row can echo only one).
+    // Identifier-mode resolution tracking (#29): every input that resolved to no CID, whether
+    // PubChem had no match or rejected the input as unreadable (#55).
     const unresolvedIdentifiers: string[] = [];
-    const collisions: Array<{ cid: number; identifiers: string[] }> = [];
+    // Agent-facing notices, identifier-mode signals first; the page-boundary notice joins below.
+    const noticeParts: string[] = [];
 
     switch (input.searchType) {
       case 'identifier': {
@@ -232,32 +271,48 @@ export const searchCompounds = tool('pubchem_search_compounds', {
             ...ctx.recoveryFor('missing_identifier_args'),
           });
         }
-        const lookups = identifiers.map(async (id) => {
-          let cids: number[];
+        const lookup = (id: string): Promise<number[]> => {
           switch (identifierType) {
             case 'name':
-              cids = await client.searchByName(id);
-              break;
+              return client.searchByName(id, ctx.signal);
             case 'smiles':
-              cids = await client.searchBySmiles(id);
-              break;
+              return client.searchBySmiles(id, ctx.signal);
             case 'inchikey':
-              cids = await client.searchByInchiKey(id);
-              break;
+              return client.searchByInchiKey(id, ctx.signal);
           }
-          return { id, cids };
-        });
-        const resolutions = await Promise.all(lookups);
+        };
+        // Settle every lookup so one unreadable input costs only itself. A rejected
+        // identifier is that input's own outcome; any other failure (5xx, rate limit,
+        // timeout, cancellation) is the call's, and fails it — absorbing an outage as
+        // "unresolved" would return a wrong answer as a success.
+        const outcomes = await Promise.allSettled(identifiers.map(lookup));
 
-        // Track resolution per input in request order: a CID's echo goes to its first
-        // requester (deterministic, unlike the prior last-write-wins), unresolved inputs
-        // are collected, and any CID with multiple distinct requesters is a collision.
+        // Walk inputs in request order: a CID's echo goes to its first requester, unresolved
+        // inputs are collected by cause, and a CID with several distinct requesters is a
+        // collision (the output row can echo only one).
+        const notFoundIdentifiers: string[] = [];
+        const rejectedIdentifiers: string[] = [];
+        let rejectionFault: unknown;
         const cidToIdentifiers = new Map<number, string[]>();
-        for (const { id, cids } of resolutions) {
+        for (const [i, id] of identifiers.entries()) {
+          const outcome = outcomes[i];
+          if (outcome?.status === 'rejected') {
+            const { reason } = outcome;
+            if (!(reason instanceof McpError && reason.data?.reason === 'identifier_rejected')) {
+              throw reason;
+            }
+            rejectedIdentifiers.push(id);
+            unresolvedIdentifiers.push(id);
+            rejectionFault ??= reason.data?.fault;
+            continue;
+          }
+          const cids = outcome?.value ?? [];
           if (cids.length === 0) {
+            notFoundIdentifiers.push(id);
             unresolvedIdentifiers.push(id);
             continue;
           }
+          allCids.push(...cids);
           for (const cid of cids) {
             const owners = cidToIdentifiers.get(cid);
             if (owners) {
@@ -268,10 +323,33 @@ export const searchCompounds = tool('pubchem_search_compounds', {
             }
           }
         }
-        for (const [cid, owners] of cidToIdentifiers) {
-          if (owners.length > 1) collisions.push({ cid, identifiers: owners });
+
+        const { label, guidance } = IDENTIFIER_FORMS[identifierType];
+        if (rejectedIdentifiers.length === identifiers.length) {
+          throw ctx.fail(
+            'identifier_rejected',
+            `PubChem could not interpret any of the ${identifiers.length} identifier(s) as ${label}: ${rejectedIdentifiers.join(', ')}.`,
+            { fault: rejectionFault, ...ctx.recoveryFor('identifier_rejected') },
+          );
         }
-        allCids = resolutions.flatMap((r) => r.cids);
+
+        if (notFoundIdentifiers.length > 0) {
+          noticeParts.push(
+            `${notFoundIdentifiers.length} of ${identifiers.length} identifier(s) did not resolve to a CID: ${notFoundIdentifiers.join(', ')}. Verify spelling and that identifierType="${identifierType}" matches the identifier form (name/smiles/inchikey).`,
+          );
+        }
+        if (rejectedIdentifiers.length > 0) {
+          noticeParts.push(
+            `PubChem could not interpret ${rejectedIdentifiers.length} of ${identifiers.length} identifier(s) as ${label}: ${rejectedIdentifiers.join(', ')}. ${guidance}`,
+          );
+        }
+        for (const [cid, owners] of cidToIdentifiers) {
+          if (owners.length > 1) {
+            noticeParts.push(
+              `Identifiers ${owners.join(', ')} all resolved to CID ${cid}; the result row echoes only "${identifierMap.get(cid)}" for it.`,
+            );
+          }
+        }
         break;
       }
       case 'formula': {
@@ -283,7 +361,12 @@ export const searchCompounds = tool('pubchem_search_compounds', {
           });
         }
         boundedSearch = true;
-        allCids = await client.searchByFormula(input.formula, input.allowOtherElements, recordCap);
+        allCids = await client.searchByFormula(
+          input.formula,
+          input.allowOtherElements,
+          recordCap,
+          ctx.signal,
+        );
         break;
       }
       case 'substructure':
@@ -311,6 +394,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
           input.queryType,
           input.threshold,
           recordCap,
+          ctx.signal,
         );
         break;
       }
@@ -347,21 +431,6 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         : { searchType: input.searchType, totalFoundAtLeast: observedTotal, offset: input.offset },
     );
     if (hasMore) ctx.enrich({ nextOffset });
-
-    // Identifier-mode signals (#29): name inputs that did not resolve and flag CID
-    // collisions, so a partial miss is never silent. Empty for other search types.
-    const noticeParts: string[] = [];
-    if (unresolvedIdentifiers.length > 0) {
-      const requested = input.identifiers?.length ?? unresolvedIdentifiers.length;
-      noticeParts.push(
-        `${unresolvedIdentifiers.length} of ${requested} identifier(s) did not resolve to a CID: ${unresolvedIdentifiers.join(', ')}. Verify spelling and that identifierType="${input.identifierType}" matches the identifier form (name/smiles/inchikey).`,
-      );
-    }
-    for (const c of collisions) {
-      noticeParts.push(
-        `Identifiers ${c.identifiers.join(', ')} all resolved to CID ${c.cid}; the result row echoes only "${identifierMap.get(c.cid)}" for it.`,
-      );
-    }
 
     if (pagedCids.length === 0) {
       // An empty page is either "nothing matched" or "the offset ran past the matches" —
@@ -402,7 +471,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     // Optionally hydrate with properties
     let propsMap: Map<number, Record<string, unknown>> | undefined;
     if (input.properties && input.properties.length > 0 && pagedCids.length > 0) {
-      const rows = await client.getProperties(pagedCids, input.properties);
+      const rows = await client.getProperties(pagedCids, input.properties, ctx.signal);
       propsMap = new Map(rows.map((r) => [r.CID, r]));
     }
 

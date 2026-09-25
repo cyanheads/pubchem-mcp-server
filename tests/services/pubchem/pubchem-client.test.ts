@@ -6,6 +6,7 @@
  * @module services/pubchem/pubchem-client.test
  */
 
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PubChemClient } from '@/services/pubchem/pubchem-client.js';
 
@@ -546,5 +547,150 @@ describe('PubChemClient.getDescription (#7)', () => {
     // Whitespace and casing differences alone should not bypass dedup.
     expect(descriptions).toHaveLength(1);
     expect(descriptions[0]!.source).toBe('A');
+  });
+});
+
+describe('PubChemClient rejected fast-search query (#52)', () => {
+  const rejected = () =>
+    jsonResponse(
+      { Fault: { Code: 'PUGREST.ServerError', Message: 'Search status indicates failure' } },
+      500,
+    );
+
+  /** Captures the rejection a client call settles with. */
+  const failureOf = (promise: Promise<unknown>) =>
+    promise.then(
+      () => {
+        throw new Error('expected the search to reject');
+      },
+      (e: unknown) =>
+        e as {
+          code: number;
+          message: string;
+          data: { reason?: string; fault?: string; recovery?: { hint?: string } };
+        },
+    );
+
+  it.each(['substructure', 'superstructure', 'similarity'] as const)(
+    'maps the fault on a %s SMILES query to search_query_rejected with a SMILES hint',
+    async (mode) => {
+      fetchMock.mockResolvedValueOnce(rejected());
+
+      const error = await failureOf(
+        new PubChemClient().searchByStructure(mode, '*c1ccccc1', 'smiles', 90, 21),
+      );
+
+      expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+      expect(error.message).toContain(mode);
+      expect(error.message).toContain('SMILES');
+      expect(error.data).toMatchObject({
+        reason: 'search_query_rejected',
+        fault: 'PUGREST.ServerError: Search status indicates failure',
+      });
+      expect(error.data.recovery?.hint).toMatch(/SMILES syntax/);
+      expect(error.data.recovery?.hint).toContain('"*"');
+    },
+  );
+
+  it('names the CID in the message and hint on a CID query', async () => {
+    fetchMock.mockResolvedValueOnce(rejected());
+
+    const error = await failureOf(
+      new PubChemClient().searchByStructure('similarity', '999999999', 'cid', 90, 21),
+    );
+
+    expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+    expect(error.message).toContain('CID 999999999');
+    expect(error.data.reason).toBe('search_query_rejected');
+    expect(error.data.recovery?.hint).toContain('pubchem_get_compound_details');
+  });
+
+  it('points a formula query at Hill notation', async () => {
+    fetchMock.mockResolvedValueOnce(rejected());
+
+    const error = await failureOf(new PubChemClient().searchByFormula('not-a-formula', false, 21));
+
+    expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+    expect(error.message).toContain('formula');
+    expect(error.data.reason).toBe('search_query_rejected');
+    expect(error.data.fault).toBe('PUGREST.ServerError: Search status indicates failure');
+    expect(error.data.recovery?.hint).toContain('Hill notation');
+  });
+
+  it('maps the fault when it arrives on the ListKey poll of an async search', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ Waiting: { ListKey: 'abc123' } }));
+      fetchMock.mockResolvedValueOnce(rejected());
+
+      const pending = failureOf(
+        new PubChemClient().searchByStructure('substructure', 'C1CC', 'smiles', undefined, 21),
+      );
+      await vi.advanceTimersByTimeAsync(1500);
+      const error = await pending;
+
+      expect(error.data.reason).toBe('search_query_rejected');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('PubChemClient identifier lookups — CID 0 and rejected identifiers (#55, #56)', () => {
+  const cidResponse = (cids: number[]) => jsonResponse({ IdentifierList: { CID: cids } });
+
+  it('reads CID 0 — PubChem\'s "structure not in the database" — as no match', async () => {
+    fetchMock.mockResolvedValueOnce(cidResponse([0]));
+
+    const cids = await new PubChemClient().searchBySmiles(
+      'FC(F)(F)C1=CC(=CC(=C1)C#CC#CC#CC2=CC=CC=N2)OCCCCCCCCBr',
+    );
+
+    expect(cids).toEqual([]);
+  });
+
+  it('drops CID 0 from any CID list while keeping the real CIDs', async () => {
+    fetchMock.mockResolvedValueOnce(cidResponse([2244, 0, 3672]));
+
+    expect(await new PubChemClient().searchByName('aspirin')).toEqual([2244, 3672]);
+  });
+
+  it('drops CID 0 from an async ListKey answer', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ Waiting: { ListKey: 'k0' } }));
+      fetchMock.mockResolvedValueOnce(cidResponse([0, 5, 6]));
+
+      const pending = new PubChemClient().searchByInchiKey('BSYNRYMUTXBXSQ-UHFFFAOYSA-N');
+      await vi.advanceTimersByTimeAsync(1500);
+
+      expect(await pending).toEqual([5, 6]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('marks a 400 on an identifier lookup as a rejected identifier, keeping the fault', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          Fault: {
+            Code: 'PUGREST.BadRequest',
+            Message: 'Unable to standardize the given structure',
+          },
+        },
+        400,
+      ),
+    );
+
+    await expect(new PubChemClient().searchBySmiles('not-a-smiles')).rejects.toMatchObject({
+      code: JsonRpcErrorCode.ValidationError,
+      data: {
+        reason: 'identifier_rejected',
+        fault: 'PUGREST.BadRequest: Unable to standardize the given structure',
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

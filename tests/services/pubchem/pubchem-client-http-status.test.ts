@@ -85,6 +85,99 @@ describe('PubChem HTTP retry classification', () => {
   });
 });
 
+/** PubChem's JSON fault envelope, as the PUG REST routes send it. */
+function pugRestFault(code: string, message: string, status: number): Response {
+  return Response.json({ Fault: { Code: code, Message: message } }, { status });
+}
+
+describe('PubChem "Search status indicates failure" is fetched once (#52)', () => {
+  const rejected = () =>
+    pugRestFault('PUGREST.ServerError', 'Search status indicates failure', 500);
+
+  it.each([
+    [
+      'a SMILES structure search',
+      (c: PubChemClient) => c.searchByStructure('substructure', 'not-a-smiles', 'smiles', 90, 21),
+    ],
+    [
+      'a CID structure search',
+      (c: PubChemClient) => c.searchByStructure('similarity', '999999999', 'cid', 90, 21),
+    ],
+    ['a formula search', (c: PubChemClient) => c.searchByFormula('not-a-formula', false, 21)],
+  ])('does not retry the fault on %s', async (_label, call) => {
+    fetchMock.mockImplementation(async () => rejected());
+
+    const { error } = await settle(call(new PubChemClient()));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(error).toMatchObject({
+      code: JsonRpcErrorCode.ValidationError,
+      data: { fault: 'PUGREST.ServerError: Search status indicates failure' },
+    });
+  });
+
+  it('skips the retry on any route drawing the fault, without re-labelling it', async () => {
+    // Only fast-search routes have been seen to emit this fault; the retry gate keys on the
+    // fault alone, while the typed mapping belongs to the search methods that know the form.
+    fetchMock.mockImplementation(async () => rejected());
+
+    const { error } = await settle(new PubChemClient().getSynonyms(2244));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(error).toMatchObject({
+      code: JsonRpcErrorCode.ServiceUnavailable,
+      data: { status: 500, fault: 'PUGREST.ServerError: Search status indicates failure' },
+    });
+  });
+});
+
+describe('PubChem fast-search failures other than a rejected query (#52 regression)', () => {
+  it('retries a 500 carrying any other PUGREST.ServerError fault once', async () => {
+    fetchMock.mockImplementation(async () =>
+      pugRestFault('PUGREST.ServerError', 'Internal server error', 500),
+    );
+
+    const { error } = await settle(
+      new PubChemClient().searchByStructure('substructure', 'CCO', 'smiles', undefined, 21),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(error).toMatchObject({
+      code: JsonRpcErrorCode.ServiceUnavailable,
+      data: { status: 500, fault: 'PUGREST.ServerError: Internal server error' },
+    });
+  });
+
+  it('retries a 504 PUGREST.Timeout once and keeps its Timeout classification', async () => {
+    fetchMock.mockImplementation(async () =>
+      pugRestFault('PUGREST.Timeout', 'Request timed out', 504),
+    );
+
+    const { error } = await settle(
+      new PubChemClient().searchByStructure('substructure', 'CCCC', 'smiles', undefined, 21),
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(error).toMatchObject({
+      code: JsonRpcErrorCode.Timeout,
+      data: { status: 504, fault: 'PUGREST.Timeout: Request timed out' },
+    });
+  });
+
+  it('reads a 404 no-hits search as an empty match set after one request', async () => {
+    fetchMock.mockResolvedValueOnce(
+      pugRestFault('PUGREST.NotFound', 'Search returned no hits', 404),
+    );
+
+    const { value } = await settle(
+      new PubChemClient().searchByStructure('similarity', '[H][H]', 'smiles', 90, 21),
+    );
+
+    expect(value).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('PubChem failed-request logging (#50)', () => {
   it('logs nothing from the client for a successful request', async () => {
     const warning = vi.spyOn(logger, 'warning');

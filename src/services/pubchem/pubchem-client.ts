@@ -8,7 +8,9 @@ import {
   JsonRpcErrorCode,
   McpError,
   notFound,
+  requestCancelled,
   serviceUnavailable,
+  validationError,
 } from '@cyanheads/mcp-ts-core/errors';
 import { httpErrorFromResponse, logger, requestContextService } from '@cyanheads/mcp-ts-core/utils';
 import type {
@@ -37,6 +39,41 @@ import type {
 const isNotFound = (error: unknown): boolean =>
   error instanceof McpError && error.code === JsonRpcErrorCode.NotFound;
 
+const isBadRequest = (error: unknown): boolean =>
+  error instanceof McpError && error.data?.status === 400;
+
+/** The parsed upstream fault `fetchResponse` attaches to every HTTP failure. */
+const faultOf = (error: unknown): string | undefined => {
+  const fault = error instanceof McpError ? error.data?.fault : undefined;
+  return typeof fault === 'string' ? fault : undefined;
+};
+
+/** PubChem's answer when a fast search cannot run on the query itself: a malformed SMILES or
+ * formula, a SMILES with a "*" wildcard atom, a CID with no record. Every re-send of a
+ * faulting request has faulted again, and no valid query has drawn it — a slow search gets
+ * 504 `PUGREST.Timeout`, a search with no hits 404 `PUGREST.NotFound`. So `fetchResponse`
+ * spends no retry on it, and the search methods, which know the query form, turn it into a
+ * typed `search_query_rejected`. */
+const SEARCH_REJECTED_FAULT = 'PUGREST.ServerError: Search status indicates failure';
+
+/** Re-throws a rejected-query fault from a fast search as `search_query_rejected`, with a
+ * hint for the query form the caller sent. Every other failure passes through unchanged. */
+function mapRejectedSearch<T>(search: Promise<T>, message: string, hint: string): Promise<T> {
+  return search.catch((error: unknown) => {
+    if (faultOf(error) !== SEARCH_REJECTED_FAULT) throw error;
+    throw validationError(
+      message,
+      { reason: 'search_query_rejected', fault: SEARCH_REJECTED_FAULT, recovery: { hint } },
+      { cause: error },
+    );
+  });
+}
+
+/** CID 0 is PubChem's "no such structure" placeholder, never a compound: a SMILES lookup for a
+ * structure that parses but is not in the database answers 200 with `CID: [0]`. Dropped
+ * wherever a CID list is read, so no route can report it as a match. */
+const realCids = (cids: number[]): number[] => cids.filter((cid) => cid > 0);
+
 /** Distinguishes the two outcomes PUG View hides behind a single HTTP 404.
  *
  * `heading=`-filtered PUG View requests answer both "this CID has no record" and "this CID's
@@ -54,6 +91,12 @@ const isMissingRecord = (error: unknown): boolean => {
   return typeof fault === 'string' && fault.includes('No record found');
 };
 
+/** What a caller's cancellation surfaces as. `RequestCancelled` is never retried and the
+ * framework logs it at `info`; raising it here keeps a withdrawn call from reading as the 30 s
+ * timeout, and from matching the not-found checks that turn a 404 into "no data". */
+const cancellation = (reason: unknown): McpError =>
+  requestCancelled('PubChem request cancelled by the caller.', undefined, { cause: reason });
+
 // ── Rate Limiter ─────────────────────────────────────────────────────
 
 /** Sliding-window rate limiter. Queues requests exceeding maxPerSecond. */
@@ -67,9 +110,23 @@ class RateLimiter {
     this.max = maxPerSecond;
   }
 
-  acquire(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      this.queue.push(resolve);
+  /** Waits for a slot. A caller that cancels while queued leaves the queue without taking one. */
+  acquire(signal?: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(cancellation(signal.reason));
+        return;
+      }
+      const grant = () => {
+        signal?.removeEventListener('abort', withdraw);
+        resolve();
+      };
+      const withdraw = () => {
+        this.queue.splice(this.queue.indexOf(grant), 1);
+        reject(cancellation(signal?.reason));
+      };
+      signal?.addEventListener('abort', withdraw, { once: true });
+      this.queue.push(grant);
       if (!this.draining) void this.drain();
     });
   }
@@ -97,7 +154,38 @@ class RateLimiter {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** A request's options, with the caller's cancellation signal required at every call site —
+ * `undefined` only where no caller signal exists. */
+type FetchInit = Omit<RequestInit, 'signal'> & { signal: AbortSignal | undefined };
+
+/** Waits `ms`, or rejects with the cancellation as soon as `signal` aborts. */
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(cancellation(signal.reason));
+      return;
+    }
+    const cancel = () => {
+      clearTimeout(timer);
+      reject(cancellation(signal?.reason));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', cancel);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', cancel, { once: true });
+  });
+
+/** Reads a response body. The platform fetch aborts the body with the request's signal, so a
+ * caller abort mid-read surfaces as the cancellation instead of a raw abort. */
+async function readBody<T>(read: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
+  try {
+    return await read;
+  } catch (error) {
+    if (signal?.aborted) throw cancellation(signal.reason);
+    throw error;
+  }
+}
 
 /** Records a failed PubChem request, with its URL, in the server's own log. The error the
  * caller receives deliberately omits the URL, so this line is the only place an operator can
@@ -480,21 +568,28 @@ export class PubChemClient {
 
   // ── Core HTTP ────────────────────────────────────────────────────
 
-  /** Shared HTTP core: rate-limit, 30s timeout, retry once on 5xx and once on a transient
-   * network error, and surface a clean timeout message. Returns the ok Response; callers
-   * extract the body (JSON, bytes, or text). Centralizing this keeps every fetch variant on
-   * one resilience contract — the divergence that left fetchBinary without retry or a clean
-   * timeout message (#16) cannot recur. */
-  private async fetchResponse(url: string, init?: RequestInit): Promise<Response> {
-    const method = init?.method ?? 'GET';
+  /** Shared HTTP core: rate-limit, 30s timeout, retry once on 5xx (except a rejected search
+   * query) and once on a transient network error, and surface a clean timeout message. Returns
+   * the ok Response; callers extract the body (JSON, bytes, or text). Centralizing this keeps
+   * every fetch variant on one resilience contract — the divergence that left fetchBinary
+   * without retry or a clean timeout message (#16) cannot recur.
+   *
+   * `init.signal` is the caller's cancellation, combined with the per-attempt timeout. Once it
+   * aborts — queued for a slot, mid-fetch, or in a retry backoff — the request ends with
+   * `RequestCancelled`: no retry, and no failed-request log, since nothing failed upstream. */
+  private async fetchResponse(url: string, { signal, ...init }: FetchInit): Promise<Response> {
+    const method = init.method ?? 'GET';
     for (let attempt = 0; ; attempt++) {
-      await this.rateLimiter.acquire();
+      await this.rateLimiter.acquire(signal);
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30_000);
+      const timeout = new AbortController();
+      const timeoutId = setTimeout(() => timeout.abort(), 30_000);
 
       try {
-        const response = await fetch(url, { ...init, signal: controller.signal });
+        const response = await fetch(url, {
+          ...init,
+          signal: signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal,
+        });
 
         if (response.ok) return response;
 
@@ -512,9 +607,15 @@ export class PubChemClient {
           data: { fault },
         });
 
-        // Retry once on 5xx unless the framework marks the failure as permanent.
-        if (response.status >= 500 && error.data?.retryable !== false && attempt < 1) {
-          await sleep(1000 * 2 ** attempt);
+        // Retry once on 5xx unless the framework marks the failure as permanent or PubChem
+        // has rejected the search query itself, which faults identically on every re-send.
+        if (
+          response.status >= 500 &&
+          error.data?.retryable !== false &&
+          fault !== SEARCH_REJECTED_FAULT &&
+          attempt < 1
+        ) {
+          await sleep(1000 * 2 ** attempt, signal);
           continue;
         }
 
@@ -525,15 +626,19 @@ export class PubChemClient {
         });
         throw error;
       } catch (error) {
+        // The caller withdrew the call: whatever this attempt rejected with, it is over.
+        if (signal?.aborted) throw cancellation(signal.reason);
+
         // HTTP errors are already classified and logged — surface them, don't retry.
         if (error instanceof McpError) throw error;
 
         // Retry once on network errors
         if (attempt < 1) {
-          await sleep(1000 * 2 ** attempt);
+          await sleep(1000 * 2 ** attempt, signal);
           continue;
         }
 
+        // With the caller's signal ruled out, an abort can only be this attempt's timeout.
         const failure =
           error instanceof Error && error.name === 'AbortError'
             ? new Error('PubChem request timed out (30s)')
@@ -548,20 +653,20 @@ export class PubChemClient {
     }
   }
 
-  private async fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  private async fetchJson<T>(url: string, init: FetchInit): Promise<T> {
     const response = await this.fetchResponse(url, init);
-    return (await response.json()) as T;
+    return (await readBody(response.json(), init.signal)) as T;
   }
 
-  private async fetchBinary(url: string): Promise<ArrayBuffer> {
-    const response = await this.fetchResponse(url);
-    return response.arrayBuffer();
+  private async fetchBinary(url: string, signal: AbortSignal | undefined): Promise<ArrayBuffer> {
+    const response = await this.fetchResponse(url, { signal });
+    return readBody(response.arrayBuffer(), signal);
   }
 
   /** Fetch a text/plain body (e.g. an SDF record). Non-2xx is classified and thrown. */
-  private async fetchText(url: string): Promise<string> {
-    const response = await this.fetchResponse(url);
-    return response.text();
+  private async fetchText(url: string, signal: AbortSignal | undefined): Promise<string> {
+    const response = await this.fetchResponse(url, { signal });
+    return readBody(response.text(), signal);
   }
 
   // ── CID Resolution ──────────────────────────────────────────────
@@ -573,11 +678,11 @@ export class PubChemClient {
    * bound lives in the request, not the ListKey — so an async answer would otherwise return
    * the full match set and the caller would read PubChem's ceiling as a real count. Omitted
    * for identifier lookups, which are unbounded by design. */
-  private async fetchCids(url: string, init?: RequestInit, maxRecords?: number): Promise<number[]> {
+  private async fetchCids(url: string, init: FetchInit, maxRecords?: number): Promise<number[]> {
     try {
       const data = await this.fetchJson<CidListResponse | ListKeyResponse>(url, init);
-      if ('Waiting' in data) return this.pollListKey(data.Waiting.ListKey, maxRecords);
-      return data.IdentifierList.CID;
+      if ('Waiting' in data) return this.pollListKey(data.Waiting.ListKey, maxRecords, init.signal);
+      return realCids(data.IdentifierList.CID);
     } catch (error) {
       if (isNotFound(error)) return [];
       throw error;
@@ -587,20 +692,22 @@ export class PubChemClient {
   /** Poll a PubChem ListKey until results are ready.
    *
    * `listkey_count` asks PubChem to trim the page; the slice enforces the same bound
-   * locally, so the caller's saturation test holds whether or not the parameter is honored. */
+   * locally, so the caller's saturation test holds whether or not the parameter is honored.
+   * A cancellation ends the wait before the next poll. */
   private async pollListKey(
     listKey: string,
-    maxRecords?: number,
+    maxRecords: number | undefined,
+    signal: AbortSignal | undefined,
     maxAttempts = 20,
   ): Promise<number[]> {
     const query = maxRecords === undefined ? '' : `?listkey_count=${maxRecords}`;
     const pollUrl = `${this.pugBase}/compound/listkey/${listKey}/cids/JSON${query}`;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await sleep(1500);
+      await sleep(1500, signal);
       try {
-        const data = await this.fetchJson<CidListResponse | ListKeyResponse>(pollUrl);
+        const data = await this.fetchJson<CidListResponse | ListKeyResponse>(pollUrl, { signal });
         if ('Waiting' in data) continue;
-        const cids = data.IdentifierList.CID;
+        const cids = realCids(data.IdentifierList.CID);
         return maxRecords === undefined ? cids : cids.slice(0, maxRecords);
       } catch (error) {
         if (isNotFound(error)) return [];
@@ -610,21 +717,46 @@ export class PubChemClient {
     throw new Error('PubChem async search timed out after polling');
   }
 
-  searchByName(name: string): Promise<number[]> {
-    return this.fetchCids(`${this.pugBase}/compound/name/${encodeURIComponent(name)}/cids/JSON`);
+  /** Resolve one caller-supplied identifier to its CIDs; [] when PubChem has no match.
+   *
+   * The identifier is the only variable in these requests, so an HTTP 400 is PubChem rejecting
+   * that identifier — for SMILES, a string it cannot standardize into a structure, including
+   * well-formed SMILES it cannot process such as a "*" wildcard atom. It is re-thrown as a
+   * ValidationError tagged `identifier_rejected`, so a batch caller can set that one input
+   * aside. Every other failure — 5xx, rate limit, timeout — keeps its own classification. */
+  private async lookupIdentifier(url: string, init: FetchInit): Promise<number[]> {
+    try {
+      return await this.fetchCids(url, init);
+    } catch (error) {
+      if (!isBadRequest(error)) throw error;
+      throw validationError(
+        'PubChem could not interpret the identifier.',
+        { reason: 'identifier_rejected', fault: faultOf(error) },
+        { cause: error },
+      );
+    }
   }
 
-  searchBySmiles(smiles: string): Promise<number[]> {
-    return this.fetchCids(`${this.pugBase}/compound/smiles/cids/JSON`, {
+  searchByName(name: string, signal?: AbortSignal): Promise<number[]> {
+    return this.lookupIdentifier(
+      `${this.pugBase}/compound/name/${encodeURIComponent(name)}/cids/JSON`,
+      { signal },
+    );
+  }
+
+  searchBySmiles(smiles: string, signal?: AbortSignal): Promise<number[]> {
+    return this.lookupIdentifier(`${this.pugBase}/compound/smiles/cids/JSON`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ smiles }).toString(),
+      signal,
     });
   }
 
-  searchByInchiKey(inchikey: string): Promise<number[]> {
-    return this.fetchCids(
+  searchByInchiKey(inchikey: string, signal?: AbortSignal): Promise<number[]> {
+    return this.lookupIdentifier(
       `${this.pugBase}/compound/inchikey/${encodeURIComponent(inchikey)}/cids/JSON`,
+      { signal },
     );
   }
 
@@ -639,24 +771,35 @@ export class PubChemClient {
    * `maxRecords` is saturated, and the true total is not recoverable — PubChem returns the
    * CID list alone, with no match count beside it. Callers that need to distinguish the two
    * compare the returned length against the cap they passed. */
-  searchByFormula(formula: string, allowOther: boolean, maxRecords: number): Promise<number[]> {
+  searchByFormula(
+    formula: string,
+    allowOther: boolean,
+    maxRecords: number,
+    signal?: AbortSignal,
+  ): Promise<number[]> {
     const params = new URLSearchParams({ MaxRecords: String(maxRecords) });
     if (allowOther) params.set('AllowOtherElements', 'true');
-    return this.fetchCids(
-      `${this.pugBase}/compound/fastformula/${encodeURIComponent(formula)}/cids/JSON?${params}`,
-      undefined,
-      maxRecords,
+    return mapRejectedSearch(
+      this.fetchCids(
+        `${this.pugBase}/compound/fastformula/${encodeURIComponent(formula)}/cids/JSON?${params}`,
+        { signal },
+        maxRecords,
+      ),
+      'PubChem could not run the formula search on this formula.',
+      'Write the formula in Hill notation with valid element symbols, for example "C6H12O6" or "CaH2O2".',
     );
   }
 
   /** Substructure, superstructure, and 2D-similarity search, bounded server-side by
-   * `maxRecords`. Same cap contract as {@link searchByFormula}. */
+   * `maxRecords`. Same cap contract as {@link searchByFormula}; a query PubChem cannot search
+   * on throws `search_query_rejected` the same way. */
   searchByStructure(
     mode: 'substructure' | 'superstructure' | 'similarity',
     query: string,
     queryType: 'smiles' | 'cid',
     threshold: number | undefined,
     maxRecords: number,
+    signal?: AbortSignal,
   ): Promise<number[]> {
     const endpoint =
       mode === 'similarity'
@@ -669,23 +812,32 @@ export class PubChemClient {
     if (mode === 'similarity') params.set('Threshold', String(threshold ?? 90));
 
     if (queryType === 'cid') {
-      return this.fetchCids(
-        `${this.pugBase}/compound/${endpoint}/cid/${query}/cids/JSON?${params}`,
-        undefined,
-        maxRecords,
+      return mapRejectedSearch(
+        this.fetchCids(
+          `${this.pugBase}/compound/${endpoint}/cid/${query}/cids/JSON?${params}`,
+          { signal },
+          maxRecords,
+        ),
+        `PubChem could not run the ${mode} search on CID ${query}.`,
+        `Confirm CID ${query} exists with pubchem_get_compound_details, or pass the structure as a SMILES query with queryType "smiles".`,
       );
     }
 
     // POST for SMILES to avoid encoding issues
     const url = `${this.pugBase}/compound/${endpoint}/smiles/cids/JSON?${params}`;
-    return this.fetchCids(
-      url,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ smiles: query }).toString(),
-      },
-      maxRecords,
+    return mapRejectedSearch(
+      this.fetchCids(
+        url,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ smiles: query }).toString(),
+          signal,
+        },
+        maxRecords,
+      ),
+      `PubChem could not run the ${mode} search on this SMILES.`,
+      'Check the SMILES syntax (balanced ring closures and parentheses, valid element symbols) and remove any "*" wildcard atoms, which PubChem structure search does not accept.',
     );
   }
 
@@ -694,6 +846,7 @@ export class PubChemClient {
   async getProperties(
     cids: number[],
     properties: string[],
+    signal?: AbortSignal,
   ): Promise<Array<Record<string, unknown> & { CID: number }>> {
     if (cids.length === 0 || properties.length === 0) return [];
 
@@ -709,10 +862,12 @@ export class PubChemClient {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
               body: new URLSearchParams({ cid: cidStr }).toString(),
+              signal,
             },
           )
         : await this.fetchJson<PropertyTableResponse>(
             `${this.pugBase}/compound/cid/${cidStr}/property/${propsPath}/JSON`,
+            { signal },
           );
 
     // PubChem returns different field names than the request names for some properties.
@@ -720,10 +875,11 @@ export class PubChemClient {
     return data.PropertyTable.Properties.map(normalizePropertyNames);
   }
 
-  async getSynonyms(cid: number): Promise<string[]> {
+  async getSynonyms(cid: number, signal?: AbortSignal): Promise<string[]> {
     try {
       const data = await this.fetchJson<SynonymResponse>(
         `${this.pugBase}/compound/cid/${cid}/synonyms/JSON`,
+        { signal },
       );
       return data.InformationList.Information[0]?.Synonym ?? [];
     } catch (error) {
@@ -732,10 +888,14 @@ export class PubChemClient {
     }
   }
 
-  async getImage(cid: number, size: 'small' | 'large' = 'large'): Promise<ArrayBuffer> {
+  async getImage(
+    cid: number,
+    size: 'small' | 'large' = 'large',
+    signal?: AbortSignal,
+  ): Promise<ArrayBuffer> {
     const sizeParam = size === 'small' ? '?image_size=small' : '?image_size=large';
     try {
-      return await this.fetchBinary(`${this.pugBase}/compound/cid/${cid}/PNG${sizeParam}`);
+      return await this.fetchBinary(`${this.pugBase}/compound/cid/${cid}/PNG${sizeParam}`, signal);
     } catch (error) {
       // The image endpoint returns binary, so absence can't be a structured success like
       // the other per-CID tools — surface a typed not-found with a recovery hint instead.
@@ -750,10 +910,15 @@ export class PubChemClient {
     }
   }
 
-  async getXrefs(cid: number, xrefType: string): Promise<(string | number)[]> {
+  async getXrefs(
+    cid: number,
+    xrefType: string,
+    signal?: AbortSignal,
+  ): Promise<(string | number)[]> {
     try {
       const data = await this.fetchJson<XrefResponse>(
         `${this.pugBase}/compound/cid/${cid}/xrefs/${xrefType}/JSON`,
+        { signal },
       );
       const info = data.InformationList.Information[0];
       if (!info) return [];
@@ -767,10 +932,14 @@ export class PubChemClient {
 
   // ── PUG View ────────────────────────────────────────────────────
 
-  async getDescription(cid: number): Promise<Array<{ source?: string; text: string }>> {
+  async getDescription(
+    cid: number,
+    signal?: AbortSignal,
+  ): Promise<Array<{ source?: string; text: string }>> {
     try {
       const data = await this.fetchJson<PugViewResponse>(
         `${this.viewBase}/data/compound/${cid}/JSON?heading=Record+Description`,
+        { signal },
       );
 
       const sections = data.Record.Section;
@@ -803,10 +972,11 @@ export class PubChemClient {
    * GHS classification" — a nonexistent CID and a real compound without safety data are
    * different answers that call for different follow-up, and both used to surface as an
    * absent result. */
-  async getSafetyData(cid: number): Promise<SafetyLookup> {
+  async getSafetyData(cid: number, signal?: AbortSignal): Promise<SafetyLookup> {
     try {
       const data = await this.fetchJson<PugViewResponse>(
         `${this.viewBase}/data/compound/${cid}/JSON?heading=Safety+and+Hazards`,
+        { signal },
       );
 
       const sections = data.Record.Section;
@@ -870,10 +1040,14 @@ export class PubChemClient {
     }
   }
 
-  async getClassification(cid: number): Promise<CompoundClassification | null> {
+  async getClassification(
+    cid: number,
+    signal?: AbortSignal,
+  ): Promise<CompoundClassification | null> {
     try {
       const data = await this.fetchJson<PugViewResponse>(
         `${this.viewBase}/data/compound/${cid}/JSON?heading=Pharmacology+and+Biochemistry`,
+        { signal },
       );
 
       const sections = data.Record.Section;
@@ -945,10 +1119,11 @@ export class PubChemClient {
 
   // ── Bioactivity ─────────────────────────────────────────────────
 
-  async getAssaySummary(cid: number): Promise<BioactivityRow[]> {
+  async getAssaySummary(cid: number, signal?: AbortSignal): Promise<BioactivityRow[]> {
     try {
       const data = await this.fetchJson<AssaySummaryTableResponse>(
         `${this.pugBase}/compound/cid/${cid}/assaysummary/JSON`,
+        { signal },
       );
       return this.parseAssayTable(data);
     } catch (error) {
@@ -1031,12 +1206,17 @@ export class PubChemClient {
 
   // ── Assay Search ────────────────────────────────────────────────
 
-  async searchAssaysByTarget(targetType: string, query: string): Promise<number[]> {
+  async searchAssaysByTarget(
+    targetType: string,
+    query: string,
+    signal?: AbortSignal,
+  ): Promise<number[]> {
     // PubChem API expects "accession" not "proteinaccession"
     const apiTargetType = targetType === 'proteinaccession' ? 'accession' : targetType;
     try {
       const data = await this.fetchJson<AidListResponse>(
         `${this.pugBase}/assay/target/${apiTargetType}/${encodeURIComponent(query)}/aids/JSON`,
+        { signal },
       );
       return data.IdentifierList.AID;
     } catch (error) {
@@ -1050,6 +1230,7 @@ export class PubChemClient {
   async getEntitySummary(
     entityType: string,
     identifier: string | number,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown> | null> {
     const pathMap: Record<string, string> = {
       assay: `/assay/aid/${identifier}/summary/JSON`,
@@ -1062,7 +1243,9 @@ export class PubChemClient {
     if (!path) throw new Error(`Unknown entity type: ${entityType}`);
 
     try {
-      const data = await this.fetchJson<Record<string, unknown>>(`${this.pugBase}${path}`);
+      const data = await this.fetchJson<Record<string, unknown>>(`${this.pugBase}${path}`, {
+        signal,
+      });
 
       // Response shape: { XxxSummaries: { XxxSummary: [{...}] } }
       const summariesKey = Object.keys(data).find((k) => k.endsWith('Summaries'));
@@ -1077,9 +1260,7 @@ export class PubChemClient {
     } catch (error) {
       if (isNotFound(error)) return null;
       // PubChem returns HTTP 400 (not 404) for nonexistent entity IDs in some endpoints
-      if (error instanceof McpError && (error.data as { status?: number })?.status === 400) {
-        return null;
-      }
+      if (isBadRequest(error)) return null;
       throw error;
     }
   }
@@ -1090,20 +1271,24 @@ export class PubChemClient {
    * Drug-drug and target data live in PubChem SDQ external tables (drugbankddi, bioactivity);
    * drug-food is inline PUG View text. Each kind reads a window of `maxEntries` entries
    * starting at `offset` records into that kind's own stream; absent data for a kind
-   * contributes an empty page rather than erroring. */
+   * contributes an empty page rather than erroring. A cancellation fails the whole call. */
   async getInteractions(
     cid: number,
     kinds: Array<'drug-drug' | 'drug-food' | 'target'>,
     maxEntries: number,
     offset: number,
+    signal?: AbortSignal,
   ): Promise<InteractionsResult> {
     // Per-kind isolation: a failure in one source (upstream parse error, timeout, network)
     // must not discard the kinds that succeeded. Failures are reported, not thrown (#21).
     // Page state is recorded per kind from that kind's own result, so a failing kind leaves
     // the others' continuation signals untouched rather than zeroing them.
     const settled = await Promise.allSettled(
-      kinds.map((kind) => this.getInteractionsForKind(cid, kind, maxEntries, offset)),
+      kinds.map((kind) => this.getInteractionsForKind(cid, kind, maxEntries, offset, signal)),
     );
+    // A cancelled kind is not a failed source — reporting it as one would hand a withdrawn
+    // call a partial result.
+    if (signal?.aborted) throw cancellation(signal.reason);
     const entries: InteractionEntry[] = [];
     const pages: InteractionKindPage[] = [];
     const failedKinds: Array<{ kind: string; message: string }> = [];
@@ -1129,14 +1314,15 @@ export class PubChemClient {
     kind: 'drug-drug' | 'drug-food' | 'target',
     maxEntries: number,
     offset: number,
+    signal: AbortSignal | undefined,
   ): Promise<InteractionKindFetch> {
     switch (kind) {
       case 'drug-drug':
-        return this.getDrugDrugInteractions(cid, maxEntries, offset);
+        return this.getDrugDrugInteractions(cid, maxEntries, offset, signal);
       case 'drug-food':
-        return this.getDrugFoodInteractions(cid, maxEntries, offset);
+        return this.getDrugFoodInteractions(cid, maxEntries, offset, signal);
       case 'target':
-        return this.getTargetInteractions(cid, maxEntries, offset);
+        return this.getTargetInteractions(cid, maxEntries, offset, signal);
     }
   }
 
@@ -1144,6 +1330,7 @@ export class PubChemClient {
     cid: number,
     maxEntries: number,
     offset: number,
+    signal: AbortSignal | undefined,
   ): Promise<InteractionKindFetch> {
     const { rows, totalCount } = await this.fetchSdq(
       'drugbankddi',
@@ -1151,6 +1338,7 @@ export class PubChemClient {
       ['cid', 'name2', 'descr'],
       maxEntries,
       offset,
+      signal,
     );
     const entries: InteractionEntry[] = [];
     for (const row of rows) {
@@ -1162,7 +1350,14 @@ export class PubChemClient {
     }
     return {
       entries,
-      totalRecords: await this.resolveSdqTotal('drugbankddi', cid, rows.length, totalCount, offset),
+      totalRecords: await this.resolveSdqTotal(
+        'drugbankddi',
+        cid,
+        rows.length,
+        totalCount,
+        offset,
+        signal,
+      ),
       recordsConsumed: rows.length,
     };
   }
@@ -1181,6 +1376,7 @@ export class PubChemClient {
     cid: number,
     maxEntries: number,
     offset: number,
+    signal: AbortSignal | undefined,
   ): Promise<InteractionKindFetch> {
     // `targetname` is sparse (most rows are untargeted assay outcomes), so oversample and keep
     // the target-bearing rows, most-potent-first.
@@ -1191,6 +1387,7 @@ export class PubChemClient {
       ['cid', 'targetname', 'acname', 'acqualifier', 'acvalue', 'aidsrcname'],
       window,
       offset,
+      signal,
       ['acvalue,asc'],
     );
     const entries: InteractionEntry[] = [];
@@ -1225,7 +1422,14 @@ export class PubChemClient {
     }
     return {
       entries,
-      totalRecords: await this.resolveSdqTotal('bioactivity', cid, rows.length, totalCount, offset),
+      totalRecords: await this.resolveSdqTotal(
+        'bioactivity',
+        cid,
+        rows.length,
+        totalCount,
+        offset,
+        signal,
+      ),
       recordsConsumed,
     };
   }
@@ -1234,11 +1438,13 @@ export class PubChemClient {
     cid: number,
     maxEntries: number,
     offset: number,
+    signal: AbortSignal | undefined,
   ): Promise<InteractionKindFetch> {
     const empty: InteractionKindFetch = { entries: [], totalRecords: 0, recordsConsumed: 0 };
     try {
       const data = await this.fetchJson<PugViewResponse>(
         `${this.viewBase}/data/compound/${cid}/JSON?heading=Drug-Food+Interactions`,
+        { signal },
       );
       const sections = data.Record.Section;
       if (!sections) return empty;
@@ -1287,7 +1493,8 @@ export class PubChemClient {
     cid: number,
     columns: string[],
     limit: number,
-    offset = 0,
+    offset: number,
+    signal: AbortSignal | undefined,
     order?: string[],
   ): Promise<{ rows: Array<Record<string, unknown>>; totalCount: number }> {
     const empty = { rows: [], totalCount: 0 };
@@ -1303,7 +1510,7 @@ export class PubChemClient {
 
     let body: string;
     try {
-      body = await this.fetchText(url);
+      body = await this.fetchText(url, signal);
     } catch (error) {
       if (isNotFound(error)) return empty;
       throw error;
@@ -1349,9 +1556,10 @@ export class PubChemClient {
     rowsReturned: number,
     reportedTotal: number,
     offset: number,
+    signal: AbortSignal | undefined,
   ): Promise<number> {
     if (rowsReturned > 0 || offset === 0) return reportedTotal;
-    const { totalCount } = await this.fetchSdq(collection, cid, ['cid'], 1);
+    const { totalCount } = await this.fetchSdq(collection, cid, ['cid'], 1, 0, signal);
     return totalCount;
   }
 
@@ -1359,9 +1567,12 @@ export class PubChemClient {
 
   /** Fetch the default 3D conformer as raw V2000 SDF text. Throws a typed not-found when
    * PubChem has no computed 3D coordinates (large molecules, mixtures, undefined salts). */
-  async getSdf3d(cid: number): Promise<string> {
+  async getSdf3d(cid: number, signal?: AbortSignal): Promise<string> {
     try {
-      return await this.fetchText(`${this.pugBase}/compound/cid/${cid}/record/SDF?record_type=3d`);
+      return await this.fetchText(
+        `${this.pugBase}/compound/cid/${cid}/record/SDF?record_type=3d`,
+        signal,
+      );
     } catch (error) {
       if (isNotFound(error)) {
         throw notFound(`No 3D conformer available for CID ${cid}.`, {
@@ -1377,10 +1588,11 @@ export class PubChemClient {
   }
 
   /** List the conformer IDs PubChem has computed for a compound. Returns [] on not-found. */
-  async getConformerIds(cid: number): Promise<string[]> {
+  async getConformerIds(cid: number, signal?: AbortSignal): Promise<string[]> {
     try {
       const data = await this.fetchJson<ConformerListResponse>(
         `${this.pugBase}/compound/cid/${cid}/conformers/JSON`,
+        { signal },
       );
       return data.InformationList.Information[0]?.ConformerID ?? [];
     } catch (error) {
