@@ -16,9 +16,9 @@ export const assayResource = resource('pubchem://assay/{aid}', {
     aid: z.coerce.number().int().min(1).describe('PubChem Assay ID.'),
   }),
 
-  async handler(params) {
+  async handler(params, ctx) {
     const client = getPubChemClient();
-    const summary = await client.getEntitySummary('assay', params.aid);
+    const summary = await client.getEntitySummary('assay', params.aid, ctx.signal);
     if (!summary) {
       throw notFound(`No PubChem assay found for AID ${params.aid}.`, { aid: params.aid });
     }

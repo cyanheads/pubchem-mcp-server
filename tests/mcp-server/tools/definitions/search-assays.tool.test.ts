@@ -34,7 +34,11 @@ describe('searchAssays handler', () => {
     expect(enrichment.targetQuery).toBe('EGFR');
     expect(enrichment.totalFound).toBe(3);
     expect(result.aids).toEqual([1000, 2000, 3000]);
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith('genesymbol', 'EGFR');
+    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
+      'genesymbol',
+      'EGFR',
+      expect.any(AbortSignal),
+    );
   });
 
   it('caps results at maxResults', async () => {

@@ -108,7 +108,7 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
     for (let i = 0; i < input.cids.length; i += MAX_IN_FLIGHT) {
       const chunk = input.cids.slice(i, i + MAX_IN_FLIGHT);
       const chunkData = await Promise.all(
-        chunk.map(async (cid) => [cid, await client.getSafetyData(cid)] as const),
+        chunk.map(async (cid) => [cid, await client.getSafetyData(cid, ctx.signal)] as const),
       );
       for (const [cid, lookup] of chunkData) lookupByCid.set(cid, lookup);
     }

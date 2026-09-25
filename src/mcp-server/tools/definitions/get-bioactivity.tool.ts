@@ -148,7 +148,7 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
 
   async handler(input, ctx) {
     const client = getPubChemClient();
-    const allRows = await client.getAssaySummary(input.cid);
+    const allRows = await client.getAssaySummary(input.cid, ctx.signal);
 
     const activeCount = allRows.filter((r) => r.outcome === 'Active').length;
     const inactiveCount = allRows.filter((r) => r.outcome === 'Inactive').length;

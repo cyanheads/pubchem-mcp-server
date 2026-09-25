@@ -17,9 +17,9 @@ export const compoundResource = resource('pubchem://compound/{cid}', {
     cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
   }),
 
-  async handler(params) {
+  async handler(params, ctx) {
     const client = getPubChemClient();
-    const rows = await client.getProperties([params.cid], [...DEFAULT_PROPERTIES]);
+    const rows = await client.getProperties([params.cid], [...DEFAULT_PROPERTIES], ctx.signal);
     const row = rows[0];
     // PubChem returns HTTP 200 with a {CID}-only row for a nonexistent CID — treat as not-found.
     if (!row || !Object.keys(row).some((k) => k !== 'CID')) {

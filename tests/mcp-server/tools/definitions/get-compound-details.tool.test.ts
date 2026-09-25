@@ -73,7 +73,7 @@ describe('getCompoundDetails handler', () => {
       { source: 'DrugBank', text: 'Aspirin is an NSAID.' },
     ]);
     expect(result.compounds[0]!.descriptionsTotal).toBe(1);
-    expect(mockClient.getDescription).toHaveBeenCalledWith(2244);
+    expect(mockClient.getDescription).toHaveBeenCalledWith(2244, expect.any(AbortSignal));
   });
 
   it('handles empty descriptions gracefully', async () => {
@@ -176,11 +176,11 @@ describe('getCompoundDetails handler', () => {
     await getCompoundDetails.handler(input, ctx);
 
     expect(mockClient.getDescription).toHaveBeenCalledTimes(1);
-    expect(mockClient.getDescription).toHaveBeenCalledWith(2244);
+    expect(mockClient.getDescription).toHaveBeenCalledWith(2244, expect.any(AbortSignal));
     expect(mockClient.getSynonyms).toHaveBeenCalledTimes(1);
-    expect(mockClient.getSynonyms).toHaveBeenCalledWith(2244);
+    expect(mockClient.getSynonyms).toHaveBeenCalledWith(2244, expect.any(AbortSignal));
     expect(mockClient.getClassification).toHaveBeenCalledTimes(1);
-    expect(mockClient.getClassification).toHaveBeenCalledWith(2244);
+    expect(mockClient.getClassification).toHaveBeenCalledWith(2244, expect.any(AbortSignal));
   });
 
   it('includes synonyms when requested', async () => {
@@ -233,7 +233,11 @@ describe('getCompoundDetails handler', () => {
     });
     await getCompoundDetails.handler(input, ctx);
 
-    expect(mockClient.getProperties).toHaveBeenCalledWith([2244], ['XLogP']);
+    expect(mockClient.getProperties).toHaveBeenCalledWith(
+      [2244],
+      ['XLogP'],
+      expect.any(AbortSignal),
+    );
   });
 
   it('computes drug-likeness from properties', async () => {
@@ -374,7 +378,7 @@ describe('getCompoundDetails handler', () => {
     expect(result.compounds[0]!.classification!.fdaClasses).toContain(
       'Nonsteroidal Anti-inflammatory Drug',
     );
-    expect(mockClient.getClassification).toHaveBeenCalledWith(2244);
+    expect(mockClient.getClassification).toHaveBeenCalledWith(2244, expect.any(AbortSignal));
   });
 
   it('handles null classification gracefully', async () => {

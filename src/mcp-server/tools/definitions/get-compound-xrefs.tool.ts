@@ -123,7 +123,7 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
     }> = [];
 
     for (const xrefType of input.xrefTypes) {
-      const allIds = await client.getXrefs(input.cid, xrefType);
+      const allIds = await client.getXrefs(input.cid, xrefType, ctx.signal);
       const totalAvailable = allIds.length;
       // Offset is applied client-side: PubChem's xref endpoint returns the whole list for a
       // type in one response, so getXrefs already holds every ID.

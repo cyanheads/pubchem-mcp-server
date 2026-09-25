@@ -34,6 +34,7 @@ describe('searchAssays handler — all target types', () => {
     expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
       'proteinname',
       'Epidermal growth factor receptor',
+      expect.any(AbortSignal),
     );
     expect(result.aids).toEqual([100, 200]);
     expect(enrichment.targetType).toBe('proteinname');
@@ -49,7 +50,11 @@ describe('searchAssays handler — all target types', () => {
     });
     const result = await searchAssays.handler(input, ctx);
 
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith('proteinaccession', 'P00533');
+    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
+      'proteinaccession',
+      'P00533',
+      expect.any(AbortSignal),
+    );
     expect(result.aids).toEqual([300, 400, 500]);
   });
 
@@ -62,7 +67,11 @@ describe('searchAssays handler — all target types', () => {
     });
     const result = await searchAssays.handler(input, ctx);
 
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith('geneid', '5743');
+    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
+      'geneid',
+      '5743',
+      expect.any(AbortSignal),
+    );
     expect(result.aids).toEqual([600]);
   });
 });
@@ -105,7 +114,11 @@ describe('searchAssays handler — target query validation (#26)', () => {
     const result = await searchAssays.handler(input, ctx);
 
     expect(result.aids).toEqual([600]);
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith('geneid', '1956');
+    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
+      'geneid',
+      '1956',
+      expect.any(AbortSignal),
+    );
   });
 
   it('does not apply the geneid shape check to text target types', async () => {
@@ -125,7 +138,11 @@ describe('searchAssays handler — target query validation (#26)', () => {
     const enrichment = getEnrichment(ctx);
 
     expect(result.aids).toEqual([7]);
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith('genesymbol', 'EGFR');
+    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
+      'genesymbol',
+      'EGFR',
+      expect.any(AbortSignal),
+    );
     expect(enrichment.targetQuery).toBe('EGFR');
   });
 });
@@ -233,7 +250,11 @@ describe('searchAssays handler — security', () => {
     });
     const result = await searchAssays.handler(input, ctx);
 
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith('proteinname', injected);
+    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
+      'proteinname',
+      injected,
+      expect.any(AbortSignal),
+    );
     expect(result.aids).toHaveLength(0);
   });
 
@@ -247,7 +268,11 @@ describe('searchAssays handler — security', () => {
     const result = await searchAssays.handler(input, ctx);
 
     expect(result.aids).toHaveLength(0);
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith('proteinname', '受体激酶');
+    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
+      'proteinname',
+      '受体激酶',
+      expect.any(AbortSignal),
+    );
   });
 
   it('handles very long targetQuery without crashing', async () => {

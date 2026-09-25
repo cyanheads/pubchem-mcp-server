@@ -105,7 +105,7 @@ describe('getCompoundImage handler — output', () => {
     const input = getCompoundImage.input.parse({ cid: 702, size: 'small' });
     await getCompoundImage.handler(input, ctx);
 
-    expect(mockClient.getImage).toHaveBeenCalledWith(702, 'small');
+    expect(mockClient.getImage).toHaveBeenCalledWith(702, 'small', expect.any(AbortSignal));
   });
 });
 

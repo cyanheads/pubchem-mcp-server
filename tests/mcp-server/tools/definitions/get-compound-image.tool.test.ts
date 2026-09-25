@@ -32,7 +32,7 @@ describe('getCompoundImage handler', () => {
     expect(result.width).toBe(300);
     expect(result.height).toBe(300);
     expect(result.imageBase64).toBe(Buffer.from(pngBytes).toString('base64'));
-    expect(mockClient.getImage).toHaveBeenCalledWith(2244, 'large');
+    expect(mockClient.getImage).toHaveBeenCalledWith(2244, 'large', expect.any(AbortSignal));
   });
 
   it('fetches small image when specified', async () => {
@@ -44,7 +44,7 @@ describe('getCompoundImage handler', () => {
 
     expect(result.width).toBe(100);
     expect(result.height).toBe(100);
-    expect(mockClient.getImage).toHaveBeenCalledWith(2244, 'small');
+    expect(mockClient.getImage).toHaveBeenCalledWith(2244, 'small', expect.any(AbortSignal));
   });
 });
 

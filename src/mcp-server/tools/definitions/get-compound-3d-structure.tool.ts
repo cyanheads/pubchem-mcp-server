@@ -175,7 +175,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
     const client = getPubChemClient();
 
     // getSdf3d throws a typed no_3d_structure not-found when PubChem has no 3D record.
-    const sdf = await client.getSdf3d(input.cid);
+    const sdf = await client.getSdf3d(input.cid, ctx.signal);
     const parsed = parseSdfV2000(sdf);
 
     const out: {
@@ -210,7 +210,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
     }
 
     if (input.includeAlternateConformerIds) {
-      const ids = await client.getConformerIds(input.cid);
+      const ids = await client.getConformerIds(input.cid, ctx.signal);
       if (ids[0]) {
         out.conformerId = ids[0];
         const alternates = ids.slice(1);

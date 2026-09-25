@@ -106,7 +106,7 @@ export const getSummary = tool('pubchem_get_summary', {
 
     const summaries = await Promise.all(
       input.identifiers.map(async (id) => {
-        const raw = await client.getEntitySummary(input.entityType, id);
+        const raw = await client.getEntitySummary(input.entityType, id, ctx.signal);
         if (!raw) return { identifier: id, found: false as const };
 
         const data = extractSummary(input.entityType, raw);

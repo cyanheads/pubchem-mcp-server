@@ -79,8 +79,18 @@ describe('getCompoundXrefs handler — sequential fetching', () => {
     const result = await getCompoundXrefs.handler(input, ctx);
 
     expect(mockClient.getXrefs).toHaveBeenCalledTimes(2);
-    expect(mockClient.getXrefs).toHaveBeenNthCalledWith(1, 2244, 'PubMedID');
-    expect(mockClient.getXrefs).toHaveBeenNthCalledWith(2, 2244, 'PatentID');
+    expect(mockClient.getXrefs).toHaveBeenNthCalledWith(
+      1,
+      2244,
+      'PubMedID',
+      expect.any(AbortSignal),
+    );
+    expect(mockClient.getXrefs).toHaveBeenNthCalledWith(
+      2,
+      2244,
+      'PatentID',
+      expect.any(AbortSignal),
+    );
     expect(result.xrefs[0]!.type).toBe('PubMedID');
     expect(result.xrefs[1]!.type).toBe('PatentID');
   });

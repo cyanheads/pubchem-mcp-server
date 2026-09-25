@@ -18,9 +18,9 @@ export const compoundImageResource = resource('pubchem://compound/{cid}/image', 
     base64: z.string().describe('Base64-encoded PNG image data.'),
   }),
 
-  async handler(params) {
+  async handler(params, ctx) {
     const client = getPubChemClient();
-    const buffer = await client.getImage(params.cid, 'large');
+    const buffer = await client.getImage(params.cid, 'large', ctx.signal);
     return { base64: Buffer.from(buffer).toString('base64') };
   },
 

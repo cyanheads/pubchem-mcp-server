@@ -139,6 +139,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       input.kinds,
       input.maxEntries,
       input.offset,
+      ctx.signal,
     );
 
     for (const f of failedKinds) {

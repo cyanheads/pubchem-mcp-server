@@ -47,13 +47,25 @@ describe('getCompoundInteractions — offset input', () => {
       getCompoundInteractions.input.parse({ cid: 2244 }),
       createMockContext(),
     );
-    expect(mockClient.getInteractions).toHaveBeenLastCalledWith(2244, ['drug-drug'], 10, 0);
+    expect(mockClient.getInteractions).toHaveBeenLastCalledWith(
+      2244,
+      ['drug-drug'],
+      10,
+      0,
+      expect.any(AbortSignal),
+    );
 
     await getCompoundInteractions.handler(
       getCompoundInteractions.input.parse({ cid: 2244, offset: 40 }),
       ctx,
     );
-    expect(mockClient.getInteractions).toHaveBeenLastCalledWith(2244, ['drug-drug'], 10, 40);
+    expect(mockClient.getInteractions).toHaveBeenLastCalledWith(
+      2244,
+      ['drug-drug'],
+      10,
+      40,
+      expect.any(AbortSignal),
+    );
     expect(getEnrichment(ctx).offset).toBe(40);
   });
 

@@ -347,7 +347,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     }
 
     // Batch property fetch
-    const propertyRows = await client.getProperties(input.cids, props);
+    const propertyRows = await client.getProperties(input.cids, props, ctx.signal);
     const propsMap = new Map(propertyRows.map((r) => [r.CID, r]));
 
     // PubChem returns HTTP 200 with `{CID: x}` and no other fields for nonexistent CIDs.
@@ -376,7 +376,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     let descMap: Map<number, Array<{ source?: string; text: string }>> | undefined;
     if (input.includeDescription) {
       const entries = await Promise.all(
-        viewCids.map(async (cid) => [cid, await client.getDescription(cid)] as const),
+        viewCids.map(async (cid) => [cid, await client.getDescription(cid, ctx.signal)] as const),
       );
       descMap = new Map(entries.filter((e) => e[1].length > 0));
     }
@@ -385,7 +385,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     let synMap: Map<number, string[]> | undefined;
     if (input.includeSynonyms) {
       const entries = await Promise.all(
-        foundCids.map(async (cid) => [cid, await client.getSynonyms(cid)] as const),
+        foundCids.map(async (cid) => [cid, await client.getSynonyms(cid, ctx.signal)] as const),
       );
       synMap = new Map(entries.filter((e): e is [number, string[]] => e[1].length > 0));
     }
@@ -394,7 +394,9 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     let classMap: Map<number, CompoundClassification> | undefined;
     if (input.includeClassification) {
       const entries = await Promise.all(
-        viewCids.map(async (cid) => [cid, await client.getClassification(cid)] as const),
+        viewCids.map(
+          async (cid) => [cid, await client.getClassification(cid, ctx.signal)] as const,
+        ),
       );
       classMap = new Map(
         entries.filter((e): e is [number, CompoundClassification] => e[1] !== null),

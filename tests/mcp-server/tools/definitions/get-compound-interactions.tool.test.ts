@@ -56,6 +56,7 @@ describe('getCompoundInteractions handler', () => {
       ['drug-drug', 'target'],
       10,
       0,
+      expect.any(AbortSignal),
     );
     const e = getEnrichment(ctx);
     expect(e.requestedKinds).toBe('drug-drug, target');
@@ -73,7 +74,13 @@ describe('getCompoundInteractions handler', () => {
     const input = getCompoundInteractions.input.parse({ cid: 2244 });
     await getCompoundInteractions.handler(input, ctx);
 
-    expect(mockClient.getInteractions).toHaveBeenCalledWith(2244, ['drug-drug'], 10, 0);
+    expect(mockClient.getInteractions).toHaveBeenCalledWith(
+      2244,
+      ['drug-drug'],
+      10,
+      0,
+      expect.any(AbortSignal),
+    );
   });
 
   it('notices when no interactions are found', async () => {

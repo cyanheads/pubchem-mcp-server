@@ -15,9 +15,9 @@ export const compoundSafetyResource = resource('pubchem://compound/{cid}/safety'
     cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
   }),
 
-  async handler(params) {
+  async handler(params, ctx) {
     const client = getPubChemClient();
-    const lookup = await client.getSafetyData(params.cid);
+    const lookup = await client.getSafetyData(params.cid, ctx.signal);
     // A resource returns raw JSON with no notice surface, so `status` is the only way a reader
     // can tell a mistyped CID from a compound that genuinely carries no GHS classification.
     if (lookup.status !== 'ok') {

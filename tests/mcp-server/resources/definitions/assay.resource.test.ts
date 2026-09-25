@@ -25,7 +25,11 @@ describe('assayResource', () => {
     const result = await assayResource.handler({ aid: 1000 }, createMockContext());
 
     expect(result).toEqual({ aid: 1000, summary: { AID: 1000, Name: 'Test assay' } });
-    expect(mockClient.getEntitySummary).toHaveBeenCalledWith('assay', 1000);
+    expect(mockClient.getEntitySummary).toHaveBeenCalledWith(
+      'assay',
+      1000,
+      expect.any(AbortSignal),
+    );
   });
 
   it('throws not-found when the assay does not exist', async () => {

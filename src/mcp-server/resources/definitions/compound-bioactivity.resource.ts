@@ -18,9 +18,9 @@ export const compoundBioactivityResource = resource('pubchem://compound/{cid}/bi
     cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
   }),
 
-  async handler(params) {
+  async handler(params, ctx) {
     const client = getPubChemClient();
-    const rows = await client.getAssaySummary(params.cid);
+    const rows = await client.getAssaySummary(params.cid, ctx.signal);
     const activeCount = rows.filter((r) => r.outcome === 'Active').length;
     return {
       cid: params.cid,

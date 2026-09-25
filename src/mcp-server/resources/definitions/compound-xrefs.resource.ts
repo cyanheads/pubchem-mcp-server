@@ -19,11 +19,11 @@ export const compoundXrefsResource = resource('pubchem://compound/{cid}/xrefs', 
     cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
   }),
 
-  async handler(params) {
+  async handler(params, ctx) {
     const client = getPubChemClient();
     const xrefs: Array<{ type: string; ids: (string | number)[]; totalAvailable: number }> = [];
     for (const type of RESOURCE_XREF_TYPES) {
-      const ids = await client.getXrefs(params.cid, type);
+      const ids = await client.getXrefs(params.cid, type, ctx.signal);
       if (ids.length > 0) {
         xrefs.push({ type, ids: ids.slice(0, MAX_PER_TYPE), totalAvailable: ids.length });
       }

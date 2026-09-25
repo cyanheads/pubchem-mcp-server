@@ -47,7 +47,7 @@ export const getCompoundImage = tool('pubchem_get_compound_image', {
 
   async handler(input, ctx) {
     const client = getPubChemClient();
-    const buffer = await client.getImage(input.cid, input.size);
+    const buffer = await client.getImage(input.cid, input.size, ctx.signal);
     const dim = input.size === 'small' ? 100 : 300;
 
     ctx.log.info('Image fetched', { cid: input.cid, size: input.size, bytes: buffer.byteLength });

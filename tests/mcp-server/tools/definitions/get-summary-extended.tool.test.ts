@@ -382,7 +382,11 @@ describe('getSummary — security', () => {
 
     expect(result.summaries[0]!.found).toBe(false);
     // Client called with raw identifier
-    expect(mockClient.getEntitySummary).toHaveBeenCalledWith('protein', injection);
+    expect(mockClient.getEntitySummary).toHaveBeenCalledWith(
+      'protein',
+      injection,
+      expect.any(AbortSignal),
+    );
   });
 
   it('frames an upstream description with markdown as inert data, keeps output raw (#27)', async () => {

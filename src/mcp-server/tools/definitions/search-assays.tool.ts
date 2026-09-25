@@ -117,7 +117,7 @@ export const searchAssays = tool('pubchem_search_assays', {
       );
     }
 
-    const allAids = await client.searchAssaysByTarget(input.targetType, targetQuery);
+    const allAids = await client.searchAssaysByTarget(input.targetType, targetQuery, ctx.signal);
 
     const totalFound = allAids.length;
     // Offset is applied client-side: PubChem's target-to-AID endpoint returns the whole AID
