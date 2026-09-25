@@ -58,7 +58,7 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
   },
   input: z.object({
     cids: z
-      .array(z.number().int().positive())
+      .array(z.number().int().min(1))
       .min(1)
       .max(25)
       .describe(

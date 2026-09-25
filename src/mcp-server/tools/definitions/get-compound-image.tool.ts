@@ -19,7 +19,7 @@ export const getCompoundImage = tool('pubchem_get_compound_image', {
     cid: z
       .number()
       .int()
-      .positive()
+      .min(1)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     size: z
       .enum(['small', 'large'])

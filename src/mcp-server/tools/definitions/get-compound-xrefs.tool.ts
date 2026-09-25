@@ -22,7 +22,7 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
     cid: z
       .number()
       .int()
-      .positive()
+      .min(1)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     xrefTypes: z
       .array(xrefTypeEnum)

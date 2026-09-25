@@ -12,7 +12,7 @@ export const compoundSafetyResource = resource('pubchem://compound/{cid}/safety'
     'GHS hazard classification for a PubChem compound by CID — signal word, pictograms, hazard (H) and precautionary (P) statements. Not every compound carries a deposited classification.',
   mimeType: 'application/json',
   params: z.object({
-    cid: z.coerce.number().int().positive().describe('PubChem Compound ID.'),
+    cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
   }),
 
   async handler(params) {

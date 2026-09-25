@@ -13,7 +13,7 @@ export const assayResource = resource('pubchem://assay/{aid}', {
     'Summary for a PubChem BioAssay by AID — name, description, source, protocol, and substance counts.',
   mimeType: 'application/json',
   params: z.object({
-    aid: z.coerce.number().int().positive().describe('PubChem Assay ID.'),
+    aid: z.coerce.number().int().min(1).describe('PubChem Assay ID.'),
   }),
 
   async handler(params) {

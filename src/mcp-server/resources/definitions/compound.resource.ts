@@ -14,7 +14,7 @@ export const compoundResource = resource('pubchem://compound/{cid}', {
     'Core physicochemical properties for a PubChem compound by CID. Use pubchem_get_compound_details to select properties or add descriptions, synonyms, drug-likeness, and classification.',
   mimeType: 'application/json',
   params: z.object({
-    cid: z.coerce.number().int().positive().describe('PubChem Compound ID.'),
+    cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
   }),
 
   async handler(params) {

@@ -130,7 +130,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
   },
   input: z.object({
     cids: z
-      .array(z.number().int().positive())
+      .array(z.number().int().min(1))
       .min(1)
       .max(100)
       .describe(

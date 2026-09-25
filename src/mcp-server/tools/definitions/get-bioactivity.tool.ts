@@ -21,7 +21,7 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     cid: z
       .number()
       .int()
-      .positive()
+      .min(1)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     outcomeFilter: z
       .enum(['active', 'inactive', 'all'])
@@ -32,7 +32,7 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     targetGeneId: z
       .number()
       .int()
-      .positive()
+      .min(1)
       .optional()
       .describe(
         'Filter to assays against this NCBI Gene ID. Obtain Gene IDs from pubchem_search_assays or the targetGeneId field of an unfiltered result here. Combine with outcomeFilter="active" to answer "is this compound active against target T?".',

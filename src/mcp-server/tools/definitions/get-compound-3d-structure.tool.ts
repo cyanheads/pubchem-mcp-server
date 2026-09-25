@@ -31,7 +31,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
     cid: z
       .number()
       .int()
-      .positive()
+      .min(1)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     format: z
       .enum(['sdf', 'json'])
@@ -48,7 +48,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
     maxAtoms: z
       .number()
       .int()
-      .positive()
+      .min(1)
       .optional()
       .describe(
         'Cap the atoms returned in the format="json" preview. atomCount always reports the full total; omitted rows are disclosed via the truncated/shownAtoms enrichment. Defaults to the first 200 atoms.',
@@ -56,7 +56,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
     maxBonds: z
       .number()
       .int()
-      .positive()
+      .min(1)
       .optional()
       .describe(
         'Cap the bonds returned in the format="json" preview. bondCount always reports the full total; omitted rows are disclosed via the truncated/shownBonds enrichment. Defaults to the first 200 bonds.',

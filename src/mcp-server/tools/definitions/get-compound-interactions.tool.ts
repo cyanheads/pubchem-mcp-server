@@ -20,7 +20,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
     cid: z
       .number()
       .int()
-      .positive()
+      .min(1)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     kinds: z
       .array(z.enum(['drug-drug', 'drug-food', 'target']))
