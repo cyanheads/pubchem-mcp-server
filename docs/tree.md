@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-09-25 03:55:17
+Generated on: 2026-09-25 04:50:16
 
 ```text
 pubchem-mcp-server/
@@ -175,7 +175,8 @@ pubchem-mcp-server/
 │   │   │       ├── assay.resource.test.ts
 │   │   │       ├── compound-image.resource.test.ts
 │   │   │       ├── compound-safety.resource.test.ts
-│   │   │       └── compound.resource.test.ts
+│   │   │       ├── compound.resource.test.ts
+│   │   │       └── resource-cancellation.test.ts
 │   │   └── tools/
 │   │       └── definitions/
 │   │           ├── get-bioactivity-extended.tool.test.ts
@@ -197,11 +198,14 @@ pubchem-mcp-server/
 │   │           ├── search-assays.tool.test.ts
 │   │           ├── search-compounds-contract.tool.test.ts
 │   │           ├── search-compounds-extended.tool.test.ts
+│   │           ├── search-compounds-identifier-batch.tool.test.ts
 │   │           ├── search-compounds.tool.test.ts
+│   │           ├── tool-cancellation.test.ts
 │   │           ├── tool-input-schemas.test.ts
 │   │           └── untrusted-text.test.ts
 │   └── services/
 │       └── pubchem/
+│           ├── pubchem-client-cancellation.test.ts
 │           ├── pubchem-client-extended.test.ts
 │           ├── pubchem-client-http-status.test.ts
 │           ├── pubchem-client-interactions.test.ts

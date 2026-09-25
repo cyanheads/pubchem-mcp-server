@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.6.5](changelog/0.6.x/0.6.5.md) — 2026-09-24
+
+pubchem_search_compounds turns PubChem's rejected queries and unreadable identifiers into typed errors, keeps the rest of an identifier batch, and drops CID 0 matches; a cancelled tool call or resource read now stops its PubChem requests.
+
 ## [0.6.4](changelog/0.6.x/0.6.4.md) — 2026-09-24
 
 pubchem_search_compounds names each mode's required fields and rejects a blank formula or query before calling PubChem, failed PubChem requests log their URL server-side, and integer inputs advertise minimum: 1 instead of exclusiveMinimum.
