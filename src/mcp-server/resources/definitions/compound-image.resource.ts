@@ -4,6 +4,7 @@
  */
 
 import { resource, z } from '@cyanheads/mcp-ts-core';
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 
 export const compoundImageResource = resource('pubchem://compound/{cid}/image', {
@@ -17,6 +18,17 @@ export const compoundImageResource = resource('pubchem://compound/{cid}/image', 
   output: z.object({
     base64: z.string().describe('Base64-encoded PNG image data.'),
   }),
+  errors: [
+    {
+      reason: 'cid_not_found',
+      code: JsonRpcErrorCode.NotFound,
+      // Raised by PubChemClient.getImage, which owns the 404 → typed not-found mapping
+      // because the image endpoint returns binary and cannot report absence in the body.
+      thrownBy: 'service',
+      when: 'PubChem returned 404 for the requested CID',
+      recovery: 'Verify the CID with pubchem_search_compounds before retrying.',
+    },
+  ],
 
   async handler(params, ctx) {
     const client = getPubChemClient();

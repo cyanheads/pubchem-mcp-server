@@ -33,37 +33,54 @@ afterEach(() => {
 
 const cancelled = { code: JsonRpcErrorCode.RequestCancelled };
 
-type Ctx = ReturnType<typeof createMockContext>;
-
 describe('resource handlers hand ctx.signal to PubChem (#54)', () => {
   const reads = [
-    ['pubchem://compound/{cid}', (ctx: Ctx) => compoundResource.handler({ cid: 2244 }, ctx)],
+    [
+      'pubchem://compound/{cid}',
+      (signal: AbortSignal) =>
+        compoundResource.handler(
+          { cid: 2244 },
+          createMockContext({ signal, errors: compoundResource.errors }),
+        ),
+    ],
     [
       'pubchem://compound/{cid}/safety',
-      (ctx: Ctx) => compoundSafetyResource.handler({ cid: 2244 }, ctx),
+      (signal: AbortSignal) =>
+        compoundSafetyResource.handler({ cid: 2244 }, createMockContext({ signal })),
     ],
     [
       'pubchem://compound/{cid}/image',
-      (ctx: Ctx) => compoundImageResource.handler({ cid: 2244 }, ctx),
+      (signal: AbortSignal) =>
+        compoundImageResource.handler(
+          { cid: 2244 },
+          createMockContext({ signal, errors: compoundImageResource.errors }),
+        ),
     ],
     [
       'pubchem://compound/{cid}/xrefs',
-      (ctx: Ctx) => compoundXrefsResource.handler({ cid: 2244 }, ctx),
+      (signal: AbortSignal) =>
+        compoundXrefsResource.handler({ cid: 2244 }, createMockContext({ signal })),
     ],
     [
       'pubchem://compound/{cid}/bioactivity',
-      (ctx: Ctx) => compoundBioactivityResource.handler({ cid: 2244 }, ctx),
+      (signal: AbortSignal) =>
+        compoundBioactivityResource.handler({ cid: 2244 }, createMockContext({ signal })),
     ],
-    ['pubchem://assay/{aid}', (ctx: Ctx) => assayResource.handler({ aid: 1 }, ctx)],
+    [
+      'pubchem://assay/{aid}',
+      (signal: AbortSignal) =>
+        assayResource.handler(
+          { aid: 1 },
+          createMockContext({ signal, errors: assayResource.errors }),
+        ),
+    ],
   ] as const;
 
   it.each(reads)('%s makes no request once the read is cancelled', async (_uri, read) => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(read(createMockContext({ signal: controller.signal }))).rejects.toMatchObject(
-      cancelled,
-    );
+    await expect(read(controller.signal)).rejects.toMatchObject(cancelled);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

@@ -24,7 +24,10 @@ describe('compoundImageResource', () => {
     const bytes = new Uint8Array([1, 2, 3, 4]).buffer;
     mockClient.getImage.mockResolvedValueOnce(bytes);
 
-    const result = await compoundImageResource.handler({ cid: 2244 }, createMockContext());
+    const result = await compoundImageResource.handler(
+      { cid: 2244 },
+      createMockContext({ errors: compoundImageResource.errors }),
+    );
     expect(result.base64).toBe(Buffer.from(bytes).toString('base64'));
 
     const contents = compoundImageResource.format!(result, {

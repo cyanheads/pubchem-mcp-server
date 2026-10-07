@@ -4,7 +4,7 @@
  */
 
 import { resource, z } from '@cyanheads/mcp-ts-core';
-import { notFound } from '@cyanheads/mcp-ts-core/errors';
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { DEFAULT_PROPERTIES } from '@/services/pubchem/types.js';
 
@@ -16,6 +16,14 @@ export const compoundResource = resource('pubchem://compound/{cid}', {
   params: z.object({
     cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
   }),
+  errors: [
+    {
+      reason: 'cid_not_found',
+      code: JsonRpcErrorCode.NotFound,
+      when: 'PubChem has no compound record for the requested CID',
+      recovery: 'Verify the CID with pubchem_search_compounds before retrying.',
+    },
+  ],
 
   async handler(params, ctx) {
     const client = getPubChemClient();
@@ -23,7 +31,9 @@ export const compoundResource = resource('pubchem://compound/{cid}', {
     const row = rows[0];
     // PubChem returns HTTP 200 with a {CID}-only row for a nonexistent CID — treat as not-found.
     if (!row || !Object.keys(row).some((k) => k !== 'CID')) {
-      throw notFound(`No PubChem compound found for CID ${params.cid}.`, { cid: params.cid });
+      throw ctx.fail('cid_not_found', `No PubChem compound found for CID ${params.cid}.`, {
+        cid: params.cid,
+      });
     }
     const { CID: _CID, ...properties } = row;
     return { cid: params.cid, properties };
