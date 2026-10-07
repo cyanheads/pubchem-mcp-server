@@ -1071,19 +1071,14 @@ describe('PubChemClient.getImage', () => {
     expect(new Uint8Array(buffer)).toEqual(png);
   });
 
-  it('throws cid_not_found with a recovery hint on 404', async () => {
+  it('throws cid_not_found on 404, leaving the recovery hint to the caller contract', async () => {
     fetchMock.mockResolvedValueOnce(textResponse('Not Found', 404));
 
     const client = new PubChemClient();
+    const err = (await client.getImage(999999999).catch((e) => e)) as McpError;
 
-    await expect(client.getImage(999999999)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.NotFound,
-      data: {
-        cid: 999999999,
-        reason: 'cid_not_found',
-        recovery: { hint: expect.stringContaining('pubchem_search_compounds') },
-      },
-    });
+    expect(err.code).toBe(JsonRpcErrorCode.NotFound);
+    expect(err.data).toEqual({ cid: 999999999, reason: 'cid_not_found' });
   });
 
   it('passes non-404 errors through without the cid_not_found wrapper', async () => {

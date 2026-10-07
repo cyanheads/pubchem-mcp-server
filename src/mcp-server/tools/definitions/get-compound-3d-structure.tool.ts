@@ -165,9 +165,9 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       // Raised by PubChemClient.getSdf3d, which distinguishes "no 3D record" from a
       // transport failure while reading the SDF body.
       thrownBy: 'service',
-      when: 'PubChem has no computed 3D conformer for the requested CID',
+      when: "PubChem returned 404 for the CID's 3D record, its answer both when the compound has no computed 3D conformer (common for very large molecules, mixtures, and undefined salts) and when no compound has the CID",
       recovery:
-        'Use pubchem_get_compound_image for the 2D structure, or verify the CID with pubchem_search_compounds.',
+        'Use pubchem_get_compound_image for the 2D structure; if the CID itself may be wrong, verify it with pubchem_search_compounds.',
     },
   ],
 

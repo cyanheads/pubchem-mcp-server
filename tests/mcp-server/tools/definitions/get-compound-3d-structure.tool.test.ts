@@ -3,7 +3,8 @@
  * @module mcp-server/tools/definitions/get-compound-3d-structure.test
  */
 
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
+import { JsonRpcErrorCode, notFound } from '@cyanheads/mcp-ts-core/errors';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompound3dStructure } from '@/mcp-server/tools/definitions/get-compound-3d-structure.tool.js';
 
@@ -88,6 +89,23 @@ describe('getCompound3dStructure handler', () => {
     const input = getCompound3dStructure.input.parse({ cid: 1 });
 
     await expect(getCompound3dStructure.handler(input, ctx)).rejects.toThrow('No 3D conformer');
+  });
+
+  it('fills the declared no_3d_structure recovery hint onto the error envelope', async () => {
+    mockClient.getSdf3d.mockRejectedValueOnce(
+      notFound('No 3D conformer available for CID 1.', { cid: 1, reason: 'no_3d_structure' }),
+    );
+
+    const result = await runToolContract(getCompound3dStructure, { cid: 1 });
+
+    expect(result.isError).toBe(true);
+    const { error } = result.structuredContent as {
+      error: { code: number; data?: { reason?: string; recovery?: { hint?: string } } };
+    };
+    expect(error.code).toBe(JsonRpcErrorCode.NotFound);
+    expect(error.data?.reason).toBe('no_3d_structure');
+    expect(error.data?.recovery?.hint).toContain('pubchem_get_compound_image');
+    expect(error.data?.recovery?.hint).toContain('pubchem_search_compounds');
   });
 });
 

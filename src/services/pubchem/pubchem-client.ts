@@ -895,12 +895,12 @@ export class PubChemClient {
       return await this.fetchBinary(`${this.pugBase}/compound/cid/${cid}/PNG${sizeParam}`, signal);
     } catch (error) {
       // The image endpoint returns binary, so absence can't be a structured success like
-      // the other per-CID tools — surface a typed not-found with a recovery hint instead.
+      // the other per-CID tools — surface a typed not-found instead. The recovery hint comes
+      // from the `cid_not_found` entry each calling definition declares.
       if (isNotFound(error)) {
         throw notFound(`No PubChem compound found for CID ${cid}.`, {
           cid,
           reason: 'cid_not_found',
-          recovery: { hint: 'Verify the CID with pubchem_search_compounds before retrying.' },
         });
       }
       throw error;
@@ -1562,8 +1562,10 @@ export class PubChemClient {
 
   // ── 3D Structure ────────────────────────────────────────────────
 
-  /** Fetch the default 3D conformer as raw V2000 SDF text. Throws a typed not-found when
-   * PubChem has no computed 3D coordinates (large molecules, mixtures, undefined salts). */
+  /** Fetch the default 3D conformer as raw V2000 SDF text. Throws a typed not-found on a 404,
+   * which PubChem returns with the same fault both when the compound has no computed 3D
+   * coordinates (large molecules, mixtures, undefined salts) and when the CID has no record.
+   * The recovery hint comes from the `no_3d_structure` entry the calling tool declares. */
   async getSdf3d(cid: number, signal?: AbortSignal): Promise<string> {
     try {
       return await this.fetchText(
@@ -1575,9 +1577,6 @@ export class PubChemClient {
         throw notFound(`No 3D conformer available for CID ${cid}.`, {
           cid,
           reason: 'no_3d_structure',
-          recovery: {
-            hint: 'PubChem has no computed 3D coordinates for this compound (common for very large molecules, mixtures, and undefined salts). Use pubchem_get_compound_image for the 2D structure.',
-          },
         });
       }
       throw error;

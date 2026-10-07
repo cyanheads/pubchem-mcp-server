@@ -91,7 +91,7 @@ export const searchAssays = tool('pubchem_search_assays', {
     {
       reason: 'invalid_geneid_query',
       code: JsonRpcErrorCode.ValidationError,
-      when: 'targetType is "geneid" but targetQuery is not a positive integer',
+      when: 'targetType is "geneid" but targetQuery contains characters other than digits',
       recovery:
         'Pass a numeric NCBI Gene ID (e.g. "1956"), or switch targetType to genesymbol/proteinname for text queries.',
     },
@@ -103,9 +103,7 @@ export const searchAssays = tool('pubchem_search_assays', {
     // Reject inputs that cannot represent a useful target before the upstream call (#26).
     const targetQuery = input.targetQuery.trim();
     if (targetQuery.length === 0) {
-      throw ctx.fail('blank_target_query', undefined, {
-        ...ctx.recoveryFor('blank_target_query'),
-      });
+      throw ctx.fail('blank_target_query');
     }
     // geneid targets are numeric NCBI Gene IDs — a non-numeric value otherwise hits a raw
     // PubChem 400 (searchAssaysByTarget only special-cases 404).
@@ -113,7 +111,6 @@ export const searchAssays = tool('pubchem_search_assays', {
       throw ctx.fail(
         'invalid_geneid_query',
         `targetType is "geneid" but targetQuery "${input.targetQuery}" is not a positive integer Gene ID.`,
-        { ...ctx.recoveryFor('invalid_geneid_query') },
       );
     }
 

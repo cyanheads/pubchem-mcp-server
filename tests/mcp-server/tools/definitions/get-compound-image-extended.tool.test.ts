@@ -4,7 +4,7 @@
  */
 
 import { JsonRpcErrorCode, notFound } from '@cyanheads/mcp-ts-core/errors';
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundImage } from '@/mcp-server/tools/definitions/get-compound-image.tool.js';
 
@@ -84,19 +84,18 @@ describe('getCompoundImage handler — output', () => {
       notFound('No PubChem compound found for CID 999999999.', {
         cid: 999999999,
         reason: 'cid_not_found',
-        recovery: { hint: 'Verify the CID with pubchem_search_compounds before retrying.' },
       }),
     );
-    const ctx = createMockContext({ errors: getCompoundImage.errors });
-    const input = getCompoundImage.input.parse({ cid: 999999999 });
 
-    await expect(getCompoundImage.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.NotFound,
-      data: {
-        reason: 'cid_not_found',
-        recovery: { hint: expect.stringContaining('pubchem_search_compounds') },
-      },
-    });
+    const result = await runToolContract(getCompoundImage, { cid: 999999999 });
+
+    expect(result.isError).toBe(true);
+    const { error } = result.structuredContent as {
+      error: { code: number; data?: { reason?: string; recovery?: { hint?: string } } };
+    };
+    expect(error.code).toBe(JsonRpcErrorCode.NotFound);
+    expect(error.data?.reason).toBe('cid_not_found');
+    expect(error.data?.recovery?.hint).toContain('pubchem_search_compounds');
   });
 
   it('passes correct size parameter to client', async () => {

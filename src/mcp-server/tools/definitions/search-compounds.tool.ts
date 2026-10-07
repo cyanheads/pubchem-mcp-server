@@ -267,9 +267,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       case 'identifier': {
         const { identifierType, identifiers } = input;
         if (!identifierType || !identifiers) {
-          throw ctx.fail('missing_identifier_args', undefined, {
-            ...ctx.recoveryFor('missing_identifier_args'),
-          });
+          throw ctx.fail('missing_identifier_args');
         }
         const lookup = (id: string): Promise<number[]> => {
           switch (identifierType) {
@@ -329,7 +327,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
           throw ctx.fail(
             'identifier_rejected',
             `PubChem could not interpret any of the ${identifiers.length} identifier(s) as ${label}: ${rejectedIdentifiers.join(', ')}.`,
-            { fault: rejectionFault, ...ctx.recoveryFor('identifier_rejected') },
+            { fault: rejectionFault },
           );
         }
 
@@ -356,9 +354,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         // Blank means missing: PubChem answers a whitespace-only formula with unrelated
         // compounds. A padded formula passes through — PubChem trims it.
         if (!input.formula?.trim()) {
-          throw ctx.fail('missing_formula', undefined, {
-            ...ctx.recoveryFor('missing_formula'),
-          });
+          throw ctx.fail('missing_formula');
         }
         boundedSearch = true;
         allCids = await client.searchByFormula(
@@ -374,9 +370,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       case 'similarity': {
         // A whitespace-only SMILES query otherwise surfaces as an upstream HTTP 500.
         if (!input.query?.trim() || !input.queryType) {
-          throw ctx.fail('missing_structure_args', undefined, {
-            ...ctx.recoveryFor('missing_structure_args'),
-          });
+          throw ctx.fail('missing_structure_args');
         }
         // A "cid" query must be a positive integer string — catch it here instead of
         // forwarding a malformed value into a raw PubChem 400 (#26).
@@ -384,7 +378,6 @@ export const searchCompounds = tool('pubchem_search_compounds', {
           throw ctx.fail(
             'invalid_cid_query',
             `queryType is "cid" but query "${input.query}" is not a positive integer CID.`,
-            { ...ctx.recoveryFor('invalid_cid_query') },
           );
         }
         boundedSearch = true;
