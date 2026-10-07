@@ -6,7 +6,7 @@
     "url": "https://github.com/cyanheads/pubchem-mcp-server",
     "source": "github"
   },
-  "version": "0.6.5",
+  "version": "0.6.6",
   "remotes": [
     {
       "type": "streamable-http",
@@ -19,7 +19,7 @@
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@cyanheads/pubchem-mcp-server",
       "runtimeHint": "npx",
-      "version": "0.6.5",
+      "version": "0.6.6",
       "environmentVariables": [
         {
           "name": "MCP_LOG_LEVEL",
@@ -38,7 +38,7 @@
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@cyanheads/pubchem-mcp-server",
       "runtimeHint": "npx",
-      "version": "0.6.5",
+      "version": "0.6.6",
       "environmentVariables": [
         {
           "name": "MCP_TRANSPORT_TYPE",

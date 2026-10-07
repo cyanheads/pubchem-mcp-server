@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.6.6](changelog/0.6.x/0.6.6.md) — 2026-10-07
+
+Moves to @cyanheads/mcp-ts-core 0.13.13: error results carry a requestId and declared recovery hints, the compound and assay resources type their not-found errors, and the registry's HTTP entry starts the HTTP transport.
+
 ## [0.6.5](changelog/0.6.x/0.6.5.md) — 2026-09-24
 
 pubchem_search_compounds turns PubChem's rejected queries and unreadable identifiers into typed errors, keeps the rest of an identifier batch, and drops CID 0 matches; a cancelled tool call or resource read now stops its PubChem requests.
