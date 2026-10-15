@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-10-07 11:27:15
+Generated on: 2026-10-15 02:06:03
 
 ```text
 pubchem-mcp-server/
@@ -30,6 +30,7 @@ pubchem-mcp-server/
 │   ├── 0.4.x/
 │   ├── 0.5.x/
 │   ├── 0.6.x/
+│   ├── 0.7.x/
 │   └── template.md
 ├── claude-plans/
 ├── docs/
@@ -160,7 +161,9 @@ pubchem-mcp-server/
 │   │           ├── get-compound-safety.tool.ts
 │   │           ├── get-compound-xrefs.tool.ts
 │   │           ├── get-summary.tool.ts
+│   │           ├── identifier-case.ts
 │   │           ├── index.ts
+│   │           ├── input-caps.ts
 │   │           ├── search-assays.tool.ts
 │   │           ├── search-compounds.tool.ts
 │   │           └── untrusted-text.ts
@@ -171,12 +174,27 @@ pubchem-mcp-server/
 │   │       └── types.ts
 │   └── index.ts
 ├── tests/
+│   ├── fixtures/
+│   │   ├── assay-summaries.json
+│   │   ├── assaysummary-2244-cox.json
+│   │   ├── ghs-135398658.json
+│   │   ├── ghs-2244.json
+│   │   ├── ghs-241.json
+│   │   ├── ghs-5743.json
+│   │   ├── ghs-5793.json
+│   │   ├── ghs-702.json
+│   │   ├── ghs-8929.json
+│   │   ├── ghs-toplevel-baseline.json
+│   │   ├── pug-rest-xrefs-2244.json
+│   │   └── pug-view-atc.json
 │   ├── mcp-server/
 │   │   ├── resources/
 │   │   │   └── definitions/
 │   │   │       ├── assay.resource.test.ts
+│   │   │       ├── compound-bioactivity.resource.test.ts
 │   │   │       ├── compound-image.resource.test.ts
 │   │   │       ├── compound-safety.resource.test.ts
+│   │   │       ├── compound-xrefs.resource.test.ts
 │   │   │       ├── compound.resource.test.ts
 │   │   │       └── resource-cancellation.test.ts
 │   │   └── tools/
@@ -194,8 +212,11 @@ pubchem-mcp-server/
 │   │           ├── get-compound-safety.tool.test.ts
 │   │           ├── get-compound-xrefs-extended.tool.test.ts
 │   │           ├── get-compound-xrefs.tool.test.ts
+│   │           ├── get-summary-contract.tool.test.ts
 │   │           ├── get-summary-extended.tool.test.ts
 │   │           ├── get-summary.tool.test.ts
+│   │           ├── identifier-case.test.ts
+│   │           ├── input-caps.test.ts
 │   │           ├── search-assays-extended.tool.test.ts
 │   │           ├── search-assays.tool.test.ts
 │   │           ├── search-compounds-contract.tool.test.ts
