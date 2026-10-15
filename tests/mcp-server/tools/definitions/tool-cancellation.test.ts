@@ -45,6 +45,12 @@ const hangUntilAborted: typeof fetch = (_input, init) =>
     else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
   });
 
+/** True when a fetch targets this PubChem path. */
+function isPubChemPath(input: Parameters<typeof fetch>[0], pathname: string): boolean {
+  const url = new URL(String(input));
+  return url.hostname === 'pubchem.ncbi.nlm.nih.gov' && url.pathname === pathname;
+}
+
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -104,7 +110,7 @@ describe('tool handlers hand ctx.signal to PubChem (#54)', () => {
       'pubchem_search_assays',
       () => runWith(searchAssays, { targetType: 'genesymbol', targetQuery: 'EGFR' }),
     ],
-    ['pubchem_get_summary', () => runWith(getSummary, { entityType: 'assay', identifiers: [1] })],
+    ['pubchem_get_summary', () => runWith(getSummary, { entityType: 'assay', identifiers: ['1'] })],
   ] as const;
 
   let signal: AbortSignal;
@@ -129,7 +135,7 @@ describe('tool handlers hand ctx.signal to PubChem (#54)', () => {
 
   it('fails an identifier batch cancelled mid-batch instead of listing the rest as unresolved', async () => {
     fetchMock.mockImplementation((input, init) =>
-      String(input).includes('/compound/name/aspirin/')
+      isPubChemPath(input, '/rest/pug/compound/name/aspirin/cids/JSON')
         ? Promise.resolve(jsonResponse({ IdentifierList: { CID: [2244] } }))
         : hangUntilAborted(input, init),
     );
@@ -186,6 +192,57 @@ describe('tool handlers hand ctx.signal to PubChem (#54)', () => {
 
     expectCancelled(call.result);
     await vi.runAllTimersAsync();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('one time budget per tool call', () => {
+  /** Answers with `body` `ms` after the request is sent, unless its signal aborts first. */
+  const answerAfter = (ms: number, body: unknown, init?: RequestInit) =>
+    new Promise<Response>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(jsonResponse(body)), ms);
+      init?.signal?.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer);
+          reject(init.signal?.reason);
+        },
+        { once: true },
+      );
+    });
+
+  it('ends an assay search whose chained requests outrun 50 s as Timeout, before 60 s', async () => {
+    // ListKey, then the page, 20 s each; the property hydration that follows never answers.
+    fetchMock.mockImplementation((input, init) => {
+      if (isPubChemPath(input, '/rest/pug/assay/aid/1000/cids/JSON')) {
+        return answerAfter(20_000, { IdentifierList: { ListKey: 'lk-budget', Size: 3 } }, init);
+      }
+      if (isPubChemPath(input, '/rest/pug/compound/listkey/lk-budget/cids/JSON')) {
+        return answerAfter(20_000, { IdentifierList: { CID: [11, 12, 13] } }, init);
+      }
+      return hangUntilAborted(input, init);
+    });
+    const signal = new AbortController().signal;
+
+    const call = track(
+      runToolContract(
+        searchCompounds,
+        { searchType: 'assay', aid: 1000, properties: ['MolecularWeight'] },
+        { context: { signal } },
+      ),
+    );
+    await vi.advanceTimersByTimeAsync(49_990);
+    expect(call.result).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(20);
+
+    const { result } = call;
+    if (!result) throw new Error('expected the tool call to have settled at the budget');
+    expect(result.isError).toBe(true);
+    const { error } = result.structuredContent as { error: { code: number; message: string } };
+    expect(error).toMatchObject({
+      code: JsonRpcErrorCode.Timeout,
+      message: 'PubChem did not respond in time; the request timed out. Retry shortly.',
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });

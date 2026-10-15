@@ -6,11 +6,14 @@
 import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBioactivity } from '@/mcp-server/tools/definitions/get-bioactivity.tool.js';
-import type { BioactivityRow } from '@/services/pubchem/types.js';
+import type { AssaySummary, BioactivityRow } from '@/services/pubchem/types.js';
 
 const mockClient = {
   getAssaySummary: vi.fn(),
 };
+
+/** An assay summary whose table pairs no identifiers. */
+const summary = (rows: BioactivityRow[]): AssaySummary => ({ rows, targetGroups: [] });
 
 vi.mock('@/services/pubchem/pubchem-client.js', () => ({
   getPubChemClient: () => mockClient,
@@ -45,7 +48,9 @@ const inconclusiveRow: BioactivityRow = {
 
 describe('getBioactivity handler', () => {
   it('returns all assay results by default', async () => {
-    mockClient.getAssaySummary.mockResolvedValueOnce([activeRow, inactiveRow, inconclusiveRow]);
+    mockClient.getAssaySummary.mockResolvedValueOnce(
+      summary([activeRow, inactiveRow, inconclusiveRow]),
+    );
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 2244 });
     const result = await getBioactivity.handler(input, ctx);
@@ -58,7 +63,9 @@ describe('getBioactivity handler', () => {
   });
 
   it('filters to active only', async () => {
-    mockClient.getAssaySummary.mockResolvedValueOnce([activeRow, inactiveRow, inconclusiveRow]);
+    mockClient.getAssaySummary.mockResolvedValueOnce(
+      summary([activeRow, inactiveRow, inconclusiveRow]),
+    );
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'active' });
     const result = await getBioactivity.handler(input, ctx);
@@ -69,7 +76,7 @@ describe('getBioactivity handler', () => {
   });
 
   it('filters to inactive only', async () => {
-    mockClient.getAssaySummary.mockResolvedValueOnce([activeRow, inactiveRow]);
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary([activeRow, inactiveRow]));
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'inactive' });
     const result = await getBioactivity.handler(input, ctx);
@@ -83,7 +90,7 @@ describe('getBioactivity handler', () => {
       ...activeRow,
       aid: i + 1,
     }));
-    mockClient.getAssaySummary.mockResolvedValueOnce(manyRows);
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary(manyRows));
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 2244, maxResults: 5 });
     const result = await getBioactivity.handler(input, ctx);
@@ -93,7 +100,7 @@ describe('getBioactivity handler', () => {
   });
 
   it('handles compound with no assay data', async () => {
-    mockClient.getAssaySummary.mockResolvedValueOnce([]);
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary([]));
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 999 });
     const result = await getBioactivity.handler(input, ctx);
@@ -108,7 +115,7 @@ describe('getBioactivity handler', () => {
 describe('getBioactivity handler — enrichment', () => {
   it('echoes outcomeFilter and the filtered/returned cap boundary', async () => {
     const manyRows = Array.from({ length: 30 }, (_, i) => ({ ...activeRow, aid: i + 1 }));
-    mockClient.getAssaySummary.mockResolvedValueOnce(manyRows);
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary(manyRows));
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({
       cid: 2244,
@@ -129,7 +136,7 @@ describe('getBioactivity handler — enrichment', () => {
   });
 
   it('adds a notice when the compound has no bioactivity data', async () => {
-    mockClient.getAssaySummary.mockResolvedValueOnce([]);
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary([]));
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 999 });
     await getBioactivity.handler(input, ctx);
@@ -142,7 +149,7 @@ describe('getBioactivity handler — enrichment', () => {
   });
 
   it('adds a notice when the filter excludes every assay', async () => {
-    mockClient.getAssaySummary.mockResolvedValueOnce([inactiveRow, inconclusiveRow]);
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary([inactiveRow, inconclusiveRow]));
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'active' });
     await getBioactivity.handler(input, ctx);
@@ -158,7 +165,7 @@ describe('getBioactivity handler — offset pagination (#33)', () => {
   const page = (n: number) => Array.from({ length: n }, (_, i) => ({ ...activeRow, aid: i + 1 }));
 
   it('returns the slice starting at offset', async () => {
-    mockClient.getAssaySummary.mockResolvedValueOnce(page(30));
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary(page(30)));
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 2244, offset: 10, maxResults: 5 });
     const result = await getBioactivity.handler(input, ctx);
@@ -175,7 +182,7 @@ describe('getBioactivity handler — offset pagination (#33)', () => {
   it('walks the whole filtered set without repeating or skipping a row', async () => {
     const seen: number[] = [];
     for (let offset = 0; offset < 30; offset += 12) {
-      mockClient.getAssaySummary.mockResolvedValueOnce(page(30));
+      mockClient.getAssaySummary.mockResolvedValueOnce(summary(page(30)));
       const ctx = createMockContext();
       const input = getBioactivity.input.parse({ cid: 2244, offset, maxResults: 12 });
       const result = await getBioactivity.handler(input, ctx);
@@ -187,7 +194,7 @@ describe('getBioactivity handler — offset pagination (#33)', () => {
 
   it('applies offset after the outcome filter, not before', async () => {
     const rows = [inactiveRow, activeRow, inactiveRow, { ...activeRow, aid: 1001 }];
-    mockClient.getAssaySummary.mockResolvedValueOnce(rows);
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary(rows));
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'active', offset: 1 });
     const result = await getBioactivity.handler(input, ctx);
@@ -197,7 +204,7 @@ describe('getBioactivity handler — offset pagination (#33)', () => {
   });
 
   it('marks the last page as complete rather than truncated', async () => {
-    mockClient.getAssaySummary.mockResolvedValueOnce(page(30));
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary(page(30)));
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 2244, offset: 25, maxResults: 10 });
     const result = await getBioactivity.handler(input, ctx);
@@ -210,7 +217,7 @@ describe('getBioactivity handler — offset pagination (#33)', () => {
   });
 
   it('explains an offset that runs past the filtered set', async () => {
-    mockClient.getAssaySummary.mockResolvedValueOnce(page(3));
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary(page(3)));
     const ctx = createMockContext();
     const input = getBioactivity.input.parse({ cid: 2244, offset: 50 });
     const result = await getBioactivity.handler(input, ctx);
@@ -245,6 +252,34 @@ describe('getBioactivity format', () => {
     expect(text).toContain('COX-2 inhibition');
     expect(text).toContain('GeneID:5743');
     expect(text).toContain('IC50: 0.35 uM');
+  });
+
+  it('renders each other target under its assay with its own outcome and values (#73)', () => {
+    const blocks = getBioactivity.format!({
+      cid: 2244,
+      totalAssays: 1,
+      activeCount: 1,
+      inactiveCount: 0,
+      results: [
+        {
+          ...activeRow,
+          otherTargets: [
+            {
+              accession: 'P05979',
+              geneId: 443551,
+              outcome: 'Inactive',
+              activityValues: [{ name: 'IC50', value: 100, unit: 'uM' }],
+            },
+            { outcome: 'Inconclusive', activityValues: [] },
+          ],
+        },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+
+    expect(text).toContain(
+      '  IC50: 0.35 uM\n  Other target: GeneID:443551 — P05979 (Inactive)\n    IC50: 100 uM\n  Other target: not identified (Inconclusive)',
+    );
   });
 
   it('formats empty results', () => {

@@ -1,13 +1,30 @@
 /**
  * @fileoverview Search PubChem for chemical compounds by name, SMILES, InChIKey,
- * formula, substructure, superstructure, or 2D similarity.
+ * formula, substructure, superstructure, or 2D similarity, or list a bioassay's compounds.
  * @module mcp-server/tools/definitions/search-compounds
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
-import { COMPOUND_PROPERTIES } from '@/services/pubchem/types.js';
+import { COMPOUND_PROPERTIES, MAX_CID, MAX_INT32 } from '@/services/pubchem/types.js';
+import { normalizeInchiKey } from './identifier-case.js';
+import {
+  type CappedInput,
+  capPageSize,
+  cappedInputsField,
+  INPUT_CEILING,
+  renderCappedInputs,
+  renderUnprocessed,
+  splitBatch,
+} from './input-caps.js';
+import { inlineData } from './untrusted-text.js';
+
+/** Identifiers looked up per call; identifiers past this are returned in unprocessed. */
+const IDENTIFIERS_CAP = 25;
+
+/** CIDs served per page; a larger maxResults is clamped to this. */
+const MAX_RESULTS_CAP = 200;
 
 const searchTypeEnum = z.enum([
   'identifier',
@@ -15,6 +32,7 @@ const searchTypeEnum = z.enum([
   'substructure',
   'superstructure',
   'similarity',
+  'assay',
 ]);
 
 const identifierTypeEnum = z.enum(['name', 'smiles', 'inchikey']);
@@ -45,7 +63,7 @@ const IDENTIFIER_FORMS: Record<
 export const searchCompounds = tool('pubchem_search_compounds', {
   title: 'Search Compounds',
   description:
-    'Search PubChem for chemical compounds by identifier (name, SMILES, or InChIKey, batched up to 25), molecular formula in Hill notation, substructure or superstructure containment, or 2D Tanimoto similarity. Returns a page of CIDs — reach matches past maxResults with offset. Optionally hydrate results with properties to avoid a follow-up pubchem_get_compound_details call.',
+    'Search PubChem for chemical compounds by identifier (name, SMILES, or InChIKey, up to 25 per call), molecular formula in Hill notation, substructure or superstructure containment, 2D Tanimoto similarity, or the compounds a bioassay (AID) found active or tested. Returns a page of CIDs — reach matches past maxResults with offset. Optionally hydrate results with properties to avoid a follow-up pubchem_get_compound_details call.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -53,7 +71,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
   },
   input: z.object({
     searchType: searchTypeEnum.describe(
-      'Search strategy; each mode needs its own fields. "identifier": name/SMILES/InChIKey lookup — requires identifierType and identifiers. "formula": molecular formula — requires formula. "substructure": find compounds containing the query as a substructure. "superstructure": find compounds that are themselves substructures of the query. "similarity": 2D Tanimoto similarity to the query. substructure, superstructure, and similarity require query and queryType.',
+      'Search strategy; each mode needs its own fields. "identifier": name/SMILES/InChIKey lookup — requires identifierType and identifiers. "formula": molecular formula — requires formula. "substructure": find compounds containing the query as a substructure. "superstructure": find compounds that are themselves substructures of the query. "similarity": 2D Tanimoto similarity to the query. substructure, superstructure, and similarity require query and queryType. "assay": compounds tested in a PubChem bioassay — requires aid; activeOnly (default true) keeps only the compounds the assay marked active.',
     ),
     identifierType: identifierTypeEnum
       .optional()
@@ -63,13 +81,13 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     identifiers: z
       .array(z.string())
       .min(1)
-      .max(25)
+      .max(INPUT_CEILING)
       .refine((arr) => arr.every((s) => s.trim().length > 0), {
         message: 'identifiers must all be non-empty strings',
       })
       .optional()
       .describe(
-        'Required for identifier search. Array of identifiers to resolve (1-25). Examples: ["aspirin", "ibuprofen"] for name, ["CC(=O)OC1=CC=CC=C1C(=O)O"] for SMILES, ["BSYNRYMUTXBXSQ-UHFFFAOYSA-N"] for inchikey (27-char block format).',
+        `Required for identifier search. Array of identifiers to resolve. The per-call cap is ${IDENTIFIERS_CAP}: the first ${IDENTIFIERS_CAP} are looked up, and any past that (up to ${INPUT_CEILING} in all) are returned in unprocessed, in input order, and reported in cappedInputs. Examples: ["aspirin", "ibuprofen"] for name, ["CC(=O)OC1=CC=CC=C1C(=O)O"] for SMILES, ["BSYNRYMUTXBXSQ-UHFFFAOYSA-N"] for inchikey (27-char block format; uppercased before lookup, any case accepted).`,
       ),
     formula: z
       .string()
@@ -87,7 +105,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .string()
       .optional()
       .describe(
-        'Required for substructure/superstructure/similarity searches. A SMILES string (e.g. "CC(=O)O") or PubChem CID as a string (e.g. "2244").',
+        `Required for substructure/superstructure/similarity searches. A SMILES string (e.g. "CC(=O)O") or PubChem CID as a string from 1 to ${MAX_CID} (e.g. "2244").`,
       ),
     queryType: queryTypeEnum
       .optional()
@@ -102,6 +120,21 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .describe(
         'Similarity search only. Minimum Tanimoto similarity (70-100). 90+ for close analogs, 70-80 for scaffold hops. Default: 90.',
       ),
+    aid: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_INT32)
+      .optional()
+      .describe(
+        `Required for assay search. PubChem Assay ID (AID) whose compounds to list, from 1 to ${MAX_INT32}, e.g. 1000. Find AIDs for a biological target with pubchem_search_assays.`,
+      ),
+    activeOnly: z
+      .boolean()
+      .default(true)
+      .describe(
+        'Assay search only. When true (default), lists only the compounds the assay marked active; false lists every compound it tested.',
+      ),
     offset: z
       .number()
       .int()
@@ -109,16 +142,16 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .max(10000)
       .default(0)
       .describe(
-        'Zero-based index of the first CID to return. Pass the nextOffset from a previous call to read the following page. Identifier lookups resolve every match up front, so paging them is free; formula, substructure, superstructure, and similarity searches have to ask PubChem for offset + maxResults records to reach a page, so deep pages cost progressively more upstream — hence the 10000 ceiling. Default: 0.',
+        'Zero-based index of the first CID to return. Pass the nextOffset from a previous call to read the following page. Identifier lookups resolve every match up front, so paging them is free, and assay searches fetch only the requested page; formula, substructure, superstructure, and similarity searches have to ask PubChem for offset + maxResults records to reach a page, so deep pages cost progressively more upstream — hence the 10000 ceiling. Default: 0.',
       ),
     maxResults: z
       .number()
       .int()
       .min(1)
-      .max(200)
+      .max(INPUT_CEILING)
       .default(20)
       .describe(
-        'Maximum CIDs to return per page (1-200). Use offset to reach matches past this page. Default: 20.',
+        `Maximum CIDs to return per page. The per-call cap is ${MAX_RESULTS_CAP}: a larger value (up to ${INPUT_CEILING}) returns a page of ${MAX_RESULTS_CAP} and is reported in cappedInputs. Use offset to reach matches past this page. Default: 20.`,
       ),
     properties: z
       .array(propertyEnum)
@@ -153,6 +186,12 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .describe(
         'Identifier-mode only: input identifiers that resolved to no CID — PubChem had no match, or could not interpret the input as identifierType (the notice says which). Omitted when every identifier resolved and for non-identifier searches.',
       ),
+    unprocessed: z
+      .array(z.string())
+      .optional()
+      .describe(
+        `Identifier-mode only: identifiers past the per-call cap of ${IDENTIFIERS_CAP}, in input order, not looked up. Pass them in a follow-up call. Omitted when every identifier was looked up.`,
+      ),
   }),
   // Agent-facing context — search strategy echo, total, the page boundary, and a notice
   // covering unresolved identifiers, an empty page, and further pages. Reaches
@@ -168,7 +207,13 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     searchType: z
       .string()
       .describe(
-        'Search strategy used: identifier, formula, substructure, superstructure, or similarity.',
+        'Search strategy used: identifier, formula, substructure, superstructure, similarity, or assay.',
+      ),
+    activeOnly: z
+      .boolean()
+      .optional()
+      .describe(
+        'Assay search only: true when the list holds only the compounds the assay marked active, false when it holds every compound tested.',
       ),
     totalFound: z
       .number()
@@ -191,21 +236,28 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       ),
     truncated: z.boolean().optional().describe('True when matching CIDs remain past this page.'),
     shown: z.number().optional().describe('CIDs returned on this page.'),
-    cap: z.number().optional().describe('The maxResults cap that was applied.'),
+    cap: z
+      .number()
+      .optional()
+      .describe(
+        'The page size applied: maxResults, or the per-call cap when maxResults exceeds it.',
+      ),
+    cappedInputs: cappedInputsField,
     notice: z
       .string()
       .optional()
       .describe(
-        'Recovery guidance when no compounds matched, when the offset runs past the matches observed, when identifiers had no match or could not be interpreted, when identifiers collided on one CID, or when further pages remain. Absent when this page is complete and every identifier resolved to its own CID.',
+        'Recovery guidance when no compounds matched (for an assay search, when the assay recorded none of the requested kind), when the offset runs past the matches observed, when identifiers had no match or could not be interpreted, when identifiers collided on one CID, or when further pages remain. Absent when this page is complete and every identifier resolved to its own CID.',
       ),
   },
+  enrichmentTrailer: { cappedInputs: { render: renderCappedInputs } },
   errors: [
     {
       reason: 'missing_identifier_args',
       code: JsonRpcErrorCode.ValidationError,
       when: 'searchType is "identifier" but identifierType or identifiers were omitted',
       recovery:
-        'Set identifierType (name/smiles/inchikey) and pass a non-empty identifiers array (1-25 entries).',
+        'Set identifierType (name/smiles/inchikey) and pass a non-empty identifiers array, for example ["aspirin"] with identifierType "name".',
     },
     {
       reason: 'missing_formula',
@@ -223,9 +275,22 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     {
       reason: 'invalid_cid_query',
       code: JsonRpcErrorCode.ValidationError,
-      when: 'structure/similarity search with queryType "cid" but query is not a positive integer CID',
+      when: `structure/similarity search with queryType "cid" but query is not an integer CID from 1 to ${MAX_CID}`,
+      recovery: `Pass an integer CID string from 1 to ${MAX_CID} (e.g. "2244"), or set queryType "smiles" with a SMILES query.`,
+    },
+    {
+      reason: 'missing_aid',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'searchType is "assay" but aid was omitted',
       recovery:
-        'Pass a positive integer CID string (e.g. "2244"), or set queryType "smiles" with a SMILES query.',
+        'Pass aid, the PubChem Assay ID to list compounds for; find AIDs for a biological target with pubchem_search_assays.',
+    },
+    {
+      reason: 'aid_not_found',
+      code: JsonRpcErrorCode.NotFound,
+      when: 'assay search where PubChem has no live assay with the given AID',
+      recovery:
+        'Check the AID with pubchem_get_summary (entityType "assay"), or find AIDs for a biological target with pubchem_search_assays.',
     },
     {
       reason: 'identifier_rejected',
@@ -248,14 +313,37 @@ export const searchCompounds = tool('pubchem_search_compounds', {
 
   async handler(input, ctx) {
     const client = getPubChemClient();
+    const capped: CappedInput[] = [];
+    // Identifier batches are split at their cap first, so cappedInputs lists inputs in the
+    // order the schema declares them.
+    let unprocessed: string[] = [];
+    let identifiers: string[] | undefined;
+    if (input.searchType === 'identifier' && input.identifiers) {
+      const normalized =
+        input.identifierType === 'inchikey'
+          ? input.identifiers.map(normalizeInchiKey)
+          : input.identifiers;
+      ({ served: identifiers, unprocessed } = splitBatch(
+        'identifiers',
+        normalized,
+        IDENTIFIERS_CAP,
+        capped,
+      ));
+    }
+    const pageSize = capPageSize('maxResults', input.maxResults, MAX_RESULTS_CAP, capped);
     let allCids: number[] = [];
     // Formula and structure searches are bounded server-side. One record past the requested
     // page is enough to prove more matches exist without moving the rest of PubChem's match
     // set, which for a common substructure runs to 16.3 MB of CIDs. The window has to cover
     // the offset too — these endpoints take a record count, not a start position, and their
     // ordering is a stable prefix, so reaching page N means asking for everything up to it.
-    const recordCap = input.offset + input.maxResults + 1;
+    const recordCap = input.offset + pageSize + 1;
     let boundedSearch = false;
+    // Assay searches fetch only the requested page, with PubChem's exact count beside it. The
+    // page is a window on PubChem's list, so the next one starts past every entry it held,
+    // a CID listed twice included.
+    let assayTotal: number | undefined;
+    let assayPageLength: number | undefined;
     const identifierMap = new Map<number, string>();
     // Identifier-mode resolution tracking (#29): every input that resolved to no CID, whether
     // PubChem had no match or rejected the input as unreadable (#55).
@@ -265,7 +353,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
 
     switch (input.searchType) {
       case 'identifier': {
-        const { identifierType, identifiers } = input;
+        const { identifierType } = input;
         if (!identifierType || !identifiers) {
           throw ctx.fail('missing_identifier_args');
         }
@@ -324,10 +412,14 @@ export const searchCompounds = tool('pubchem_search_compounds', {
 
         const { label, guidance } = IDENTIFIER_FORMS[identifierType];
         if (rejectedIdentifiers.length === identifiers.length) {
+          const notLookedUp =
+            unprocessed.length > 0
+              ? ` The ${unprocessed.length} identifier(s) past the per-call cap of ${IDENTIFIERS_CAP} were not looked up.`
+              : '';
           throw ctx.fail(
             'identifier_rejected',
-            `PubChem could not interpret any of the ${identifiers.length} identifier(s) as ${label}: ${rejectedIdentifiers.join(', ')}.`,
-            { fault: rejectionFault },
+            `PubChem could not interpret any of the ${identifiers.length} identifier(s) as ${label}: ${rejectedIdentifiers.join(', ')}.${notLookedUp}`,
+            rejectionFault === undefined ? undefined : { fault: rejectionFault },
           );
         }
 
@@ -372,12 +464,16 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         if (!input.query?.trim() || !input.queryType) {
           throw ctx.fail('missing_structure_args');
         }
-        // A "cid" query must be a positive integer string — catch it here instead of
-        // forwarding a malformed value into a raw PubChem 400 (#26).
-        if (input.queryType === 'cid' && !(/^\d+$/.test(input.query) && Number(input.query) > 0)) {
+        // A "cid" query must be an integer string within PubChem's signed 32-bit CID range —
+        // catch it here instead of forwarding it into a raw PubChem 400 (#26) or, past
+        // MAX_CID, a CID PUG REST wraps to a negative ID and reports as not found (#59).
+        if (
+          input.queryType === 'cid' &&
+          !(/^\d+$/.test(input.query) && Number(input.query) > 0 && Number(input.query) <= MAX_CID)
+        ) {
           throw ctx.fail(
             'invalid_cid_query',
-            `queryType is "cid" but query "${input.query}" is not a positive integer CID.`,
+            `queryType is "cid" but query "${input.query}" is not a CID from 1 to ${MAX_CID}.`,
           );
         }
         boundedSearch = true;
@@ -391,12 +487,42 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         );
         break;
       }
+      case 'assay': {
+        if (input.aid === undefined) {
+          throw ctx.fail('missing_aid');
+        }
+        const page = await client.getAssayCidPage(
+          input.aid,
+          input.activeOnly,
+          input.offset,
+          pageSize,
+          ctx.signal,
+        );
+        if (!page) {
+          throw ctx.fail('aid_not_found', `PubChem has no live assay with AID ${input.aid}.`);
+        }
+        allCids = page.cids;
+        assayTotal = page.total;
+        assayPageLength = page.cids.length;
+        ctx.enrich({ activeOnly: input.activeOnly });
+        if (page.total === 0) {
+          noticeParts.push(
+            input.activeOnly
+              ? `AID ${input.aid} has no compounds marked active. Pass activeOnly: false to list every compound it tested.`
+              : `AID ${input.aid} has no tested compounds recorded in PubChem.`,
+          );
+        }
+        break;
+      }
     }
 
-    // Deduplicate, then take the requested page.
+    // Deduplicate, then take the requested page — an assay search already fetched only it.
     const uniqueCids = [...new Set(allCids)];
-    const observedTotal = uniqueCids.length;
-    const pagedCids = uniqueCids.slice(input.offset, input.offset + input.maxResults);
+    const observedTotal = assayTotal ?? uniqueCids.length;
+    const pagedCids =
+      assayTotal === undefined
+        ? uniqueCids.slice(input.offset, input.offset + pageSize)
+        : uniqueCids;
 
     // A bounded search that came back short of its cap returned everything PubChem had, so
     // the count is exact. A saturated one only proves a floor.
@@ -404,7 +530,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     // The stride comes from the page that was returned, never from maxResults — that input
     // accepts a fractional value, which would emit a nextOffset this tool's own integer
     // offset validator then rejects.
-    const nextOffset = input.offset + pagedCids.length;
+    const nextOffset = input.offset + (assayPageLength ?? pagedCids.length);
     // A saturated bounded search proved a record beyond the window it asked for, so more
     // remain even though observedTotal cannot say how many.
     const hasMore = !totalIsExact || nextOffset < observedTotal;
@@ -424,6 +550,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         : { searchType: input.searchType, totalFoundAtLeast: observedTotal, offset: input.offset },
     );
     if (hasMore) ctx.enrich({ nextOffset });
+    if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
 
     if (pagedCids.length === 0) {
       // An empty page is either "nothing matched" or "the offset ran past the matches" —
@@ -451,7 +578,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         : `Showing matches ${input.offset + 1}-${nextOffset}; more exist, but PubChem reports no match count for a ${input.searchType} search. Pass offset=${nextOffset} for the next page.`;
       ctx.enrich.truncated({
         shown: pagedCids.length,
-        cap: input.maxResults,
+        cap: pageSize,
         guidance:
           noticeParts.length > 0
             ? `${noticeParts.join(' ')} ${truncationGuidance}`
@@ -485,7 +612,11 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       return result;
     });
 
-    return unresolvedIdentifiers.length > 0 ? { results, unresolvedIdentifiers } : { results };
+    return {
+      results,
+      ...(unresolvedIdentifiers.length > 0 && { unresolvedIdentifiers }),
+      ...(unprocessed.length > 0 && { unprocessed }),
+    };
   },
 
   format(result) {
@@ -498,7 +629,9 @@ export const searchCompounds = tool('pubchem_search_compounds', {
 
       if (hasProps) {
         for (const r of result.results) {
-          const label = r.identifier ? `CID ${r.cid} — ${r.identifier}` : `CID ${r.cid}`;
+          const label = r.identifier
+            ? `CID ${r.cid} — ${inlineData(r.identifier)}`
+            : `CID ${r.cid}`;
           lines.push(`**${label}**`);
           if (r.properties) {
             const entries = Object.entries(r.properties);
@@ -509,7 +642,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         }
       } else {
         const items = result.results.map((r) =>
-          r.identifier ? `${r.cid} (${r.identifier})` : String(r.cid),
+          r.identifier ? `${r.cid} (${inlineData(r.identifier)})` : String(r.cid),
         );
         lines.push(`CIDs: ${items.join(', ')}`);
       }
@@ -517,8 +650,11 @@ export const searchCompounds = tool('pubchem_search_compounds', {
 
     if (result.unresolvedIdentifiers && result.unresolvedIdentifiers.length > 0) {
       lines.push(
-        `Unresolved identifiers (${result.unresolvedIdentifiers.length}): ${result.unresolvedIdentifiers.join(', ')}`,
+        `Unresolved identifiers (${result.unresolvedIdentifiers.length}): ${result.unresolvedIdentifiers.map(inlineData).join(', ')}`,
       );
+    }
+    if (result.unprocessed && result.unprocessed.length > 0) {
+      lines.push(renderUnprocessed(result.unprocessed.map(inlineData)));
     }
 
     return [{ type: 'text', text: lines.join('\n') }];

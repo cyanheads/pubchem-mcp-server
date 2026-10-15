@@ -56,7 +56,7 @@ describe('PubChemClient.getAssaySummary parseAssayTable (#6)', () => {
     );
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(2244);
+    const { rows } = await client.getAssaySummary(2244);
 
     expect(rows).toHaveLength(3);
     // Empty-cell AIDs must NOT have a phantom 0-µM activity value.
@@ -88,7 +88,7 @@ describe('PubChemClient.getAssaySummary parseAssayTable (#6)', () => {
     );
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(1);
+    const { rows } = await client.getAssaySummary(1);
 
     expect(rows[0]!.activityValues).toEqual([{ name: 'Inhibition', value: 0, unit: '%' }]);
   });
@@ -138,7 +138,7 @@ describe('PubChemClient.getAssaySummary parseAssayTable (#6)', () => {
     );
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(2244);
+    const { rows } = await client.getAssaySummary(2244);
 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.activityValues).toEqual([{ name: 'IC50', value: 5, unit: 'uM' }]);
@@ -168,7 +168,7 @@ describe('PubChemClient.getAssaySummary parseAssayTable (#6)', () => {
     );
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(2244);
+    const { rows } = await client.getAssaySummary(2244);
 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.activityValues).toEqual([
@@ -189,7 +189,7 @@ describe('PubChemClient.getAssaySummary parseAssayTable (#6)', () => {
     );
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(99999999);
+    const { rows } = await client.getAssaySummary(99999999);
 
     expect(rows).toEqual([]);
   });
@@ -216,12 +216,187 @@ describe('PubChemClient.getAssaySummary parseAssayTable (#6)', () => {
     );
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(2244);
+    const { rows } = await client.getAssaySummary(2244);
 
     expect(rows.find((r) => r.aid === 1)!.activityValues).toEqual([]);
     expect(rows.find((r) => r.aid === 2)!.activityValues).toEqual([
       { name: 'IC50', value: 1.5, unit: 'uM' },
     ]);
+  });
+});
+
+/** Assay table in PubChem's column layout, one row per `[aid, outcome, accession, geneId, value]`. */
+function targetTable(rows: Array<[number, string, string, number | '', number | '']>) {
+  return jsonResponse({
+    Table: {
+      Columns: {
+        Column: [
+          'AID',
+          'Assay Name',
+          'Activity Outcome',
+          'Target Accession',
+          'Target GeneID',
+          'Activity Value [uM]',
+          'Activity Name',
+        ],
+      },
+      Row: rows.map(([aid, outcome, accession, geneId, value]) => ({
+        Cell: [aid, `Assay ${aid}`, outcome, accession, geneId, value, value === '' ? '' : 'IC50'],
+      })),
+    },
+  });
+}
+
+describe('PubChemClient.getAssaySummary target identifier groups (#65)', () => {
+  it('connects identifiers through every row that pairs them, later rows of an AID included', async () => {
+    fetchMock.mockResolvedValueOnce(
+      targetTable([
+        [1, 'Active', 'P23219', 5742, 1],
+        [2, 'Active', 'NP_542158', 5742, 2],
+        [3, 'Active', 'P05979', 443551, 3],
+        [3, 'Inactive', 'P35354', 5743, 4], // second row of AID 3 pairs COX-2
+        [4, 'Active', '1ZHH_A', '', 5], // never paired
+        [5, 'Active', '', 7157, ''], // never paired
+      ]),
+    );
+
+    const { targetGroups } = await new PubChemClient().getAssaySummary(2244);
+
+    expect(targetGroups).toHaveLength(3);
+    const cox1 = targetGroups.find((g) => g.geneIds.includes(5742))!;
+    expect(cox1.accessions.toSorted()).toEqual(['NP_542158', 'P23219']);
+    expect(cox1.geneIds).toEqual([5742]);
+    expect(targetGroups.find((g) => g.geneIds.includes(5743))!.accessions).toEqual(['P35354']);
+    expect(targetGroups.find((g) => g.geneIds.includes(443551))!.accessions).toEqual(['P05979']);
+    expect(targetGroups.some((g) => g.accessions.includes('1ZHH_A'))).toBe(false);
+    expect(targetGroups.some((g) => g.geneIds.includes(7157))).toBe(false);
+  });
+
+  it('joins several genes deposited against one accession into one group', async () => {
+    fetchMock.mockResolvedValueOnce(
+      targetTable([
+        [1, 'Active', 'Q9NQU5', 56924, 1],
+        [1, 'Active', 'Q9NQU5', 106821730, 1],
+        [2, 'Active', 'NP_001263645', 106821730, 2],
+      ]),
+    );
+
+    const { targetGroups } = await new PubChemClient().getAssaySummary(44259);
+
+    expect(targetGroups).toHaveLength(1);
+    expect(targetGroups[0]!.geneIds.toSorted((a, b) => a - b)).toEqual([56924, 106821730]);
+    expect(targetGroups[0]!.accessions.toSorted()).toEqual(['NP_001263645', 'Q9NQU5']);
+  });
+
+  it('returns no rows and no groups for a compound PubChem has no assays for', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ Fault: { Code: 'PUGREST.NotFound', Message: 'No data found' } }, 404),
+    );
+
+    await expect(new PubChemClient().getAssaySummary(99999999)).resolves.toEqual({
+      rows: [],
+      targetGroups: [],
+    });
+  });
+});
+
+describe('PubChemClient.getAssaySummary multi-target assays (#73)', () => {
+  it("keeps each target's outcome and values with the target they came from", async () => {
+    // AID 1801480 on aspirin: Active against sheep COX-1, Inactive against human COX-2.
+    fetchMock.mockResolvedValueOnce(
+      targetTable([
+        [1801480, 'Active', 'P05979', 443551, 1.7],
+        [1801480, 'Inactive', 'P35354', 5743, 100],
+      ]),
+    );
+
+    const { rows } = await new PubChemClient().getAssaySummary(2244);
+
+    expect(rows).toEqual([
+      {
+        aid: 1801480,
+        assayName: 'Assay 1801480',
+        outcome: 'Active',
+        targetAccession: 'P05979',
+        targetGeneId: 443551,
+        activityValues: [{ name: 'IC50', value: 1.7, unit: 'uM' }],
+        otherTargets: [
+          {
+            accession: 'P35354',
+            geneId: 5743,
+            outcome: 'Inactive',
+            activityValues: [{ name: 'IC50', value: 100, unit: 'uM' }],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('lists every further target in table order, a target without identifiers included', async () => {
+    fetchMock.mockResolvedValueOnce(
+      targetTable([
+        [7, 'Active', 'P23219', 5742, 1],
+        [7, 'Inactive', '', 7157, ''],
+        [7, 'Inconclusive', 'Q9Y6K9', '', 3],
+        [7, 'Active', '', '', 4],
+      ]),
+    );
+
+    const { rows } = await new PubChemClient().getAssaySummary(2244);
+
+    expect(rows[0]!.otherTargets).toEqual([
+      { geneId: 7157, outcome: 'Inactive', activityValues: [] },
+      {
+        accession: 'Q9Y6K9',
+        outcome: 'Inconclusive',
+        activityValues: [{ name: 'IC50', value: 3, unit: 'uM' }],
+      },
+      { outcome: 'Active', activityValues: [{ name: 'IC50', value: 4, unit: 'uM' }] },
+    ]);
+  });
+
+  it('keeps rows of one target as one target — first outcome, values merged', async () => {
+    // Two substances tested against the same target: one target, as before.
+    fetchMock.mockResolvedValueOnce(
+      targetTable([
+        [924, 'Inactive', 'NP_000537', 7157, ''],
+        [924, 'Active', 'NP_000537', 7157, 10],
+      ]),
+    );
+
+    const { rows } = await new PubChemClient().getAssaySummary(445154);
+
+    expect(rows).toEqual([
+      {
+        aid: 924,
+        assayName: 'Assay 924',
+        outcome: 'Inactive',
+        targetAccession: 'NP_000537',
+        targetGeneId: 7157,
+        activityValues: [{ name: 'IC50', value: 10, unit: 'uM' }],
+      },
+    ]);
+  });
+
+  it('treats rows naming one target by different identifiers of its group as one target', async () => {
+    fetchMock.mockResolvedValueOnce(
+      targetTable([
+        [1347071, 'Active', '', 351, 1], // Gene ID only
+        [1347071, 'Active', 'P05067', 351, 2], // same gene, accession filled
+        [49334, 'Active', 'P49674', 1454, 3],
+        [49334, 'Active', 'P49674', 102800317, 4], // readthrough gene of the same protein
+      ]),
+    );
+
+    const { rows } = await new PubChemClient().getAssaySummary(2244);
+
+    expect(rows.map((r) => r.otherTargets)).toEqual([undefined, undefined]);
+    expect(rows[0]).toMatchObject({
+      targetGeneId: 351,
+      activityValues: [{ value: 1 }, { value: 2 }],
+    });
+    expect(rows[0]!.targetAccession).toBeUndefined();
+    expect(rows[1]).toMatchObject({ targetAccession: 'P49674', targetGeneId: 1454 });
   });
 });
 

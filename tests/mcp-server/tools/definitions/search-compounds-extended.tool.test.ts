@@ -162,26 +162,20 @@ describe('searchCompounds handler — identifier batch edge cases', () => {
     expect(enrichment.notice).toContain('acetylsalicylic acid');
   });
 
-  it('accepts maximum 25 identifiers', () => {
-    const ids = Array.from({ length: 25 }, (_, i) => `compound${i}`);
-    expect(() =>
+  it.each([
+    [25, true],
+    [26, true],
+    [1000, true],
+    [1001, false],
+  ])('identifier batch of %i is accepted: %s (ceiling 1000, #70)', (count, accepted) => {
+    const parse = () =>
       searchCompounds.input.parse({
         searchType: 'identifier',
         identifierType: 'name',
-        identifiers: ids,
-      }),
-    ).not.toThrow();
-  });
-
-  it('rejects more than 25 identifiers', () => {
-    const ids = Array.from({ length: 26 }, (_, i) => `compound${i}`);
-    expect(() =>
-      searchCompounds.input.parse({
-        searchType: 'identifier',
-        identifierType: 'name',
-        identifiers: ids,
-      }),
-    ).toThrow();
+        identifiers: Array.from({ length: count }, (_, i) => `compound${i}`),
+      });
+    if (accepted) expect(parse).not.toThrow();
+    else expect(parse).toThrow();
   });
 });
 
@@ -189,13 +183,12 @@ describe('searchCompounds handler — boundary values', () => {
   /* A fractional cap reaches PubChem verbatim on the bounded searches — the handler derives
    * the upstream record window from it — so an unconstrained maxResults fails at the upstream
    * with an HTTP 400 rather than being floored locally. */
-  it('rejects a fractional maxResults', () => {
+  it.each([
+    ['a fractional maxResults', 7.5],
+    ['maxResults below 1', 0],
+  ])('rejects %s', (_label, maxResults) => {
     expect(() =>
-      searchCompounds.input.parse({
-        searchType: 'formula',
-        formula: 'C21H30O2',
-        maxResults: 7.5,
-      }),
+      searchCompounds.input.parse({ searchType: 'formula', formula: 'C21H30O2', maxResults }),
     ).toThrow();
   });
 
@@ -226,67 +219,79 @@ describe('searchCompounds handler — boundary values', () => {
     expect(result.results).toHaveLength(200);
   });
 
-  it('rejects maxResults below 1', () => {
-    expect(() =>
-      searchCompounds.input.parse({
-        searchType: 'formula',
-        formula: 'C6H12O6',
-        maxResults: 0,
-      }),
-    ).toThrow();
-  });
-
-  it('similarity threshold minimum of 70 accepted', () => {
-    expect(() =>
+  it.each([
+    [70, true],
+    [69, false],
+  ])('similarity threshold %i is accepted: %s (minimum 70)', (threshold, accepted) => {
+    const parse = () =>
       searchCompounds.input.parse({
         searchType: 'similarity',
         query: '2244',
         queryType: 'cid',
-        threshold: 70,
-      }),
-    ).not.toThrow();
-  });
-
-  it('similarity threshold below 70 rejected', () => {
-    expect(() =>
-      searchCompounds.input.parse({
-        searchType: 'similarity',
-        query: '2244',
-        queryType: 'cid',
-        threshold: 69,
-      }),
-    ).toThrow();
+        threshold,
+      });
+    if (accepted) expect(parse).not.toThrow();
+    else expect(parse).toThrow();
   });
 });
 
 describe('searchCompounds handler — cid-query validation (#26)', () => {
-  it('throws invalid_cid_query when queryType "cid" query is not a CID', async () => {
+  it.each([
+    ['similarity', 'not-a-cid'],
+    ['substructure', '0'],
+  ] as const)(
+    'throws invalid_cid_query for a %s search with CID query "%s"',
+    async (searchType, query) => {
+      const ctx = createMockContext({ errors: searchCompounds.errors });
+      const input = searchCompounds.input.parse({ searchType, query, queryType: 'cid' });
+      await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
+        code: JsonRpcErrorCode.ValidationError,
+        data: { reason: 'invalid_cid_query' },
+      });
+      // Rejected before the upstream call — no raw PubChem 400.
+      expect(mockClient.searchByStructure).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['2147483648', '4294967296', '99999999999'])(
+    'throws invalid_cid_query naming the bound for a CID query of %s (#59)',
+    async (query) => {
+      const ctx = createMockContext({ errors: searchCompounds.errors });
+      const input = searchCompounds.input.parse({
+        searchType: 'similarity',
+        query,
+        queryType: 'cid',
+      });
+      const error = await Promise.resolve()
+        .then(() => searchCompounds.handler(input, ctx))
+        .catch((e: unknown) => e);
+      expect(error).toMatchObject({
+        code: JsonRpcErrorCode.ValidationError,
+        data: { reason: 'invalid_cid_query' },
+      });
+      expect((error as Error).message).toContain('2147483647');
+      expect(mockClient.searchByStructure).not.toHaveBeenCalled();
+    },
+  );
+
+  it('forwards the largest CID, 2147483647, as a CID query (#59)', async () => {
+    mockClient.searchByStructure.mockResolvedValueOnce([]);
     const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'similarity',
-      query: 'not-a-cid',
+      query: '2147483647',
       queryType: 'cid',
-      maxResults: 3,
     });
-    await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
-      code: JsonRpcErrorCode.ValidationError,
-      data: { reason: 'invalid_cid_query' },
-    });
-    // Rejected before the upstream call — no raw PubChem 400.
-    expect(mockClient.searchByStructure).not.toHaveBeenCalled();
-  });
+    await searchCompounds.handler(input, ctx);
 
-  it('throws invalid_cid_query when queryType "cid" query is "0"', async () => {
-    const ctx = createMockContext({ errors: searchCompounds.errors });
-    const input = searchCompounds.input.parse({
-      searchType: 'substructure',
-      query: '0',
-      queryType: 'cid',
-    });
-    await expect(searchCompounds.handler(input, ctx)).rejects.toMatchObject({
-      data: { reason: 'invalid_cid_query' },
-    });
-    expect(mockClient.searchByStructure).not.toHaveBeenCalled();
+    expect(mockClient.searchByStructure).toHaveBeenCalledWith(
+      'similarity',
+      '2147483647',
+      'cid',
+      90,
+      21,
+      expect.any(AbortSignal),
+    );
   });
 
   it('accepts a positive-integer CID query with queryType "cid"', async () => {

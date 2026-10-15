@@ -5,14 +5,24 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
-import { XREF_TYPES } from '@/services/pubchem/types.js';
+import { MAX_CID, XREF_TYPES } from '@/services/pubchem/types.js';
+import {
+  type CappedInput,
+  capPageSize,
+  cappedInputsField,
+  INPUT_CEILING,
+  renderCappedInputs,
+} from './input-caps.js';
+
+/** IDs served per xref type per page; a larger maxPerType is clamped to this. */
+const MAX_PER_TYPE_CAP = 500;
 
 const xrefTypeEnum = z.enum(XREF_TYPES as unknown as [string, ...string[]]);
 
 export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
   title: 'Get Compound Cross-References',
   description:
-    'Get external database cross-references for a compound: PubMed citations, patent IDs, gene/protein associations, registry numbers, and taxonomy IDs. Results are paged per type — capped at maxPerType with the total count reported; reach the IDs past a page with offset.',
+    "Get external database cross-references for a compound: PubMed citations, patent IDs, gene/protein associations, registry numbers, and taxonomy IDs. Results are paged per type — capped at maxPerType with the total count reported; reach the IDs past a page with offset. PubMed IDs come highest (most recently assigned) first and the other numeric types in ascending order; string IDs keep PubChem's order.",
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -23,6 +33,7 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       .number()
       .int()
       .min(1)
+      .max(MAX_CID)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     xrefTypes: z
       .array(xrefTypeEnum)
@@ -42,10 +53,10 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       .number()
       .int()
       .min(1)
-      .max(500)
+      .max(INPUT_CEILING)
       .default(50)
       .describe(
-        'Max IDs to return per xref type per page (1-500). A compound may have thousands of PubMed references; use offset to reach the ones past this page. Total count always reported. Default: 50.',
+        `Max IDs to return per xref type per page. The per-call cap is ${MAX_PER_TYPE_CAP}: a larger value (up to ${INPUT_CEILING}) returns ${MAX_PER_TYPE_CAP} per type and is reported in cappedInputs. A compound may have thousands of PubMed references; use offset to reach the ones past this page. Total count always reported. Default: 50.`,
       ),
   }),
   // Every other paging tool here names its page size `maxResults`; this one caps per
@@ -74,7 +85,9 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
                   ])
                   .describe('Cross-reference identifier — string or number depending on type.'),
               )
-              .describe('Cross-reference IDs on this page (window of offset + maxPerType).'),
+              .describe(
+                "Cross-reference IDs on this page (window of offset + maxPerType). PubMedID is sorted numerically descending, so page one holds the highest, most recently assigned PMIDs; GeneID, ProteinGI and TaxonomyID numerically ascending; RegistryID, RN and PatentID keep PubChem's order.",
+              ),
             totalAvailable: z
               .number()
               .describe('Total IDs available for this type, across all pages.'),
@@ -109,10 +122,14 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       .describe(
         'Recovery guidance when every requested xref type returned zero IDs, when the offset runs past every type, or when further pages remain. Absent when this page is complete and non-empty.',
       ),
+    cappedInputs: cappedInputsField,
   },
+  enrichmentTrailer: { cappedInputs: { render: renderCappedInputs } },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
+    const capped: CappedInput[] = [];
+    const pageSize = capPageSize('maxPerType', input.maxPerType, MAX_PER_TYPE_CAP, capped);
 
     // Sequential per type to avoid rate limit spikes
     const xrefs: Array<{
@@ -127,7 +144,7 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       const totalAvailable = allIds.length;
       // Offset is applied client-side: PubChem's xref endpoint returns the whole list for a
       // type in one response, so getXrefs already holds every ID.
-      const ids = allIds.slice(input.offset, input.offset + input.maxPerType);
+      const ids = allIds.slice(input.offset, input.offset + pageSize);
 
       xrefs.push({
         type: xrefType,
@@ -155,6 +172,7 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
 
     ctx.enrich({ offset: input.offset, truncated: hasMore });
     if (hasMore) ctx.enrich({ nextOffset });
+    if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
 
     // Empty-result signal (#30): every requested type came back empty — either the CID
     // doesn't exist or it genuinely has none of these xref types. Point at CID verification.

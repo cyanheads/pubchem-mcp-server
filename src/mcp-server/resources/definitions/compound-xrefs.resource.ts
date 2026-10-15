@@ -5,6 +5,7 @@
 
 import { resource, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { MAX_CID } from '@/services/pubchem/types.js';
 
 /** A focused default set for the resource read — the full tool exposes all xref types. */
 const RESOURCE_XREF_TYPES = ['RN', 'RegistryID', 'PubMedID'] as const;
@@ -13,10 +14,10 @@ const MAX_PER_TYPE = 25;
 export const compoundXrefsResource = resource('pubchem://compound/{cid}/xrefs', {
   name: 'pubchem-compound-xrefs',
   description:
-    'External cross-references (CAS RN, registry IDs, PubMed) for a PubChem compound by CID, up to 25 per type. Use pubchem_get_compound_xrefs for the full set of xref types, a higher per-type cap, and to page through the rest with offset.',
+    'External cross-references (CAS RN, registry IDs, PubMed) for a PubChem compound by CID, up to 25 per type; the PubMed IDs are the 25 highest (most recently assigned), highest first. Use pubchem_get_compound_xrefs for the full set of xref types, a higher per-type cap, and to page through the rest with offset.',
   mimeType: 'application/json',
   params: z.object({
-    cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
+    cid: z.coerce.number().int().min(1).max(MAX_CID).describe('PubChem Compound ID.'),
   }),
 
   async handler(params, ctx) {

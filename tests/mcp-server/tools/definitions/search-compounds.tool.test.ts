@@ -80,6 +80,54 @@ describe('searchCompounds handler', () => {
     );
   });
 
+  it('uppercases a lowercase InChIKey before lookup and echoes the normalized key (#67)', async () => {
+    mockClient.searchByInchiKey.mockResolvedValueOnce([2244]).mockResolvedValueOnce([]);
+    const ctx = createMockContext({ errors: searchCompounds.errors });
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'inchikey',
+      identifiers: ['bsynrymutxbxsq-uhfffaoysa-n', 'zzzzzzzzzzzzzz-uhfffaoysa-n'],
+    });
+    const result = await searchCompounds.handler(input, ctx);
+    const text = (searchCompounds.format!(result)[0] as { text: string }).text;
+
+    expect(mockClient.searchByInchiKey).toHaveBeenNthCalledWith(
+      1,
+      'BSYNRYMUTXBXSQ-UHFFFAOYSA-N',
+      expect.any(AbortSignal),
+    );
+    expect(result.results).toEqual([{ cid: 2244, identifier: 'BSYNRYMUTXBXSQ-UHFFFAOYSA-N' }]);
+    expect(result.unresolvedIdentifiers).toEqual(['ZZZZZZZZZZZZZZ-UHFFFAOYSA-N']);
+    expect(getEnrichment(ctx).notice).toContain('ZZZZZZZZZZZZZZ-UHFFFAOYSA-N');
+    expect(text).toContain('BSYNRYMUTXBXSQ-UHFFFAOYSA-N');
+  });
+
+  it('passes name and SMILES identifiers through with their case intact (#67)', async () => {
+    mockClient.searchBySmiles.mockResolvedValueOnce([241]);
+    mockClient.searchByName.mockResolvedValueOnce([2244]);
+    const smilesCtx = createMockContext({ errors: searchCompounds.errors });
+    await searchCompounds.handler(
+      searchCompounds.input.parse({
+        searchType: 'identifier',
+        identifierType: 'smiles',
+        identifiers: ['c1ccccc1'],
+      }),
+      smilesCtx,
+    );
+    const nameCtx = createMockContext({ errors: searchCompounds.errors });
+    await searchCompounds.handler(
+      searchCompounds.input.parse({
+        searchType: 'identifier',
+        identifierType: 'name',
+        identifiers: ['aspirin'],
+      }),
+      nameCtx,
+    );
+
+    expect(mockClient.searchBySmiles).toHaveBeenCalledWith('c1ccccc1', expect.any(AbortSignal));
+    expect(mockClient.searchByName).toHaveBeenCalledWith('aspirin', expect.any(AbortSignal));
+  });
+
   it('searches by formula', async () => {
     mockClient.searchByFormula.mockResolvedValueOnce([5988, 79025]);
     const ctx = createMockContext({ errors: searchCompounds.errors });

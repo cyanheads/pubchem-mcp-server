@@ -119,7 +119,9 @@ describe('getCompoundInteractions handler', () => {
 
   it('rejects an empty kinds array and out-of-range maxEntries', () => {
     expect(() => getCompoundInteractions.input.parse({ cid: 1, kinds: [] })).toThrow();
-    expect(() => getCompoundInteractions.input.parse({ cid: 1, maxEntries: 51 })).toThrow();
+    // #70: past the cap of 50 is served at the cap; only the 1000 ceiling rejects.
+    expect(() => getCompoundInteractions.input.parse({ cid: 1, maxEntries: 51 })).not.toThrow();
+    expect(() => getCompoundInteractions.input.parse({ cid: 1, maxEntries: 1001 })).toThrow();
   });
 
   // #43 — `severity` was advertised on every entry but no fetch path could populate it: the

@@ -6,6 +6,7 @@
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { MAX_CID } from '@/services/pubchem/types.js';
 
 export const getCompoundImage = tool('pubchem_get_compound_image', {
   title: 'Get Compound Image',
@@ -20,6 +21,7 @@ export const getCompoundImage = tool('pubchem_get_compound_image', {
       .number()
       .int()
       .min(1)
+      .max(MAX_CID)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     size: z
       .enum(['small', 'large'])

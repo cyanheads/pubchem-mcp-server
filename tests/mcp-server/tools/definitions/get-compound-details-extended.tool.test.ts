@@ -76,9 +76,11 @@ describe('getCompoundDetails handler — input validation', () => {
     expect(() => getCompoundDetails.input.parse({ cids: [] })).toThrow();
   });
 
-  it('rejects more than 100 CIDs', () => {
-    const cids = Array.from({ length: 101 }, (_, i) => i + 1);
-    expect(() => getCompoundDetails.input.parse({ cids })).toThrow();
+  it('accepts more than 100 CIDs up to 1000, and rejects 1001 (#70)', () => {
+    const cids = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
+    expect(() => getCompoundDetails.input.parse({ cids: cids(101) })).not.toThrow();
+    expect(() => getCompoundDetails.input.parse({ cids: cids(1000) })).not.toThrow();
+    expect(() => getCompoundDetails.input.parse({ cids: cids(1001) })).toThrow();
   });
 
   it('accepts exactly 100 CIDs', () => {
@@ -95,8 +97,12 @@ describe('getCompoundDetails handler — input validation', () => {
     expect(() => getCompoundDetails.input.parse({ cids: [1], maxDescriptions: 0 })).toThrow();
   });
 
-  it('rejects maxDescriptions above 20', () => {
-    expect(() => getCompoundDetails.input.parse({ cids: [1], maxDescriptions: 21 })).toThrow();
+  it('accepts maxDescriptions past the cap of 20 up to 1000, and rejects 1001 (#70)', () => {
+    const parse = (maxDescriptions: number) => () =>
+      getCompoundDetails.input.parse({ cids: [1], maxDescriptions });
+    expect(parse(21)).not.toThrow();
+    expect(parse(1000)).not.toThrow();
+    expect(parse(1001)).toThrow();
   });
 });
 

@@ -41,6 +41,51 @@ describe('searchAssays handler', () => {
     );
   });
 
+  it.each([
+    ['p00533', 'P00533'],
+    ['a0a0g2jz79', 'A0A0G2JZ79'],
+    ['aad14062', 'AAD14062'],
+    ['np_000953.2', 'NP_000953.2'],
+    ['b45705', 'B45705'],
+    ['1zhh_A', '1ZHH_A'],
+    ['P00533', 'P00533'],
+  ])(
+    'uppercases proteinaccession %s to %s before lookup and in the echo (#67)',
+    async (raw, normalized) => {
+      mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
+      const ctx = createMockContext({ errors: searchAssays.errors });
+      await searchAssays.handler(
+        searchAssays.input.parse({ targetType: 'proteinaccession', targetQuery: raw }),
+        ctx,
+      );
+      const enrichment = getEnrichment(ctx);
+
+      expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
+        'proteinaccession',
+        normalized,
+        expect.any(AbortSignal),
+      );
+      expect(enrichment.targetQuery).toBe(normalized);
+      expect(enrichment.notice).toContain(`"${normalized}"`);
+    },
+  );
+
+  it.each([
+    ['genesymbol', 'egfr'],
+    ['proteinname', 'epidermal growth factor receptor'],
+    ['geneid', '1956'],
+  ] as const)('passes a %s query through with its case intact (#67)', async (targetType, query) => {
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([1]);
+    const ctx = createMockContext({ errors: searchAssays.errors });
+    await searchAssays.handler(searchAssays.input.parse({ targetType, targetQuery: query }), ctx);
+
+    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
+      targetType,
+      query,
+      expect.any(AbortSignal),
+    );
+  });
+
   it('caps results at maxResults', async () => {
     const manyAids = Array.from({ length: 200 }, (_, i) => i + 1);
     mockClient.searchAssaysByTarget.mockResolvedValueOnce(manyAids);

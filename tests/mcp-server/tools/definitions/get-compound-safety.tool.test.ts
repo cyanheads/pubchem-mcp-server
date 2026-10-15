@@ -3,8 +3,9 @@
  * @module mcp-server/tools/definitions/get-compound-safety.test
  */
 
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundSafety } from '@/mcp-server/tools/definitions/get-compound-safety.tool.js';
 
 const mockClient = {
@@ -143,10 +144,11 @@ describe('getCompoundSafety input validation', () => {
     expect(() => getCompoundSafety.input.parse({ cids: [] })).toThrow();
   });
 
-  it('rejects more than 25 CIDs', () => {
-    expect(() =>
-      getCompoundSafety.input.parse({ cids: Array.from({ length: 26 }, (_, i) => i + 1) }),
-    ).toThrow();
+  it('accepts more than 25 CIDs up to 1000, and rejects 1001 (#70)', () => {
+    const cids = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
+    expect(() => getCompoundSafety.input.parse({ cids: cids(26) })).not.toThrow();
+    expect(() => getCompoundSafety.input.parse({ cids: cids(1000) })).not.toThrow();
+    expect(() => getCompoundSafety.input.parse({ cids: cids(1001) })).toThrow();
   });
 
   it('rejects a non-positive CID', () => {
@@ -167,6 +169,7 @@ describe('getCompoundSafety format', () => {
             pictograms: ['Flammable'],
             hazardStatements: [{ code: 'H225', statement: 'Highly flammable' }],
             precautionaryStatements: [{ code: 'P210', statement: 'Keep away', decoded: true }],
+            classifications: [],
           },
           source: 'ECHA',
         },
@@ -218,6 +221,7 @@ describe('getCompoundSafety format', () => {
               { code: 'P210', statement: 'Keep away from heat', decoded: true },
               { code: 'P241', statement: '', decoded: false },
             ],
+            classifications: [],
           },
         },
       ],
@@ -226,5 +230,184 @@ describe('getCompoundSafety format', () => {
 
     expect(text).toContain('P210: Keep away from heat');
     expect(text).toContain('P241: (not decoded)');
+  });
+
+  it('renders a classification with no named source or signal word without inventing either', () => {
+    const blocks = getCompoundSafety.format!({
+      results: [
+        {
+          cid: 1,
+          hasData: true,
+          status: 'ok',
+          ghs: {
+            pictograms: [],
+            hazardStatements: [{ code: 'H401', statement: 'Toxic to aquatic life' }],
+            precautionaryStatements: [],
+            classifications: [{ pictograms: [], hazardCodes: [{ code: 'H401' }] }],
+          },
+        },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+
+    expect(text).toContain('**Classifications by source (1):**');
+    expect(text).toContain('  - Source not named: H401');
+    expect(text).not.toContain('Danger');
+    expect(text).not.toContain('Warning');
+  });
+});
+
+// ── Real parser over captured PubChem records ─────────────────────────
+
+const FIXTURES = new URL('../../../fixtures/', import.meta.url);
+
+/** Serves the captured PUG View GHS records; the two fault CIDs answer as PUG View does. */
+async function pugView(input: string | URL | Request): Promise<Response> {
+  const url = new URL(input instanceof Request ? input.url : String(input));
+  const cid = url.pathname.match(/^\/rest\/pug_view\/data\/compound\/(\d+)\/JSON$/)?.[1];
+  if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov' || !cid) throw new Error('unmocked fetch');
+  const json = { 'Content-Type': 'application/json' };
+  if (cid === '11979316' || cid === '999999999') {
+    const message = cid === '11979316' ? 'No data found' : 'No record found';
+    return new Response(JSON.stringify({ Fault: { Code: 'PUGVIEW.NotFound', Message: message } }), {
+      status: 404,
+      headers: json,
+    });
+  }
+  return new Response(readFileSync(new URL(`ghs-${cid}.json`, FIXTURES), 'utf8'), {
+    status: 200,
+    headers: json,
+  });
+}
+
+type SafetyResult = {
+  cid: number;
+  hasData: boolean;
+  status: string;
+  source?: string;
+  ghs?: {
+    signalWord?: string;
+    pictograms: string[];
+    hazardStatements: Array<{ code: string }>;
+    classifications: Array<{
+      source?: string;
+      sourceRecord?: string;
+      signalWord?: string;
+      hazardCodes: Array<{ code: string; agreement?: string }>;
+      notClassified?: boolean;
+      notifications?: string;
+    }>;
+  };
+};
+
+describe('getCompoundSafety over captured PubChem records', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import('@/services/pubchem/pubchem-client.js')>(
+      '@/services/pubchem/pubchem-client.js',
+    );
+    const client = new actual.PubChemClient();
+    mockClient.getSafetyData.mockImplementation((cid: number, signal?: AbortSignal) =>
+      client.getSafetyData(cid, signal),
+    );
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(pugView);
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // #63 — every source used to be merged into one label credited to Record.Reference[0].
+  it('returns per-source classifications and contributor attribution on both surfaces', async () => {
+    const result = await runToolContract(getCompoundSafety, { cids: [702, 2244] });
+
+    expect(result.isError).toBeFalsy();
+    const [ethanol, aspirin] = (result.structuredContent as { results: SafetyResult[] }).results;
+    expect(ethanol!.ghs!.classifications).toHaveLength(11);
+    expect(ethanol!.ghs!.classifications[0]).toMatchObject({
+      source: 'Regulation (EC) No 1272/2008 of the European Parliament and of the Council',
+      hazardCodes: [{ code: 'H225' }],
+    });
+    expect(ethanol!.ghs!.classifications[1]!.hazardCodes).toEqual([
+      { code: 'H225', agreement: '> 99.9%' },
+      { code: 'H319', agreement: '37.7%' },
+    ]);
+    expect(ethanol!.source).toBe(
+      'Regulation (EC) No 1272/2008 of the European Parliament and of the Council; European Chemicals Agency (ECHA); NITE-CMC; Hazardous Chemical Information System (HCIS), Safe Work Australia; Hazardous Substances Data Bank (HSDB)',
+    );
+    expect(aspirin!.ghs!.signalWord).toBe('Danger');
+    expect(aspirin!.ghs!.classifications[0]).toMatchObject({
+      source: 'European Chemicals Agency (ECHA)',
+      signalWord: 'Warning',
+    });
+
+    const text = (result.content[0] as { type: 'text'; text: string }).text;
+    expect(text).toContain('**Classifications by source (11):**');
+    expect(text).toContain(
+      '  - European Chemicals Agency (ECHA) — Ethanol (EC: 200-578-6): Danger · Flammable, Irritant · H225 (> 99.9%), H319 (37.7%) · Aggregated GHS information provided per 13886 reports by companies from 79 notifications to the ECHA C&L Inventory. Each notification may be associated with multiple companies.',
+    );
+    expect(text).toMatch(
+      /NITE-CMC — Ethanol - FY2013 \(Revised classification\): Danger · [^\n]*H350/,
+    );
+    expect(text).toContain('*Source: Regulation (EC) No 1272/2008');
+    expect(text).not.toContain('Australian Industrial Chemicals Introduction Scheme');
+  });
+
+  // #71 — notifier "Not Classified" verdicts used to read as no deposited classification.
+  it('reports ECHA "Not Classified" verdicts as not_classified, apart from the two absences', async () => {
+    const result = await runToolContract(getCompoundSafety, {
+      cids: [135398658, 5793, 11979316, 999999999],
+    });
+
+    expect(result.isError).toBeFalsy();
+    const structured = result.structuredContent as {
+      results: SafetyResult[];
+      withDataCount: number;
+      notice?: string;
+    };
+    expect(structured.results.map((r) => [r.status, r.hasData])).toEqual([
+      ['not_classified', true],
+      ['not_classified', true],
+      ['no_ghs_data', false],
+      ['cid_not_found', false],
+    ]);
+    const folic = structured.results[0]!;
+    expect(folic.ghs!.classifications).toEqual([
+      {
+        source: 'European Chemicals Agency (ECHA)',
+        sourceRecord: 'Folic acid (EC: 200-419-0)',
+        pictograms: [],
+        hazardCodes: [],
+        notClassified: true,
+        notifications:
+          'Reported as not meeting GHS hazard criteria by 188 of 203 companies (only 7.4% companies provided GHS information).',
+      },
+    ]);
+    expect(folic.ghs!.hazardStatements).toEqual([]);
+    expect(folic.ghs!.signalWord).toBeUndefined();
+    expect(structured.results[1]!.ghs!.classifications.every((c) => c.notClassified)).toBe(true);
+    expect(structured.withDataCount).toBe(2);
+    expect(structured.notice).toContain(
+      'Not classified under GHS for 2 of 4 CID(s): 135398658, 5793.',
+    );
+    expect(structured.notice).toContain(
+      'No GHS classification on file for 1 of 4 CID(s): 11979316.',
+    );
+    expect(structured.notice).toContain('no record for 1 of 4 CID(s): 999999999');
+
+    const text = (result.content[0] as { type: 'text'; text: string }).text;
+    expect(text).toContain('## GHS Safety Data — CID 135398658');
+    expect(text).toContain(
+      '**Status:** not_classified — every deposited classification is an ECHA "Not Classified" verdict',
+    );
+    expect(text).toContain(
+      '  - European Chemicals Agency (ECHA) — Folic acid (EC: 200-419-0): Not Classified · Reported as not meeting GHS hazard criteria by 188 of 203 companies (only 7.4% companies provided GHS information).',
+    );
+    expect(text).not.toContain('CID 135398658 — no GHS safety data');
+    expect(text).toContain('## CID 11979316 — no GHS safety data');
+    expect(text).toContain('## CID 999999999 — no PubChem record');
   });
 });

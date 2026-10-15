@@ -1,0 +1,1301 @@
+{
+  "2244": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 2244,
+      "RecordTitle": "Aspirin",
+      "Section": [
+        {
+          "TOCHeading": "Pharmacology and Biochemistry",
+          "Section": [
+            {
+              "TOCHeading": "ATC Code",
+              "Information": [
+                {
+                  "ReferenceNumber": 172,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "N02BA01"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 230,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "N - Nervous system"
+                      },
+                      {
+                        "String": "N02 - Analgesics"
+                      },
+                      {
+                        "String": "N02B - Other analgesics and antipyretics"
+                      },
+                      {
+                        "String": "N02BA - Salicylic acid and derivatives"
+                      },
+                      {
+                        "String": "N02BA01 - Acetylsalicylic acid"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 231,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "A - Alimentary tract and metabolism"
+                      },
+                      {
+                        "String": "A01 - Stomatological preparations"
+                      },
+                      {
+                        "String": "A01A - Stomatological preparations"
+                      },
+                      {
+                        "String": "A01AD - Other agents for local oral treatment"
+                      },
+                      {
+                        "String": "A01AD05 - Acetylsalicylic acid"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 232,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "B - Blood and blood forming organs"
+                      },
+                      {
+                        "String": "B01 - Antithrombotic agents"
+                      },
+                      {
+                        "String": "B01A - Antithrombotic agents"
+                      },
+                      {
+                        "String": "B01AC - Platelet aggregation inhibitors excl. heparin"
+                      },
+                      {
+                        "String": "B01AC06 - Acetylsalicylic acid"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 233,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QB - Blood and blood forming organs"
+                      },
+                      {
+                        "String": "QB01 - Antithrombotic agents"
+                      },
+                      {
+                        "String": "QB01A - Antithrombotic agents"
+                      },
+                      {
+                        "String": "QB01AC - Platelet aggregation inhibitors, excl. heparin"
+                      },
+                      {
+                        "String": "QB01AC06 - Acetylsalicylic acid"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 234,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QA - Alimentary tract and metabolism"
+                      },
+                      {
+                        "String": "QA01 - Stomatological preparations"
+                      },
+                      {
+                        "String": "QA01A - Stomatological preparations"
+                      },
+                      {
+                        "String": "QA01AD - Other agents for local oral treatment"
+                      },
+                      {
+                        "String": "QA01AD05 - Acetylsalicylic acid"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 235,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QN - Nervous system"
+                      },
+                      {
+                        "String": "QN02 - Analgesics"
+                      },
+                      {
+                        "String": "QN02B - Other analgesics and antipyretics"
+                      },
+                      {
+                        "String": "QN02BA - Salicylic acid and derivatives"
+                      },
+                      {
+                        "String": "QN02BA01 - Acetylsalicylic acid"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 236,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "B01AC06; N02BA01"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Reference": [
+        {
+          "ReferenceNumber": 172,
+          "SourceName": "NORMAN Suspect List Exchange",
+          "SourceID": "nrm_2244"
+        },
+        {
+          "ReferenceNumber": 230,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "N02BA01"
+        },
+        {
+          "ReferenceNumber": 231,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "A01AD05"
+        },
+        {
+          "ReferenceNumber": 232,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "B01AC06"
+        },
+        {
+          "ReferenceNumber": 233,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QB01AC06"
+        },
+        {
+          "ReferenceNumber": 234,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QA01AD05"
+        },
+        {
+          "ReferenceNumber": 235,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QN02BA01"
+        },
+        {
+          "ReferenceNumber": 236,
+          "SourceName": "WHO Model Lists of Essential Medicines",
+          "SourceID": "13"
+        }
+      ]
+    }
+  },
+  "3672": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 3672,
+      "RecordTitle": "Ibuprofen, (+-)-",
+      "Section": [
+        {
+          "TOCHeading": "Pharmacology and Biochemistry",
+          "Section": [
+            {
+              "TOCHeading": "ATC Code",
+              "Information": [
+                {
+                  "ReferenceNumber": 163,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "M01AE01"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 184,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "M - Musculo-skeletal system"
+                      },
+                      {
+                        "String": "M02 - Topical products for joint and muscular pain"
+                      },
+                      {
+                        "String": "M02A - Topical products for joint and muscular pain"
+                      },
+                      {
+                        "String": "M02AA - Antiinflammatory preparations, non-steroids for topical use"
+                      },
+                      {
+                        "String": "M02AA13 - Ibuprofen"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 185,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "C - Cardiovascular system"
+                      },
+                      {
+                        "String": "C01 - Cardiac therapy"
+                      },
+                      {
+                        "String": "C01E - Other cardiac preparations"
+                      },
+                      {
+                        "String": "C01EB - Other cardiac preparations"
+                      },
+                      {
+                        "String": "C01EB16 - Ibuprofen"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 186,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "R - Respiratory system"
+                      },
+                      {
+                        "String": "R02 - Throat preparations"
+                      },
+                      {
+                        "String": "R02A - Throat preparations"
+                      },
+                      {
+                        "String": "R02AX - Other throat preparations"
+                      },
+                      {
+                        "String": "R02AX02 - Ibuprofen"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 187,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "G - Genito urinary system and sex hormones"
+                      },
+                      {
+                        "String": "G02 - Other gynecologicals"
+                      },
+                      {
+                        "String": "G02C - Other gynecologicals"
+                      },
+                      {
+                        "String": "G02CC - Antiinflammatory products for vaginal administration"
+                      },
+                      {
+                        "String": "G02CC01 - Ibuprofen"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 188,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "M - Musculo-skeletal system"
+                      },
+                      {
+                        "String": "M01 - Antiinflammatory and antirheumatic products"
+                      },
+                      {
+                        "String": "M01A - Antiinflammatory and antirheumatic products, non-steroids"
+                      },
+                      {
+                        "String": "M01AE - Propionic acid derivatives"
+                      },
+                      {
+                        "String": "M01AE01 - Ibuprofen"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 189,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QG - Genito urinary system and sex hormones"
+                      },
+                      {
+                        "String": "QG02 - Other gynecologicals"
+                      },
+                      {
+                        "String": "QG02C - Other gynecologicals"
+                      },
+                      {
+                        "String": "QG02CC - Antiinflammatory products for vaginal administration"
+                      },
+                      {
+                        "String": "QG02CC01 - Ibuprofen"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 190,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QM - Musculo-skeletal system"
+                      },
+                      {
+                        "String": "QM01 - Antiinflammatory and antirheumatic products"
+                      },
+                      {
+                        "String": "QM01A - Antiinflammatory and antirheumatic products, non-steroids"
+                      },
+                      {
+                        "String": "QM01AE - Propionic acid derivatives"
+                      },
+                      {
+                        "String": "QM01AE01 - Ibuprofen"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 191,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QC - Cardiovascular system"
+                      },
+                      {
+                        "String": "QC01 - Cardiac therapy"
+                      },
+                      {
+                        "String": "QC01E - Other cardiac preparations"
+                      },
+                      {
+                        "String": "QC01EB - Other cardiac preparations"
+                      },
+                      {
+                        "String": "QC01EB16 - Ibuprofen"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 192,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QR - Respiratory system"
+                      },
+                      {
+                        "String": "QR02 - Throat preparations"
+                      },
+                      {
+                        "String": "QR02A - Throat preparations"
+                      },
+                      {
+                        "String": "QR02AX - Other throat preparations"
+                      },
+                      {
+                        "String": "QR02AX02 - Ibuprofen"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 193,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QM - Musculo-skeletal system"
+                      },
+                      {
+                        "String": "QM02 - Topical products for joint and muscular pain"
+                      },
+                      {
+                        "String": "QM02A - Topical products for joint and muscular pain"
+                      },
+                      {
+                        "String": "QM02AA - Antiinflammatory preparations, non-steroids for topical use"
+                      },
+                      {
+                        "String": "QM02AA13 - Ibuprofen"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 194,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "M01AE01; C01EB16"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Reference": [
+        {
+          "ReferenceNumber": 163,
+          "SourceName": "NORMAN Suspect List Exchange",
+          "SourceID": "nrm_3672"
+        },
+        {
+          "ReferenceNumber": 184,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "M02AA13"
+        },
+        {
+          "ReferenceNumber": 185,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "C01EB16"
+        },
+        {
+          "ReferenceNumber": 186,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "R02AX02"
+        },
+        {
+          "ReferenceNumber": 187,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "G02CC01"
+        },
+        {
+          "ReferenceNumber": 188,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "M01AE01"
+        },
+        {
+          "ReferenceNumber": 189,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QG02CC01"
+        },
+        {
+          "ReferenceNumber": 190,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QM01AE01"
+        },
+        {
+          "ReferenceNumber": 191,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QC01EB16"
+        },
+        {
+          "ReferenceNumber": 192,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QR02AX02"
+        },
+        {
+          "ReferenceNumber": 193,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QM02AA13"
+        },
+        {
+          "ReferenceNumber": 194,
+          "SourceName": "WHO Model Lists of Essential Medicines",
+          "SourceID": "14"
+        }
+      ]
+    }
+  },
+  "5743": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 5743,
+      "RecordTitle": "Dexamethasone",
+      "Section": [
+        {
+          "TOCHeading": "Pharmacology and Biochemistry",
+          "Section": [
+            {
+              "TOCHeading": "ATC Code",
+              "Information": [
+                {
+                  "ReferenceNumber": 143,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "H02AB02"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 143,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "H02AB02"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 164,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "R - Respiratory system"
+                      },
+                      {
+                        "String": "R01 - Nasal preparations"
+                      },
+                      {
+                        "String": "R01A - Decongestants and other nasal preparations for topical use"
+                      },
+                      {
+                        "String": "R01AD - Corticosteroids"
+                      },
+                      {
+                        "String": "R01AD03 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 165,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "A - Alimentary tract and metabolism"
+                      },
+                      {
+                        "String": "A01 - Stomatological preparations"
+                      },
+                      {
+                        "String": "A01A - Stomatological preparations"
+                      },
+                      {
+                        "String": "A01AC - Corticosteroids for local oral treatment"
+                      },
+                      {
+                        "String": "A01AC02 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 166,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "S - Sensory organs"
+                      },
+                      {
+                        "String": "S01 - Ophthalmologicals"
+                      },
+                      {
+                        "String": "S01B - Antiinflammatory agents"
+                      },
+                      {
+                        "String": "S01BA - Corticosteroids, plain"
+                      },
+                      {
+                        "String": "S01BA01 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 167,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "S - Sensory organs"
+                      },
+                      {
+                        "String": "S03 - Ophthalmological and otological preparations"
+                      },
+                      {
+                        "String": "S03B - Corticosteroids"
+                      },
+                      {
+                        "String": "S03BA - Corticosteroids"
+                      },
+                      {
+                        "String": "S03BA01 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 168,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "D - Dermatologicals"
+                      },
+                      {
+                        "String": "D07 - Corticosteroids, dermatological preparations"
+                      },
+                      {
+                        "String": "D07A - Corticosteroids, plain"
+                      },
+                      {
+                        "String": "D07AB - Corticosteroids, moderately potent (group ii)"
+                      },
+                      {
+                        "String": "D07AB19 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 169,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "D - Dermatologicals"
+                      },
+                      {
+                        "String": "D10 - Anti-acne preparations"
+                      },
+                      {
+                        "String": "D10A - Anti-acne preparations for topical use"
+                      },
+                      {
+                        "String": "D10AA - Corticosteroids, combinations for treatment of acne"
+                      },
+                      {
+                        "String": "D10AA03 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 170,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "C - Cardiovascular system"
+                      },
+                      {
+                        "String": "C05 - Vasoprotectives"
+                      },
+                      {
+                        "String": "C05A - Agents for treatment of hemorrhoids and anal fissures for topical use"
+                      },
+                      {
+                        "String": "C05AA - Corticosteroids"
+                      },
+                      {
+                        "String": "C05AA09 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 171,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "S - Sensory organs"
+                      },
+                      {
+                        "String": "S02 - Otologicals"
+                      },
+                      {
+                        "String": "S02B - Corticosteroids"
+                      },
+                      {
+                        "String": "S02BA - Corticosteroids"
+                      },
+                      {
+                        "String": "S02BA06 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 172,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "S - Sensory organs"
+                      },
+                      {
+                        "String": "S01 - Ophthalmologicals"
+                      },
+                      {
+                        "String": "S01C - Antiinflammatory agents and antiinfectives in combination"
+                      },
+                      {
+                        "String": "S01CB - Corticosteroids/antiinfectives/mydriatics in combination"
+                      },
+                      {
+                        "String": "S01CB01 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 173,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "H - Systemic hormonal preparations, excl. sex hormones and insulins"
+                      },
+                      {
+                        "String": "H02 - Corticosteroids for systemic use"
+                      },
+                      {
+                        "String": "H02A - Corticosteroids for systemic use, plain"
+                      },
+                      {
+                        "String": "H02AB - Glucocorticoids"
+                      },
+                      {
+                        "String": "H02AB02 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 174,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "D - Dermatologicals"
+                      },
+                      {
+                        "String": "D07 - Corticosteroids, dermatological preparations"
+                      },
+                      {
+                        "String": "D07X - Corticosteroids, other combinations"
+                      },
+                      {
+                        "String": "D07XB - Corticosteroids, moderately potent, other combinations"
+                      },
+                      {
+                        "String": "D07XB05 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 175,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QS - Sensory organs"
+                      },
+                      {
+                        "String": "QS03 - Ophthalmological and otological preparations"
+                      },
+                      {
+                        "String": "QS03B - Corticosteroids"
+                      },
+                      {
+                        "String": "QS03BA - Corticosteroids"
+                      },
+                      {
+                        "String": "QS03BA01 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 176,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QS - Sensory organs"
+                      },
+                      {
+                        "String": "QS01 - Ophthalmologicals"
+                      },
+                      {
+                        "String": "QS01B - Antiinflammatory agents"
+                      },
+                      {
+                        "String": "QS01BA - Corticosteroids, plain"
+                      },
+                      {
+                        "String": "QS01BA01 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 177,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QD - Dermatologicals"
+                      },
+                      {
+                        "String": "QD07 - Corticosteroids, dermatological preparations"
+                      },
+                      {
+                        "String": "QD07X - Corticosteroids, other combinations"
+                      },
+                      {
+                        "String": "QD07XB - Corticosteroids, moderately potent, other combinations"
+                      },
+                      {
+                        "String": "QD07XB05 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 178,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QS - Sensory organs"
+                      },
+                      {
+                        "String": "QS01 - Ophthalmologicals"
+                      },
+                      {
+                        "String": "QS01C - Antiinflammatory agents and antiinfectives in combination"
+                      },
+                      {
+                        "String": "QS01CB - Corticosteroids/antiinfectives/mydriatics in combination"
+                      },
+                      {
+                        "String": "QS01CB01 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 179,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QC - Cardiovascular system"
+                      },
+                      {
+                        "String": "QC05 - Vasoprotectives"
+                      },
+                      {
+                        "String": "QC05A - Agents for treatment of hemorrhoids and anal fissures for topical use"
+                      },
+                      {
+                        "String": "QC05AA - Corticosteroids"
+                      },
+                      {
+                        "String": "QC05AA09 - Dexametasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 180,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QH - Systemic hormonal preparations, excl. sex hormones and insulin"
+                      },
+                      {
+                        "String": "QH02 - Corticosteroids for systemic use"
+                      },
+                      {
+                        "String": "QH02A - Corticosteroids for systemic use, plain"
+                      },
+                      {
+                        "String": "QH02AB - Glucocorticoids"
+                      },
+                      {
+                        "String": "QH02AB02 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 181,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QD - Dermatologicals"
+                      },
+                      {
+                        "String": "QD10 - Anti-acne preparations"
+                      },
+                      {
+                        "String": "QD10A - Anti-acne preparations for topical use"
+                      },
+                      {
+                        "String": "QD10AA - Corticosteroides, combinations for treatment of acne"
+                      },
+                      {
+                        "String": "QD10AA03 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 182,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QR - Respiratory system"
+                      },
+                      {
+                        "String": "QR01 - Nasal preparations"
+                      },
+                      {
+                        "String": "QR01A - Decongestants and other nasal preparations for topical use"
+                      },
+                      {
+                        "String": "QR01AD - Corticosteroids"
+                      },
+                      {
+                        "String": "QR01AD03 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 183,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QD - Dermatologicals"
+                      },
+                      {
+                        "String": "QD07 - Corticosteroids, dermatological preparations"
+                      },
+                      {
+                        "String": "QD07A - Corticosteroids, plain"
+                      },
+                      {
+                        "String": "QD07AB - Corticosteroids, moderately potent (group ii)"
+                      },
+                      {
+                        "String": "QD07AB19 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 184,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QS - Sensory organs"
+                      },
+                      {
+                        "String": "QS02 - Otologicals"
+                      },
+                      {
+                        "String": "QS02B - Corticosteroids"
+                      },
+                      {
+                        "String": "QS02BA - Corticosteroids"
+                      },
+                      {
+                        "String": "QS02BA06 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 185,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QA - Alimentary tract and metabolism"
+                      },
+                      {
+                        "String": "QA01 - Stomatological preparations"
+                      },
+                      {
+                        "String": "QA01A - Stomatological preparations"
+                      },
+                      {
+                        "String": "QA01AC - Corticosteroids for local oral treatment"
+                      },
+                      {
+                        "String": "QA01AC02 - Dexamethasone"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 186,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "C05AA09; H02AB02; L01AA01"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Reference": [
+        {
+          "ReferenceNumber": 143,
+          "SourceName": "NORMAN Suspect List Exchange",
+          "SourceID": "nrm_5743"
+        },
+        {
+          "ReferenceNumber": 164,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "R01AD03"
+        },
+        {
+          "ReferenceNumber": 165,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "A01AC02"
+        },
+        {
+          "ReferenceNumber": 166,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "S01BA01"
+        },
+        {
+          "ReferenceNumber": 167,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "S03BA01"
+        },
+        {
+          "ReferenceNumber": 168,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "D07AB19"
+        },
+        {
+          "ReferenceNumber": 169,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "D10AA03"
+        },
+        {
+          "ReferenceNumber": 170,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "C05AA09"
+        },
+        {
+          "ReferenceNumber": 171,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "S02BA06"
+        },
+        {
+          "ReferenceNumber": 172,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "S01CB01"
+        },
+        {
+          "ReferenceNumber": 173,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "H02AB02"
+        },
+        {
+          "ReferenceNumber": 174,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "D07XB05"
+        },
+        {
+          "ReferenceNumber": 175,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QS03BA01"
+        },
+        {
+          "ReferenceNumber": 176,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QS01BA01"
+        },
+        {
+          "ReferenceNumber": 177,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QD07XB05"
+        },
+        {
+          "ReferenceNumber": 178,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QS01CB01"
+        },
+        {
+          "ReferenceNumber": 179,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QC05AA09"
+        },
+        {
+          "ReferenceNumber": 180,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QH02AB02"
+        },
+        {
+          "ReferenceNumber": 181,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QD10AA03"
+        },
+        {
+          "ReferenceNumber": 182,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QR01AD03"
+        },
+        {
+          "ReferenceNumber": 183,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QD07AB19"
+        },
+        {
+          "ReferenceNumber": 184,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QS02BA06"
+        },
+        {
+          "ReferenceNumber": 185,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QA01AC02"
+        },
+        {
+          "ReferenceNumber": 186,
+          "SourceName": "WHO Model Lists of Essential Medicines",
+          "SourceID": "21"
+        }
+      ]
+    }
+  },
+  "60823": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 60823,
+      "RecordTitle": "Atorvastatin",
+      "Section": [
+        {
+          "TOCHeading": "Pharmacology and Biochemistry",
+          "Section": [
+            {
+              "TOCHeading": "ATC Code",
+              "Information": [
+                {
+                  "ReferenceNumber": 118,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "C10AA05"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 143,
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "C - Cardiovascular system"
+                      },
+                      {
+                        "String": "C10 - Lipid modifying agents"
+                      },
+                      {
+                        "String": "C10A - Lipid modifying agents, plain"
+                      },
+                      {
+                        "String": "C10AA - Hmg coa reductase inhibitors"
+                      },
+                      {
+                        "String": "C10AA05 - Atorvastatin"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 144,
+                  "Name": "ATCvet Code",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "QC - Cardiovascular system"
+                      },
+                      {
+                        "String": "QC10 - Lipid modifying agents"
+                      },
+                      {
+                        "String": "QC10A - Lipid modifying agents, plain"
+                      },
+                      {
+                        "String": "QC10AA - Hmg coa reductase inhibitors"
+                      },
+                      {
+                        "String": "QC10AA05 - Atorvastatin"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Reference": [
+        {
+          "ReferenceNumber": 118,
+          "SourceName": "NORMAN Suspect List Exchange",
+          "SourceID": "nrm_60823"
+        },
+        {
+          "ReferenceNumber": 143,
+          "SourceName": "WHO Anatomical Therapeutic Chemical (ATC) Classification",
+          "SourceID": "C10AA05"
+        },
+        {
+          "ReferenceNumber": 144,
+          "SourceName": "WHO ATCvet - Classification of Veterinary Medicines",
+          "SourceID": "QC10AA05"
+        }
+      ]
+    }
+  }
+}

@@ -3,7 +3,9 @@
  * the request before its first fetch, mid-fetch, during a retry backoff, while queued behind the
  * rate limiter, and between ListKey polls — surfacing `RequestCancelled`, never retried, never
  * logged as a failed request, and never absorbed as "no data" or a failed interaction kind. The
- * 30 s timeout keeps its own behavior alongside a live caller signal. `fetch` is stubbed with an
+ * per-call time budget (#57) — 50 s shared by every request of one call, 30 s per attempt, one
+ * retry, settled before an MCP client's 60 s timeout, stalled bodies included — keeps its own
+ * behavior alongside a live caller signal. `fetch` is stubbed with an
  * implementation that honors `init.signal` the way the platform fetch does.
  * @module tests/services/pubchem/pubchem-client-cancellation
  */
@@ -89,29 +91,236 @@ const cancelled = {
   message: expect.not.stringMatching(/timed out/),
 };
 
-describe('PubChem request timeout', () => {
+/** The MCP SDK client's default request timeout. A PubChem request must settle before it, or
+ * the caller sees its own client's timeout instead of this server's classified failure. */
+const CLIENT_TIMEOUT_MS = 60_000;
+
+describe('PubChem per-call time budget (#57)', () => {
   it.each([
     ['without a caller signal', undefined],
     ['beside a live caller signal', new AbortController().signal],
   ])(
-    'times out a request PubChem never answers at 30 s, retries once, and logs one warning %s',
+    'times out a request PubChem never answers: 30 s per attempt, one retry, Timeout before 60 s, one warning %s',
     async (_label, signal) => {
       const warning = vi.spyOn(logger, 'warning');
       fetchMock.mockImplementation(hangUntilAborted);
 
-      const { error } = await settle(new PubChemClient().getSynonyms(2244, signal));
+      const call = track(new PubChemClient().getSynonyms(2244, signal));
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      // Attempt 1 times out at 30 s; the retry goes out after a 1 s backoff.
+      await vi.advanceTimersByTimeAsync(1_002);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(CLIENT_TIMEOUT_MS - 1 - 31_001);
 
-      expect((error as Error).message).toBe('PubChem request timed out (30s)');
+      expect(call.settled).toBe(true);
+      expect(call.error).toMatchObject({ code: JsonRpcErrorCode.Timeout });
+      expect((call.error as Error).message).not.toContain('/rest/pug');
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(warning).toHaveBeenCalledTimes(1);
+      // The log line names the clock that fired; the caller's message does not.
       expect(extrasOf(warning)[0]).toMatchObject({
         url: SYNONYMS_URL,
         method: 'GET',
-        error: 'PubChem request timed out (30s)',
+        error: expect.stringContaining('retry deadline'),
       });
       expect(vi.getTimerCount()).toBe(0);
     },
   );
+
+  const bodyReaders: Array<[string, (c: PubChemClient) => Promise<unknown>]> = [
+    ['fetchJson', (c) => c.getSynonyms(2244)],
+    ['fetchText', (c) => c.getSdf3d(2244)],
+    ['fetchBinary', (c) => c.getImage(2244)],
+  ];
+
+  it.each(bodyReaders)(
+    'ends a 200 whose body stalls after the headers with Timeout before 60 s (%s)',
+    async (_reader, run) => {
+      fetchMock.mockImplementation(async (_input, init) => stalledBody(init));
+
+      const call = track(run(new PubChemClient()));
+      await vi.advanceTimersByTimeAsync(CLIENT_TIMEOUT_MS - 1);
+
+      expect(call.settled).toBe(true);
+      expect(call.error).toMatchObject({ code: JsonRpcErrorCode.Timeout });
+      // The stalled attempt counts as transient: retried once, still inside the one deadline.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it('ends a retry cancelled mid-body as RequestCancelled, not as the deadline', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock
+      .mockImplementationOnce(hangUntilAborted)
+      .mockImplementationOnce(async (_input, init) => stalledBody(init));
+    const controller = new AbortController();
+
+    const call = track(new PubChemClient().getSynonyms(2244, controller.signal));
+    await vi.advanceTimersByTimeAsync(35_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(call.error).toMatchObject(cancelled);
+    expect(warning).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  /** A name only the request URL carries, so a trace of it in an error is a trace of the URL. */
+  const queryTerm = 'zyxquerytermbeta';
+  const unavailable = () => new Response('Service Unavailable', { status: 503 });
+
+  it.each([
+    ['PubChem never answers: the request deadline ends it', () => hangUntilAborted],
+    [
+      'a 503, then a retry that never answers: the attempt timer ends it',
+      () => {
+        fetchMock.mockResolvedValueOnce(unavailable());
+        return hangUntilAborted;
+      },
+    ],
+    [
+      'a 503, then a retry whose body stalls: the attempt timer ends it mid-body',
+      () => {
+        fetchMock.mockResolvedValueOnce(unavailable());
+        return (async (_input, init) => stalledBody(init)) satisfies typeof fetch;
+      },
+    ],
+  ])(
+    'reaches the caller as one Timeout with nothing of the request in it (%s)',
+    async (_label, arrange) => {
+      const warning = vi.spyOn(logger, 'warning');
+      fetchMock.mockImplementation(arrange());
+
+      const { error } = await settle(new PubChemClient().searchByName(queryTerm));
+
+      expect(error).toMatchObject({
+        code: JsonRpcErrorCode.Timeout,
+        message: 'PubChem did not respond in time; the request timed out. Retry shortly.',
+      });
+      expect((error as { data?: unknown }).data).toEqual({ retryAttempts: 2 });
+      const wire = JSON.stringify({
+        message: (error as Error).message,
+        data: (error as { data?: unknown }).data,
+      });
+      expect(wire).not.toContain('pubchem.ncbi.nlm.nih.gov');
+      expect(wire).not.toContain('/rest/');
+      expect(wire).not.toContain(queryTerm);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      // The server log keeps the route and which clock fired.
+      expect(warning).toHaveBeenCalledTimes(1);
+      expect(String(extrasOf(warning)[0]?.url)).toContain(queryTerm);
+      expect(String(extrasOf(warning)[0]?.error)).toMatch(/retry deadline|timed out/);
+    },
+  );
+
+  it('settles a stalled body that a recovering retry follows with the retry result', async () => {
+    fetchMock
+      .mockImplementationOnce(async (_input, init) => stalledBody(init))
+      .mockResolvedValueOnce(
+        jsonResponse({ InformationList: { Information: [{ CID: 2244, Synonym: ['aspirin'] }] } }),
+      );
+
+    const { value } = await settle(new PubChemClient().getSynonyms(2244));
+
+    expect(value).toEqual(['aspirin']);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('one time budget per call, shared by every request on its signal', () => {
+  const TIMEOUT_MESSAGE = 'PubChem did not respond in time; the request timed out. Retry shortly.';
+  const synonyms = () =>
+    jsonResponse({ InformationList: { Information: [{ CID: 2244, Synonym: ['aspirin'] }] } });
+
+  /** A fetch PubChem answers `ms` after it is sent, unless the request's signal aborts first.
+   * Kept under the 30 s attempt cap, so each answer lands on its first attempt. */
+  const answersAfter =
+    (ms: number): typeof fetch =>
+    (_input, init) =>
+      new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(() => resolve(synonyms()), ms);
+        rejectOnAbort(init?.signal, (reason) => {
+          clearTimeout(timer);
+          reject(reason);
+        });
+      });
+
+  /** Two requests in sequence, as a tool chaining them makes them. */
+  async function chain(client: PubChemClient, first?: AbortSignal, second?: AbortSignal) {
+    await client.getSynonyms(2244, first);
+    return client.getSynonyms(2244, second);
+  }
+
+  it('ends a second request on the same signal when the call has spent 50 s, not 50 s later', async () => {
+    fetchMock.mockImplementationOnce(answersAfter(20_000)).mockImplementation(hangUntilAborted);
+    const signal = new AbortController().signal;
+
+    const call = track(chain(new PubChemClient(), signal, signal));
+    await vi.advanceTimersByTimeAsync(49_990);
+    expect(call.settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(call.settled).toBe(true);
+    expect(call.error).toMatchObject({ code: JsonRpcErrorCode.Timeout, message: TIMEOUT_MESSAGE });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('fails a request on a spent signal at once, without sending it', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock.mockImplementation(hangUntilAborted);
+    const signal = new AbortController().signal;
+    const client = new PubChemClient();
+
+    const first = track(client.getSynonyms(2244, signal));
+    await vi.advanceTimersByTimeAsync(50_000);
+    expect(first.error).toMatchObject({ code: JsonRpcErrorCode.Timeout });
+    const sent = fetchMock.mock.calls.length;
+
+    const second = track(client.getSynonyms(2244, signal));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(second.error).toMatchObject({
+      code: JsonRpcErrorCode.Timeout,
+      message: TIMEOUT_MESSAGE,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(sent);
+    // The server log names the spent budget and the route it stopped.
+    expect(extrasOf(warning).at(-1)).toMatchObject({
+      url: SYNONYMS_URL,
+      error: expect.stringContaining('budget'),
+    });
+  });
+
+  it('gives a request on another signal a budget of its own', async () => {
+    // 25 s + 28 s outruns one 50 s budget, not two.
+    fetchMock
+      .mockImplementationOnce(answersAfter(25_000))
+      .mockImplementationOnce(answersAfter(28_000));
+
+    const call = track(
+      chain(new PubChemClient(), new AbortController().signal, new AbortController().signal),
+    );
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(call.value).toEqual(['aspirin']);
+  });
+
+  it('still ends a budgeted call the caller cancels as RequestCancelled', async () => {
+    fetchMock.mockImplementationOnce(answersAfter(20_000)).mockImplementation(hangUntilAborted);
+    const controller = new AbortController();
+
+    const call = track(chain(new PubChemClient(), controller.signal, controller.signal));
+    await vi.advanceTimersByTimeAsync(45_000);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(call.error).toMatchObject(cancelled);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 describe('PubChem caller cancellation (#54)', () => {
@@ -274,6 +483,7 @@ describe('PubChem caller cancellation (#54)', () => {
     ['getClassification', (c, s) => c.getClassification(2244, s)],
     ['getAssaySummary', (c, s) => c.getAssaySummary(2244, s)],
     ['searchAssaysByTarget', (c, s) => c.searchAssaysByTarget('genesymbol', 'EGFR', s)],
+    ['getAssayCidPage', (c, s) => c.getAssayCidPage(1000, true, 0, 20, s)],
     ['getEntitySummary', (c, s) => c.getEntitySummary('assay', 1, s)],
     ['getInteractions', (c, s) => c.getInteractions(2244, ['drug-drug'], 5, 0, s)],
     ['getSdf3d', (c, s) => c.getSdf3d(2244, s)],

@@ -4,7 +4,7 @@
  * @module mcp-server/tools/definitions/get-compound-interactions-extended.test
  */
 
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundInteractions } from '@/mcp-server/tools/definitions/get-compound-interactions.tool.js';
 import type { InteractionEntry } from '@/services/pubchem/types.js';
@@ -260,6 +260,97 @@ describe('getCompoundInteractions — failure isolation', () => {
 
     expect(notice).toContain('Could not retrieve drug-drug interaction');
     expect(notice).not.toContain('No drug-drug interaction data found');
+  });
+});
+
+describe('getCompoundInteractions — SDQ refusals (#62)', () => {
+  const refused = (kind: 'drug-drug' | 'target') => ({
+    kind,
+    reason: 'sdq_unavailable',
+    message: `PubChem's SDQ service answered HTTP 404 instead of SDQ data.`,
+  });
+
+  it('names an SDQ refusal without advising a retry, and points target at pubchem_get_bioactivity', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [{ kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 }],
+      failedKinds: [refused('drug-drug'), refused('target')],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({
+        cid: 2244,
+        kinds: ['drug-drug', 'target', 'drug-food'],
+      }),
+      ctx,
+    );
+    const enrichment = getEnrichment(ctx);
+    const notice = enrichment.notice as string;
+
+    expect(enrichment.failedKinds).toBe('drug-drug, target');
+    expect(notice).toContain('drug-drug, target');
+    expect(notice).toContain('SDQ');
+    expect(notice).not.toMatch(/retry/i);
+    expect(notice).toContain('pubchem_get_bioactivity');
+  });
+
+  it('carries the refusal on structuredContent and in content[] text', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [],
+      failedKinds: [refused('target')],
+    });
+
+    const result = await runToolContract(getCompoundInteractions, { cid: 2244, kinds: ['target'] });
+    const structured = result.structuredContent as Record<string, unknown>;
+    const text = result.content
+      .map((block) => (block.type === 'text' ? block.text : ''))
+      .join('\n');
+
+    expect(result.isError).toBeFalsy();
+    expect(structured.failedKinds).toBe('target');
+    expect(structured.paging).toEqual([]);
+    expect(String(structured.notice)).toContain('pubchem_get_bioactivity');
+    expect(text).toContain('target');
+    expect(text).toContain("PubChem's SDQ service");
+    expect(text).toContain('pubchem_get_bioactivity');
+  });
+
+  it('leaves out the bioactivity pointer when target was not refused', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [],
+      failedKinds: [refused('drug-drug')],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(getCompoundInteractions.input.parse({ cid: 2244 }), ctx);
+    const notice = getEnrichment(ctx).notice as string;
+
+    expect(notice).toContain('drug-drug');
+    expect(notice).not.toMatch(/retry/i);
+    expect(notice).not.toContain('pubchem_get_bioactivity');
+  });
+
+  it('keeps the retry wording for a transient failure beside a refusal', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [],
+      failedKinds: [
+        refused('target'),
+        { kind: 'drug-food', message: 'PubChem returned HTTP 503 after 2 attempts.' },
+      ],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 2244, kinds: ['target', 'drug-food'] }),
+      ctx,
+    );
+    const notice = getEnrichment(ctx).notice as string;
+
+    expect(notice).toContain('Could not retrieve drug-food interaction');
+    expect(notice).toMatch(/Retry to re-attempt it\./);
+    expect(notice).toContain('pubchem_get_bioactivity');
+    expect(notice.match(/retry/gi)).toHaveLength(1);
   });
 });
 

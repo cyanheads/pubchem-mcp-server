@@ -20,6 +20,18 @@ export interface AidListResponse {
   IdentifierList: { AID: number[] };
 }
 
+/** An assay's CID list stored server-side (`list_return=listkey`): the key to page it with
+ * and the exact number of CIDs it holds. */
+export interface AssayCidListKeyResponse {
+  IdentifierList: { ListKey: string; Size: number };
+}
+
+/** One page of an assay's CIDs. `total` is the exact count across all pages. */
+export interface AssayCidPage {
+  cids: number[];
+  total: number;
+}
+
 /** Compound property table */
 export interface PropertyTableResponse {
   PropertyTable: {
@@ -63,7 +75,13 @@ export interface PugViewResponse {
     RecordType: string;
     RecordNumber: number;
     Section?: PugViewSection[];
-    Reference?: Array<{ ReferenceNumber: number; SourceName: string; SourceID?: string }>;
+    Reference?: Array<{
+      ReferenceNumber: number;
+      SourceName: string;
+      SourceID?: string;
+      /** The depositor's own record title, e.g. "Ethanol - FY2013 (Revised classification)". */
+      Name?: string;
+    }>;
   };
 }
 
@@ -116,9 +134,40 @@ export interface SdqResponse {
 
 // ── Parsed output types ──────────────────────────────────────────────
 
+/** One source's GHS classification — a run of PUG View `Information` entries sharing a
+ * `ReferenceNumber`. A classification is one authority's coherent label (signal word,
+ * pictograms, and hazard codes together), so it is kept whole rather than merged. */
+export interface GHSSourceClassification {
+  hazardCodes: Array<{
+    /** Notifier agreement exactly as PubChem prints it ("37.7%", "> 99.9%"). Only ECHA C&L
+     * blocks carry one. */
+    agreement?: string;
+    code: string;
+  }>;
+  /** Set when the block is ECHA's "Not Classified" verdict: notifiers assessed the substance
+   * and found it meets no GHS hazard criteria. Such a block carries no hazard codes. */
+  notClassified?: true;
+  /** The notification counts behind the classification: the first line of ECHA's
+   * "C&L Notifications Summary" for a hazard classification, or ECHA's verdict line for a
+   * "Not Classified" block. ECHA blocks only. */
+  notifications?: string;
+  pictograms: string[];
+  signalWord?: string;
+  /** `Reference.SourceName` for the block's `ReferenceNumber`. Absent when PubChem names no
+   * reference for the block. */
+  source?: string;
+  /** `Reference.Name` — the depositor's record title, which tells NITE-CMC revisions and ECHA
+   * aggregate vs single-company notifications apart. */
+  sourceRecord?: string;
+}
+
 /** Parsed GHS hazard classification */
 export interface GHSClassification {
+  /** Each source's classification, in PubChem's order. */
+  classifications: GHSSourceClassification[];
+  /** Union across classifications, first-seen order. */
   hazardStatements: Array<{ code: string; statement: string }>;
+  /** Union across classifications, first-seen order. */
   pictograms: string[];
   precautionaryStatements: Array<{
     code: string;
@@ -130,30 +179,69 @@ export interface GHSClassification {
      * statement the depositor left blank. */
     decoded: boolean;
   }>;
+  /** Most severe across classifications: Danger > Warning > absent. */
   signalWord?: string;
+  /** Distinct `classifications[].source` values in PubChem's order, joined "; ". */
   source?: string;
 }
 
 /** Outcome of a GHS safety lookup for one CID.
  *
- * PUG View answers "no such compound" and "this compound has no Safety and Hazards data" with
+ * PUG View answers "no such compound" and "this compound has no GHS Classification data" with
  * the same HTTP 404, discriminated only by the fault message ("No record found" vs "No data
  * found"). The two need opposite recovery advice — verify the identifier, versus accept that
  * the compound carries no deposited classification — so they are kept apart here rather than
- * collapsed into one absent value. */
+ * collapsed into one absent value. `not_classified` is a third answer: classifications are on
+ * file, and every one is an ECHA "Not Classified" verdict. */
 export type SafetyLookup =
   | { status: 'ok'; ghs: GHSClassification }
+  | { status: 'not_classified'; ghs: GHSClassification }
   | { status: 'no_ghs_data' }
   | { status: 'cid_not_found' };
 
-/** Parsed bioactivity row from assay summary table */
+/** A quantitative measurement from one assay-summary row. */
+export interface ActivityValue {
+  name?: string;
+  unit?: string;
+  value: number;
+}
+
+/** A target an assay names beyond the one its record reports, with that target's own outcome
+ * and measurements. */
+export interface AssayTargetActivity {
+  accession?: string;
+  activityValues: ActivityValue[];
+  geneId?: number;
+  outcome: string;
+}
+
+/** Parsed bioactivity record for one AID from the assay summary table. The target fields,
+ * outcome and values describe the AID's first target; an AID whose rows name more than one
+ * target lists the rest, in table order, under `otherTargets`. */
 export interface BioactivityRow {
-  activityValues: Array<{ name?: string; value: number; unit?: string }>;
+  activityValues: ActivityValue[];
   aid: number;
   assayName: string;
+  otherTargets?: AssayTargetActivity[];
   outcome: string;
   targetAccession?: string;
   targetGeneId?: number;
+}
+
+/** Target identifiers a compound's assay table ties together: every protein accession and
+ * NCBI Gene ID connected through rows that carry both (e.g. P23219 ↔ 5742 ↔ NP_542158). */
+export interface TargetGroup {
+  accessions: string[];
+  geneIds: number[];
+}
+
+/** A compound's parsed assay summary. */
+export interface AssaySummary {
+  /** One record per AID. */
+  rows: BioactivityRow[];
+  /** Connected identifier groups over every raw row of the table, later rows of an AID
+   * included. An identifier the table never pairs with the other kind is in no group. */
+  targetGroups: TargetGroup[];
 }
 
 /** A single compound interaction entry (drug-drug, drug-food, or chemical-target). */
@@ -203,8 +291,10 @@ export interface InteractionKindFetch {
 export interface InteractionsResult {
   /** Interaction entries across the kinds that resolved successfully. */
   entries: InteractionEntry[];
-  /** Kinds whose fetch failed, with the failure message. Empty when every kind resolved. */
-  failedKinds: Array<{ kind: string; message: string }>;
+  /** Kinds whose fetch failed, with the failure message. Empty when every kind resolved.
+   * `reason` is set when the failure is typed: `sdq_unavailable` means PubChem's SDQ service
+   * answered with something other than SDQ data — a refusal a retry does not clear. */
+  failedKinds: Array<{ kind: string; message: string; reason?: 'sdq_unavailable' }>;
   /** Page state for each kind that resolved successfully, in the order requested. A kind
    * present in `failedKinds` is absent here — its page state is unknown, not zero. */
   pages: InteractionKindPage[];
@@ -235,8 +325,16 @@ export interface Sdf3DStructure {
 
 /** Pharmacological classification from PUG View */
 export interface CompoundClassification {
-  /** ATC codes with hierarchical descriptions */
-  atcCodes: Array<{ code: string; description: string }>;
+  /**
+   * Human ATC codes (level 5) in first-appearance order. `levels` holds levels 1-4 top-down
+   * (anatomical group → chemical subgroup); a code PubChem lists only bare, with no WHO ATC
+   * hierarchy entry, carries `description: ""` and `levels: []`.
+   */
+  atcCodes: Array<{
+    code: string;
+    description: string;
+    levels: Array<{ code: string; description: string }>;
+  }>;
   /** FDA Established Pharmacologic Classes (e.g. "Nonsteroidal Anti-inflammatory Drug") */
   fdaClasses: string[];
   /** FDA Mechanisms of Action (e.g. "Cyclooxygenase Inhibitors") */
@@ -271,6 +369,13 @@ export interface DrugLikenessAssessment {
 }
 
 // ── Constants ────────────────────────────────────────────────────────
+
+/** Largest signed 32-bit integer: the ceiling of PubChem's numeric IDs (CID, AID) and NCBI's
+ * Gene IDs. Past it PUG REST wraps to a negative ID. */
+export const MAX_INT32 = 2147483647;
+
+/** Largest valid CID. */
+export const MAX_CID = MAX_INT32;
 
 /** All valid PubChem compound property names */
 export const COMPOUND_PROPERTIES = [

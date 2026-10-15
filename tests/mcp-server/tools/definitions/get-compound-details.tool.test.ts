@@ -3,7 +3,7 @@
  * @module mcp-server/tools/definitions/get-compound-details.test
  */
 
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundDetails } from '@/mcp-server/tools/definitions/get-compound-details.tool.js';
 
@@ -362,7 +362,7 @@ describe('getCompoundDetails handler', () => {
   it('includes classification when requested', async () => {
     mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
     mockClient.getClassification.mockResolvedValueOnce({
-      atcCodes: [{ code: 'N02BA01', description: 'Acetylsalicylic acid' }],
+      atcCodes: [{ code: 'N02BA01', description: 'Acetylsalicylic acid', levels: [] }],
       fdaClasses: ['Nonsteroidal Anti-inflammatory Drug'],
       fdaMechanisms: ['Cyclooxygenase Inhibitors'],
       meshClasses: ['Anti-Inflammatory Agents, Non-Steroidal'],
@@ -392,6 +392,73 @@ describe('getCompoundDetails handler', () => {
     const result = await getCompoundDetails.handler(input, ctx);
 
     expect(result.compounds[0]!.classification).toBeUndefined();
+  });
+});
+
+describe('getCompoundDetails — ATC hierarchy on both surfaces (#64)', () => {
+  const aspirinAtc = [
+    {
+      code: 'N02BA01',
+      description: 'Acetylsalicylic acid',
+      levels: [
+        { code: 'N', description: 'Nervous system' },
+        { code: 'N02', description: 'Analgesics' },
+        { code: 'N02B', description: 'Other analgesics and antipyretics' },
+        { code: 'N02BA', description: 'Salicylic acid and derivatives' },
+      ],
+    },
+    { code: 'C10AA05', description: '', levels: [] },
+  ];
+
+  it('carries each code’s levels in structuredContent and renders its path in content[]', async () => {
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, MolecularFormula: 'C9H8O4' }]);
+    mockClient.getClassification.mockResolvedValueOnce({
+      atcCodes: aspirinAtc,
+      fdaClasses: [],
+      fdaMechanisms: [],
+      meshClasses: [],
+    });
+
+    const result = await runToolContract(getCompoundDetails, {
+      cids: [2244],
+      includeClassification: true,
+    });
+
+    expect(result.isError).toBeFalsy();
+    const structured = result.structuredContent as {
+      compounds: Array<{ classification?: { atcCodes: unknown } }>;
+    };
+    expect(structured.compounds[0]!.classification!.atcCodes).toEqual(aspirinAtc);
+    const text = result.content
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n');
+    expect(text).toContain(
+      '    - N02BA01: N Nervous system > N02 Analgesics > N02B Other analgesics and antipyretics > N02BA Salicylic acid and derivatives > N02BA01 Acetylsalicylic acid',
+    );
+    // A bare-only code renders alone — no empty description or "> " path behind it.
+    expect(text).toMatch(/^ {4}- C10AA05$/m);
+  });
+
+  it('rejects an ATC entry without levels at the output schema', () => {
+    const parse = () =>
+      getCompoundDetails.output.parse({
+        compounds: [
+          {
+            cid: 2244,
+            found: true,
+            properties: {},
+            classification: {
+              atcCodes: [{ code: 'N02BA01', description: 'Acetylsalicylic acid' }],
+              fdaClasses: [],
+              fdaMechanisms: [],
+              meshClasses: [],
+            },
+          },
+        ],
+      });
+
+    expect(parse).toThrow(/levels/);
   });
 });
 
@@ -527,7 +594,13 @@ describe('getCompoundDetails format', () => {
           found: true,
           properties: {},
           classification: {
-            atcCodes: [{ code: 'N02BA01', description: 'Acetylsalicylic acid' }],
+            atcCodes: [
+              {
+                code: 'N02BA01',
+                description: 'Acetylsalicylic acid',
+                levels: [{ code: 'N', description: 'Nervous system' }],
+              },
+            ],
             fdaClasses: ['Nonsteroidal Anti-inflammatory Drug'],
             fdaMechanisms: ['Cyclooxygenase Inhibitors'],
             meshClasses: ['Anti-Inflammatory Agents, Non-Steroidal'],

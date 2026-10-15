@@ -7,6 +7,17 @@
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { normalizeProteinAccession } from './identifier-case.js';
+import {
+  type CappedInput,
+  capPageSize,
+  cappedInputsField,
+  INPUT_CEILING,
+  renderCappedInputs,
+} from './input-caps.js';
+
+/** AIDs served per page; a larger maxResults is clamped to this. */
+const MAX_RESULTS_CAP = 200;
 
 export const searchAssays = tool('pubchem_search_assays', {
   title: 'Search Assays',
@@ -26,7 +37,7 @@ export const searchAssays = tool('pubchem_search_assays', {
     targetQuery: z
       .string()
       .describe(
-        'Target identifier. Examples: "EGFR" (genesymbol), "Epidermal growth factor receptor" (proteinname), "1956" (geneid), "P00533" (proteinaccession).',
+        'Target identifier. Examples: "EGFR" (genesymbol), "Epidermal growth factor receptor" (proteinname), "1956" (geneid), "P00533" (proteinaccession; uppercased before lookup, except a PDB chain ID such as the "A" in "1ZHH_A", which is kept as given).',
       ),
     offset: z
       .number()
@@ -40,10 +51,10 @@ export const searchAssays = tool('pubchem_search_assays', {
       .number()
       .int()
       .min(1)
-      .max(200)
+      .max(INPUT_CEILING)
       .default(50)
       .describe(
-        'Max AIDs to return per page (1-200). Popular targets may have thousands of assays; use offset to reach the ones past this page. Default: 50.',
+        `Max AIDs to return per page. The per-call cap is ${MAX_RESULTS_CAP}: a larger value (up to ${INPUT_CEILING}) returns a page of ${MAX_RESULTS_CAP} and is reported in cappedInputs. Popular targets may have thousands of assays; use offset to reach the ones past this page. Default: 50.`,
       ),
   }),
   // `targetQuery` is the only search term this tool takes, so the bare nouns a caller
@@ -72,7 +83,13 @@ export const searchAssays = tool('pubchem_search_assays', {
       ),
     truncated: z.boolean().optional().describe('True when matching AIDs remain past this page.'),
     shown: z.number().optional().describe('AIDs returned on this page.'),
-    cap: z.number().optional().describe('The maxResults cap that was applied.'),
+    cap: z
+      .number()
+      .optional()
+      .describe(
+        'The page size applied: maxResults, or the per-call cap when maxResults exceeds it.',
+      ),
+    cappedInputs: cappedInputsField,
     notice: z
       .string()
       .optional()
@@ -80,6 +97,7 @@ export const searchAssays = tool('pubchem_search_assays', {
         'Recovery guidance when no assays matched, when the offset runs past the result set, or when further pages remain. Absent when this page is complete and non-empty.',
       ),
   },
+  enrichmentTrailer: { cappedInputs: { render: renderCappedInputs } },
   errors: [
     {
       reason: 'blank_target_query',
@@ -101,7 +119,11 @@ export const searchAssays = tool('pubchem_search_assays', {
     const client = getPubChemClient();
 
     // Reject inputs that cannot represent a useful target before the upstream call (#26).
-    const targetQuery = input.targetQuery.trim();
+    const trimmedQuery = input.targetQuery.trim();
+    const targetQuery =
+      input.targetType === 'proteinaccession'
+        ? normalizeProteinAccession(trimmedQuery)
+        : trimmedQuery;
     if (targetQuery.length === 0) {
       throw ctx.fail('blank_target_query');
     }
@@ -116,10 +138,12 @@ export const searchAssays = tool('pubchem_search_assays', {
 
     const allAids = await client.searchAssaysByTarget(input.targetType, targetQuery, ctx.signal);
 
+    const capped: CappedInput[] = [];
+    const pageSize = capPageSize('maxResults', input.maxResults, MAX_RESULTS_CAP, capped);
     const totalFound = allAids.length;
     // Offset is applied client-side: PubChem's target-to-AID endpoint returns the whole AID
     // list in one response, so searchAssaysByTarget already holds every match.
-    const aids = allAids.slice(input.offset, input.offset + input.maxResults);
+    const aids = allAids.slice(input.offset, input.offset + pageSize);
     const nextOffset = input.offset + aids.length;
     const hasMore = nextOffset < totalFound;
 
@@ -134,6 +158,7 @@ export const searchAssays = tool('pubchem_search_assays', {
     // Agent-facing context: target echo, total, page boundary, and recovery notices.
     ctx.enrich({ targetType: input.targetType, targetQuery, totalFound, offset: input.offset });
     if (hasMore) ctx.enrich({ nextOffset });
+    if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
     if (totalFound === 0) {
       ctx.enrich.notice(
         `No assays found for "${targetQuery}" (${input.targetType}). Try a different targetType (e.g. switch from proteinname to genesymbol), verify the identifier spelling, or use pubchem_get_summary for gene/protein entity lookups.`,
@@ -145,7 +170,7 @@ export const searchAssays = tool('pubchem_search_assays', {
     } else if (hasMore) {
       ctx.enrich.truncated({
         shown: aids.length,
-        cap: input.maxResults,
+        cap: pageSize,
         guidance: `Showing AIDs ${input.offset + 1}-${nextOffset} of ${totalFound}. Pass offset=${nextOffset} for the next page.`,
       });
     }

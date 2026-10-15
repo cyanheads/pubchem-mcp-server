@@ -6,7 +6,119 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import {
+  type AssayTargetActivity,
+  type BioactivityRow,
+  MAX_CID,
+  MAX_INT32,
+  type TargetGroup,
+} from '@/services/pubchem/types.js';
+import { normalizeProteinAccession } from './identifier-case.js';
+import {
+  type CappedInput,
+  capPageSize,
+  cappedInputsField,
+  INPUT_CEILING,
+  renderCappedInputs,
+} from './input-caps.js';
 import { inlineData } from './untrusted-text.js';
+
+/** Assays served per page; a larger maxResults is clamped to this. */
+const MAX_RESULTS_CAP = 100;
+
+const activityValueSchema = z
+  .object({
+    name: z
+      .string()
+      .optional()
+      .describe('Measurement name (e.g. IC50, EC50, Ki). Omitted when not reported.'),
+    value: z.number().describe('Measured value.'),
+    unit: z
+      .string()
+      .optional()
+      .describe('Unit of measurement (e.g. uM, nM). Omitted when not reported.'),
+  })
+  .describe('Quantitative activity measurement entry.');
+
+/** The identifiers a target filter matches. */
+interface TargetMatch {
+  accessions: Set<string>;
+  geneIds: Set<number>;
+}
+
+/** What the target filter matches, resolved against the compound's identifier groups. */
+type TargetFilter =
+  | { kind: 'none' }
+  | ({ kind: 'match'; label: string } & TargetMatch)
+  | { kind: 'conflict'; geneGroup: TargetGroup; accessionGroup: TargetGroup; label: string };
+
+const matchesTarget = (match: TargetMatch, accession?: string, geneId?: number): boolean =>
+  (accession !== undefined && match.accessions.has(accession)) ||
+  (geneId !== undefined && match.geneIds.has(geneId));
+
+/**
+ * The record as reported under a target filter: unchanged when its first target matches;
+ * with the first matching later target reported in its place — and the first target moved
+ * to the head of otherTargets — when only a later one does; undefined when none matches.
+ */
+function reportMatchingTarget(row: BioactivityRow, match: TargetMatch): BioactivityRow | undefined {
+  if (matchesTarget(match, row.targetAccession, row.targetGeneId)) return row;
+  const others = row.otherTargets ?? [];
+  const reported = others.find((t) => matchesTarget(match, t.accession, t.geneId));
+  if (!reported) return;
+
+  const first: AssayTargetActivity = { outcome: row.outcome, activityValues: row.activityValues };
+  if (row.targetAccession) first.accession = row.targetAccession;
+  if (row.targetGeneId) first.geneId = row.targetGeneId;
+  const promoted: BioactivityRow = {
+    aid: row.aid,
+    assayName: row.assayName,
+    outcome: reported.outcome,
+    activityValues: reported.activityValues,
+    otherTargets: [first, ...others.filter((t) => t !== reported)],
+  };
+  if (reported.accession) promoted.targetAccession = reported.accession;
+  if (reported.geneId) promoted.targetGeneId = reported.geneId;
+  return promoted;
+}
+
+const describeTargetIds = (geneIds: Iterable<number>, accessions: Iterable<string>): string =>
+  [
+    ...[...geneIds].map((id) => `GeneID:${id}`),
+    ...[...accessions].map((a) => `accession:${a}`),
+  ].join(' ');
+
+/**
+ * Expand the caller's Gene ID and/or accession to every identifier the compound's assay
+ * table connects them to. Both inputs name one target: they match either, unless the table
+ * places them in two different groups. An identifier the table never pairs matches exactly.
+ */
+function resolveTargetFilter(
+  geneId: number | undefined,
+  accession: string | undefined,
+  groups: TargetGroup[],
+): TargetFilter {
+  if (geneId == null && !accession) return { kind: 'none' };
+  const geneGroup = geneId != null ? groups.find((g) => g.geneIds.includes(geneId)) : undefined;
+  const accessionGroup = accession
+    ? groups.find((g) => g.accessions.includes(accession))
+    : undefined;
+  if (geneId != null && accession && geneGroup && accessionGroup && geneGroup !== accessionGroup) {
+    return {
+      kind: 'conflict',
+      geneGroup,
+      accessionGroup,
+      label: describeTargetIds([geneId], [accession]),
+    };
+  }
+  const geneIds = new Set(geneId != null ? [geneId] : []);
+  const accessions = new Set(accession ? [accession] : []);
+  for (const group of [geneGroup, accessionGroup]) {
+    for (const id of group?.geneIds ?? []) geneIds.add(id);
+    for (const a of group?.accessions ?? []) accessions.add(a);
+  }
+  return { kind: 'match', geneIds, accessions, label: describeTargetIds(geneIds, accessions) };
+}
 
 export const getBioactivity = tool('pubchem_get_bioactivity', {
   title: 'Get Bioactivity',
@@ -22,26 +134,28 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       .number()
       .int()
       .min(1)
+      .max(MAX_CID)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     outcomeFilter: z
       .enum(['active', 'inactive', 'all'])
       .default('all')
       .describe(
-        'Filter by activity outcome. "active" shows only assays where the compound showed activity — most useful for understanding biological profile. Default: "all".',
+        'Filter by activity outcome against each assay\'s reported target: the target a target filter matched, else the first target the assay lists. For a multi-target assay, outcomes against its other targets (in otherTargets) do not count. "active" keeps assays where that outcome is Active — most useful for understanding biological profile. Default: "all".',
       ),
     targetGeneId: z
       .number()
       .int()
       .min(1)
+      .max(MAX_INT32)
       .optional()
       .describe(
-        'Filter to assays against this NCBI Gene ID. Obtain Gene IDs from pubchem_search_assays or the targetGeneId field of an unfiltered result here. Combine with outcomeFilter="active" to answer "is this compound active against target T?".',
+        `Filter to assays against this NCBI Gene ID (1 to ${MAX_INT32}), including assays recorded only under a protein accession this compound's assay table pairs with the Gene ID (e.g. 5742 also reaches rows carrying only P23219 when another row pairs the two). Obtain Gene IDs from pubchem_search_assays or the targetGeneId field of an unfiltered result here. Combine with outcomeFilter="active" to answer "is this compound active against target T?".`,
       ),
     targetAccession: z
       .string()
       .optional()
       .describe(
-        'Filter to assays against this target protein accession (UniProt/GenBank), e.g. "P35354". Obtain accessions from pubchem_search_assays or the targetAccession field of an unfiltered result here.',
+        'Filter to assays against this target protein accession (UniProt/RefSeq/GenBank/PDB chain), e.g. "P35354", including assays recorded only under a Gene ID or another accession this compound\'s assay table pairs with it. Uppercased before matching; a PDB chain ID (the "A" in "1ZHH_A") is kept as given. With targetGeneId, both must name the same target — when the table ties them to different targets, nothing matches. Obtain accessions from pubchem_search_assays or the targetAccession field of an unfiltered result here.',
       ),
     offset: z
       .number()
@@ -55,10 +169,10 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       .number()
       .int()
       .min(1)
-      .max(100)
+      .max(INPUT_CEILING)
       .default(20)
       .describe(
-        'Max assay results to return per page (1-100). Well-studied compounds have thousands of records; use offset to reach the ones past this page. Default: 20.',
+        `Max assay results to return per page. The per-call cap is ${MAX_RESULTS_CAP}: a larger value (up to ${INPUT_CEILING}) returns a page of ${MAX_RESULTS_CAP} and is reported in cappedInputs. Well-studied compounds have thousands of records; use offset to reach the ones past this page. Default: 20.`,
       ),
   }),
   // The target filters are reached via pubchem_search_assays, whose targetType names
@@ -68,8 +182,16 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
   output: z.object({
     cid: z.number().describe('PubChem Compound ID.'),
     totalAssays: z.number().describe('Total unique assays for this compound.'),
-    activeCount: z.number().describe('Assays with "Active" outcome.'),
-    inactiveCount: z.number().describe('Assays with "Inactive" outcome.'),
+    activeCount: z
+      .number()
+      .describe(
+        'Assays whose outcome against their first listed target is "Active", across all assays and before any filter. A multi-target assay counts by its first target only.',
+      ),
+    inactiveCount: z
+      .number()
+      .describe(
+        'Assays whose outcome against their first listed target is "Inactive", across all assays and before any filter. A multi-target assay counts by its first target only.',
+      ),
     results: z
       .array(
         z
@@ -78,31 +200,40 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
             assayName: z.string().describe('Assay name/title.'),
             outcome: z
               .string()
-              .describe('Activity outcome: Active, Inactive, Inconclusive, Unspecified.'),
+              .describe(
+                "Activity outcome against the reported target — the one a target filter matched, else the assay's first: Active, Inactive, Inconclusive, Unspecified.",
+              ),
             targetAccession: z
               .string()
               .optional()
-              .describe('Target protein accession (UniProt/GenBank).'),
-            targetGeneId: z.number().optional().describe('Target NCBI Gene ID.'),
+              .describe("Reported target's protein accession (UniProt/RefSeq/GenBank/PDB chain)."),
+            targetGeneId: z.number().optional().describe("Reported target's NCBI Gene ID."),
             activityValues: z
+              .array(activityValueSchema)
+              .describe('Quantitative activity measurements against the reported target.'),
+            otherTargets: z
               .array(
                 z
                   .object({
-                    name: z
+                    accession: z
                       .string()
                       .optional()
-                      .describe(
-                        'Measurement name (e.g. IC50, EC50, Ki). Omitted when not reported.',
-                      ),
-                    value: z.number().describe('Measured value.'),
-                    unit: z
-                      .string()
+                      .describe('Protein accession. Omitted when the row names none.'),
+                    geneId: z
+                      .number()
                       .optional()
-                      .describe('Unit of measurement (e.g. uM, nM). Omitted when not reported.'),
+                      .describe('NCBI Gene ID. Omitted when the row names none.'),
+                    outcome: z.string().describe('Activity outcome against this target.'),
+                    activityValues: z
+                      .array(activityValueSchema)
+                      .describe('Quantitative activity measurements against this target.'),
                   })
-                  .describe('Quantitative activity measurement entry.'),
+                  .describe('Another target of the assay, with its own outcome and values.'),
               )
-              .describe('Quantitative activity measurements.'),
+              .optional()
+              .describe(
+                "The assay's other targets, each with its own outcome and measurements. Present only for an assay whose rows name more than one target.",
+              ),
           })
           .describe('Assay result entry.'),
       )
@@ -121,7 +252,9 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     targetFilter: z
       .string()
       .optional()
-      .describe('Target filter applied (gene ID and/or protein accession), when set.'),
+      .describe(
+        "Target identifiers matched, when a target filter is set: those passed plus every Gene ID and accession the compound's assay table pairs with them. When the two inputs name different targets, only the two inputs.",
+      ),
     filteredCount: z
       .number()
       .describe(
@@ -137,7 +270,13 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       ),
     truncated: z.boolean().optional().describe('True when matching assays remain past this page.'),
     shown: z.number().optional().describe('Assays returned on this page.'),
-    cap: z.number().optional().describe('The maxResults cap that was applied.'),
+    cap: z
+      .number()
+      .optional()
+      .describe(
+        'The page size applied: maxResults, or the per-call cap when maxResults exceeds it.',
+      ),
+    cappedInputs: cappedInputsField,
     notice: z
       .string()
       .optional()
@@ -145,39 +284,41 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
         'Recovery guidance when the filter yields no results or the compound has no bioactivity data.',
       ),
   },
+  enrichmentTrailer: { cappedInputs: { render: renderCappedInputs } },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
-    const allRows = await client.getAssaySummary(input.cid, ctx.signal);
+    const { rows: allRows, targetGroups } = await client.getAssaySummary(input.cid, ctx.signal);
 
     const activeCount = allRows.filter((r) => r.outcome === 'Active').length;
     const inactiveCount = allRows.filter((r) => r.outcome === 'Inactive').length;
 
-    // Filter by outcome, then by target — pure filters on rows already in hand
-    // (targetGeneId/targetAccession are populated on every row by the assay summary parser).
+    // Filter by target, then by outcome — pure filters on rows already in hand. The target
+    // filter expands each identifier through the pairs the compound's own table records,
+    // matches any target an assay names, and reports the matching one; the outcome filter
+    // then reads the reported target's outcome.
+    const targetAccession = input.targetAccession
+      ? normalizeProteinAccession(input.targetAccession)
+      : undefined;
+    const target = resolveTargetFilter(input.targetGeneId, targetAccession, targetGroups);
     let filtered = allRows;
+    if (target.kind === 'conflict') {
+      filtered = [];
+    } else if (target.kind === 'match') {
+      filtered = allRows.flatMap((r) => reportMatchingTarget(r, target) ?? []);
+    }
     if (input.outcomeFilter === 'active') {
       filtered = filtered.filter((r) => r.outcome === 'Active');
     } else if (input.outcomeFilter === 'inactive') {
       filtered = filtered.filter((r) => r.outcome === 'Inactive');
     }
-
-    const targetLabel = [
-      input.targetGeneId != null ? `GeneID:${input.targetGeneId}` : undefined,
-      input.targetAccession ? `accession:${input.targetAccession}` : undefined,
-    ]
-      .filter(Boolean)
-      .join(' ');
-    if (input.targetGeneId != null) {
-      filtered = filtered.filter((r) => r.targetGeneId === input.targetGeneId);
-    }
-    if (input.targetAccession) {
-      filtered = filtered.filter((r) => r.targetAccession === input.targetAccession);
-    }
+    const targetLabel = target.kind === 'none' ? '' : target.label;
 
     // Offset is applied client-side: PubChem's assay summary endpoint accepts no
     // offset/start/limit/page parameter, so getAssaySummary already holds every row.
-    const results = filtered.slice(input.offset, input.offset + input.maxResults);
+    const capped: CappedInput[] = [];
+    const pageSize = capPageSize('maxResults', input.maxResults, MAX_RESULTS_CAP, capped);
+    const results = filtered.slice(input.offset, input.offset + pageSize);
     const nextOffset = input.offset + results.length;
     const hasMore = nextOffset < filtered.length;
 
@@ -198,9 +339,14 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     });
     if (targetLabel) ctx.enrich({ targetFilter: targetLabel });
     if (hasMore) ctx.enrich({ nextOffset });
+    if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
     if (allRows.length === 0) {
       ctx.enrich.notice(
         `No bioactivity data found for CID ${input.cid}. The compound may be uncharacterized, or verify the CID with pubchem_search_compounds.`,
+      );
+    } else if (target.kind === 'conflict') {
+      ctx.enrich.notice(
+        `targetGeneId ${input.targetGeneId} and targetAccession ${targetAccession} name different targets in CID ${input.cid}'s assays: GeneID ${input.targetGeneId} belongs to [${describeTargetIds(target.geneGroup.geneIds, target.geneGroup.accessions)}], accession ${targetAccession} belongs to [${describeTargetIds(target.accessionGroup.geneIds, target.accessionGroup.accessions)}]. Pass one of the two, or call once per target.`,
       );
     } else if (filtered.length === 0) {
       ctx.enrich.notice(
@@ -215,7 +361,7 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     } else if (hasMore) {
       ctx.enrich.truncated({
         shown: results.length,
-        cap: input.maxResults,
+        cap: pageSize,
         guidance: `Showing assays ${input.offset + 1}-${nextOffset} of ${filtered.length}. Pass offset=${nextOffset} for the next page.`,
       });
     }
@@ -241,16 +387,28 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       return [{ type: 'text', text: lines.join('\n') }];
     }
 
-    for (const r of result.results) {
-      const target = [r.targetGeneId ? `GeneID:${r.targetGeneId}` : undefined, r.targetAccession]
-        .filter(Boolean)
-        .join(' — ');
-      lines.push(`**AID ${r.aid}** — ${inlineData(r.assayName)} (${r.outcome})`);
-      if (target) lines.push(`  Target: ${target}`);
-      for (const av of r.activityValues) {
+    const targetIds = (geneId?: number, accession?: string) =>
+      [geneId ? `GeneID:${geneId}` : undefined, accession].filter(Boolean).join(' — ');
+    const pushValues = (
+      values: (typeof result.results)[number]['activityValues'],
+      indent: string,
+    ) => {
+      for (const av of values) {
         const label = av.name ?? 'Value';
         const unit = av.unit ?? '';
-        lines.push(`  ${label}: ${av.value}${unit ? ` ${unit}` : ''}`);
+        lines.push(`${indent}${label}: ${av.value}${unit ? ` ${unit}` : ''}`);
+      }
+    };
+
+    for (const r of result.results) {
+      const target = targetIds(r.targetGeneId, r.targetAccession);
+      lines.push(`**AID ${r.aid}** — ${inlineData(r.assayName)} (${r.outcome})`);
+      if (target) lines.push(`  Target: ${target}`);
+      pushValues(r.activityValues, '  ');
+      for (const other of r.otherTargets ?? []) {
+        const ids = targetIds(other.geneId, other.accession) || 'not identified';
+        lines.push(`  Other target: ${ids} (${other.outcome})`);
+        pushValues(other.activityValues, '    ');
       }
       lines.push('');
     }

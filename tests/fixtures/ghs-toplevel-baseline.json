@@ -1,0 +1,580 @@
+{
+  "702": {
+    "pictograms": ["Flammable", "Irritant", "Health Hazard"],
+    "hazardStatements": [
+      {
+        "code": "H225",
+        "statement": "Highly Flammable liquid and vapor [Danger Flammable liquids]"
+      },
+      {
+        "code": "H319",
+        "statement": "Causes serious eye irritation [Warning Serious eye damage/eye irritation]"
+      },
+      {
+        "code": "H412",
+        "statement": "Harmful to aquatic life with long lasting effects [Hazardous to the aquatic environment, long-term hazard]"
+      },
+      {
+        "code": "H315",
+        "statement": "Causes skin irritation [Warning Skin corrosion/irritation]"
+      },
+      {
+        "code": "H320",
+        "statement": "Causes eye irritation [Warning Serious eye damage/eye irritation]"
+      },
+      {
+        "code": "H335",
+        "statement": "May cause respiratory irritation [Warning Specific target organ toxicity, single exposure; Respiratory tract irritation]"
+      },
+      {
+        "code": "H336",
+        "statement": "May cause drowsiness or dizziness [Warning Specific target organ toxicity, single exposure; Narcotic effects]"
+      },
+      {
+        "code": "H350",
+        "statement": "May cause cancer [Danger Carcinogenicity]"
+      },
+      {
+        "code": "H360",
+        "statement": "May damage fertility or the unborn child [Danger Reproductive toxicity]"
+      },
+      {
+        "code": "H372",
+        "statement": "Causes damage to organs through prolonged or repeated exposure [Danger Specific target organ toxicity, repeated exposure]"
+      },
+      {
+        "code": "H373",
+        "statement": "May causes damage to organs through prolonged or repeated exposure [Warning Specific target organ toxicity, repeated exposure]"
+      },
+      {
+        "code": "H340",
+        "statement": "May cause genetic defects [Danger Germ cell mutagenicity]"
+      }
+    ],
+    "precautionaryStatements": [
+      {
+        "code": "P210",
+        "statement": "Keep away from heat, hot surfaces, sparks, open flames and other ignition sources. No smoking.",
+        "decoded": true
+      },
+      {
+        "code": "P233",
+        "statement": "Keep container tightly closed.",
+        "decoded": true
+      },
+      {
+        "code": "P240",
+        "statement": "Ground and bond container and receiving equipment.",
+        "decoded": true
+      },
+      {
+        "code": "P241",
+        "statement": "",
+        "decoded": false
+      },
+      {
+        "code": "P242",
+        "statement": "Use non-sparking tools.",
+        "decoded": true
+      },
+      {
+        "code": "P243",
+        "statement": "Take action to prevent static discharges.",
+        "decoded": true
+      },
+      {
+        "code": "P280",
+        "statement": "Wear protective gloves/protective clothing/eye protection/face protection/hearing protection/…",
+        "decoded": true
+      },
+      {
+        "code": "P303+P361+P353",
+        "statement": "IF ON SKIN (or hair): Take off immediately all contaminated clothing. Rinse affected areas with water [or shower].",
+        "decoded": true
+      },
+      {
+        "code": "P370+P378",
+        "statement": "",
+        "decoded": false
+      },
+      {
+        "code": "P403+P235",
+        "statement": "Store in a well-ventilated place. Keep cool.",
+        "decoded": true
+      },
+      {
+        "code": "P501",
+        "statement": "",
+        "decoded": false
+      },
+      {
+        "code": "P264+P265",
+        "statement": "Wash hands thoroughly after handling. Do not touch eyes.",
+        "decoded": true
+      },
+      {
+        "code": "P305+P351+P338",
+        "statement": "IF IN EYES: Rinse cautiously with water for several minutes. Remove contact lenses, if present and easy to do. Continue rinsing.",
+        "decoded": true
+      },
+      {
+        "code": "P337+P317",
+        "statement": "If eye irritation persists: Get medical help.",
+        "decoded": true
+      },
+      {
+        "code": "P273",
+        "statement": "Avoid release to the environment.",
+        "decoded": true
+      },
+      {
+        "code": "P264",
+        "statement": "Wash hands thoroughly after handling.",
+        "decoded": true
+      },
+      {
+        "code": "P302+P352",
+        "statement": "IF ON SKIN: Wash with plenty of water/…",
+        "decoded": true
+      },
+      {
+        "code": "P321",
+        "statement": "",
+        "decoded": false
+      },
+      {
+        "code": "P332+P317",
+        "statement": "If skin irritation occurs: Get medical help.",
+        "decoded": true
+      },
+      {
+        "code": "P362+P364",
+        "statement": "Take off contaminated clothing and wash it before reuse.",
+        "decoded": true
+      },
+      {
+        "code": "P203",
+        "statement": "Obtain, read and follow all safety instructions before use.",
+        "decoded": true
+      },
+      {
+        "code": "P260",
+        "statement": "Do not breathe dust/fume/gas/mist/vapours/spray.",
+        "decoded": true
+      },
+      {
+        "code": "P261",
+        "statement": "Avoid breathing dust/fume/gas/mist/vapours/spray.",
+        "decoded": true
+      },
+      {
+        "code": "P270",
+        "statement": "Do not eat, drink or smoke when using this product.",
+        "decoded": true
+      },
+      {
+        "code": "P271",
+        "statement": "Use only outdoors or with adequate ventilation.",
+        "decoded": true
+      },
+      {
+        "code": "P304+P340",
+        "statement": "IF INHALED: Remove person to fresh air and keep comfortable for breathing.",
+        "decoded": true
+      },
+      {
+        "code": "P318",
+        "statement": "IF exposed or concerned, get medical advice.",
+        "decoded": true
+      },
+      {
+        "code": "P319",
+        "statement": "Get medical help if you feel unwell.",
+        "decoded": true
+      },
+      {
+        "code": "P403+P233",
+        "statement": "Store in a well-ventilated place. Keep container tightly closed.",
+        "decoded": true
+      },
+      {
+        "code": "P405",
+        "statement": "Store locked up.",
+        "decoded": true
+      }
+    ]
+  },
+  "2244": {
+    "pictograms": ["Irritant", "Health Hazard"],
+    "hazardStatements": [
+      {
+        "code": "H302",
+        "statement": "Harmful if swallowed [Warning Acute toxicity, oral]"
+      },
+      {
+        "code": "H315",
+        "statement": "Causes skin irritation [Warning Skin corrosion/irritation]"
+      },
+      {
+        "code": "H319",
+        "statement": "Causes serious eye irritation [Warning Serious eye damage/eye irritation]"
+      },
+      {
+        "code": "H335",
+        "statement": "May cause respiratory irritation [Warning Specific target organ toxicity, single exposure; Respiratory tract irritation]"
+      },
+      {
+        "code": "H334",
+        "statement": "May cause allergy or asthma symptoms or breathing difficulties if inhaled [Danger Sensitization, respiratory]"
+      },
+      {
+        "code": "H412",
+        "statement": "Harmful to aquatic life with long lasting effects [Hazardous to the aquatic environment, long-term hazard]"
+      },
+      {
+        "code": "H360",
+        "statement": "May damage fertility or the unborn child [Danger Reproductive toxicity]"
+      },
+      {
+        "code": "H370",
+        "statement": "Causes damage to organs [Danger Specific target organ toxicity, single exposure]"
+      },
+      {
+        "code": "H372",
+        "statement": "Causes damage to organs through prolonged or repeated exposure [Danger Specific target organ toxicity, repeated exposure]"
+      },
+      {
+        "code": "H316",
+        "statement": "Causes mild skin irritation [Warning Skin corrosion/irritation]"
+      },
+      {
+        "code": "H371",
+        "statement": "May cause damage to organs [Warning Specific target organ toxicity, single exposure]"
+      },
+      {
+        "code": "H373",
+        "statement": "May causes damage to organs through prolonged or repeated exposure [Warning Specific target organ toxicity, repeated exposure]"
+      }
+    ],
+    "precautionaryStatements": [
+      {
+        "code": "P261",
+        "statement": "Avoid breathing dust/fume/gas/mist/vapours/spray.",
+        "decoded": true
+      },
+      {
+        "code": "P264",
+        "statement": "Wash hands thoroughly after handling.",
+        "decoded": true
+      },
+      {
+        "code": "P264+P265",
+        "statement": "Wash hands thoroughly after handling. Do not touch eyes.",
+        "decoded": true
+      },
+      {
+        "code": "P270",
+        "statement": "Do not eat, drink or smoke when using this product.",
+        "decoded": true
+      },
+      {
+        "code": "P271",
+        "statement": "Use only outdoors or with adequate ventilation.",
+        "decoded": true
+      },
+      {
+        "code": "P280",
+        "statement": "Wear protective gloves/protective clothing/eye protection/face protection/hearing protection/…",
+        "decoded": true
+      },
+      {
+        "code": "P301+P317",
+        "statement": "IF SWALLOWED: Get medical help.",
+        "decoded": true
+      },
+      {
+        "code": "P302+P352",
+        "statement": "IF ON SKIN: Wash with plenty of water/…",
+        "decoded": true
+      },
+      {
+        "code": "P304+P340",
+        "statement": "IF INHALED: Remove person to fresh air and keep comfortable for breathing.",
+        "decoded": true
+      },
+      {
+        "code": "P305+P351+P338",
+        "statement": "IF IN EYES: Rinse cautiously with water for several minutes. Remove contact lenses, if present and easy to do. Continue rinsing.",
+        "decoded": true
+      },
+      {
+        "code": "P319",
+        "statement": "Get medical help if you feel unwell.",
+        "decoded": true
+      },
+      {
+        "code": "P321",
+        "statement": "",
+        "decoded": false
+      },
+      {
+        "code": "P330",
+        "statement": "Rinse mouth.",
+        "decoded": true
+      },
+      {
+        "code": "P332+P317",
+        "statement": "If skin irritation occurs: Get medical help.",
+        "decoded": true
+      },
+      {
+        "code": "P337+P317",
+        "statement": "If eye irritation persists: Get medical help.",
+        "decoded": true
+      },
+      {
+        "code": "P362+P364",
+        "statement": "Take off contaminated clothing and wash it before reuse.",
+        "decoded": true
+      },
+      {
+        "code": "P403+P233",
+        "statement": "Store in a well-ventilated place. Keep container tightly closed.",
+        "decoded": true
+      },
+      {
+        "code": "P405",
+        "statement": "Store locked up.",
+        "decoded": true
+      },
+      {
+        "code": "P501",
+        "statement": "",
+        "decoded": false
+      },
+      {
+        "code": "P233",
+        "statement": "Keep container tightly closed.",
+        "decoded": true
+      },
+      {
+        "code": "P260",
+        "statement": "Do not breathe dust/fume/gas/mist/vapours/spray.",
+        "decoded": true
+      },
+      {
+        "code": "P273",
+        "statement": "Avoid release to the environment.",
+        "decoded": true
+      },
+      {
+        "code": "P284",
+        "statement": "In case of inadequate ventilation wear respiratory protection.",
+        "decoded": true
+      },
+      {
+        "code": "P342+P316",
+        "statement": "If experiencing respiratory symptoms: Get emergency medical help immediately.",
+        "decoded": true
+      },
+      {
+        "code": "P403",
+        "statement": "Store in a well-ventilated place.",
+        "decoded": true
+      },
+      {
+        "code": "P203",
+        "statement": "Obtain, read and follow all safety instructions before use.",
+        "decoded": true
+      },
+      {
+        "code": "P308+P316",
+        "statement": "IF exposed or concerned: Get emergency medical help immediately.",
+        "decoded": true
+      },
+      {
+        "code": "P318",
+        "statement": "IF exposed or concerned, get medical advice.",
+        "decoded": true
+      }
+    ]
+  },
+  "5743": {
+    "pictograms": ["Irritant", "Health Hazard", "Environmental Hazard"],
+    "hazardStatements": [
+      {
+        "code": "H315",
+        "statement": "Causes skin irritation [Warning Skin corrosion/irritation]"
+      },
+      {
+        "code": "H317",
+        "statement": "May cause an allergic skin reaction [Warning Sensitization, Skin]"
+      },
+      {
+        "code": "H319",
+        "statement": "Causes serious eye irritation [Warning Serious eye damage/eye irritation]"
+      },
+      {
+        "code": "H334",
+        "statement": "May cause allergy or asthma symptoms or breathing difficulties if inhaled [Danger Sensitization, respiratory]"
+      },
+      {
+        "code": "H335",
+        "statement": "May cause respiratory irritation [Warning Specific target organ toxicity, single exposure; Respiratory tract irritation]"
+      },
+      {
+        "code": "H360",
+        "statement": "May damage fertility or the unborn child [Danger Reproductive toxicity]"
+      },
+      {
+        "code": "H360D",
+        "statement": "May damage the unborn child [Danger Reproductive toxicity]"
+      },
+      {
+        "code": "H373",
+        "statement": "May causes damage to organs through prolonged or repeated exposure [Warning Specific target organ toxicity, repeated exposure]"
+      },
+      {
+        "code": "H410",
+        "statement": "Very toxic to aquatic life with long lasting effects [Warning Hazardous to the aquatic environment, long-term hazard]"
+      }
+    ],
+    "precautionaryStatements": [
+      {
+        "code": "P203",
+        "statement": "Obtain, read and follow all safety instructions before use.",
+        "decoded": true
+      },
+      {
+        "code": "P233",
+        "statement": "Keep container tightly closed.",
+        "decoded": true
+      },
+      {
+        "code": "P260",
+        "statement": "Do not breathe dust/fume/gas/mist/vapours/spray.",
+        "decoded": true
+      },
+      {
+        "code": "P261",
+        "statement": "Avoid breathing dust/fume/gas/mist/vapours/spray.",
+        "decoded": true
+      },
+      {
+        "code": "P264",
+        "statement": "Wash hands thoroughly after handling.",
+        "decoded": true
+      },
+      {
+        "code": "P264+P265",
+        "statement": "Wash hands thoroughly after handling. Do not touch eyes.",
+        "decoded": true
+      },
+      {
+        "code": "P271",
+        "statement": "Use only outdoors or with adequate ventilation.",
+        "decoded": true
+      },
+      {
+        "code": "P272",
+        "statement": "Contaminated work clothing should not be allowed out of the workplace.",
+        "decoded": true
+      },
+      {
+        "code": "P273",
+        "statement": "Avoid release to the environment.",
+        "decoded": true
+      },
+      {
+        "code": "P280",
+        "statement": "Wear protective gloves/protective clothing/eye protection/face protection/hearing protection/…",
+        "decoded": true
+      },
+      {
+        "code": "P284",
+        "statement": "In case of inadequate ventilation wear respiratory protection.",
+        "decoded": true
+      },
+      {
+        "code": "P302+P352",
+        "statement": "IF ON SKIN: Wash with plenty of water/…",
+        "decoded": true
+      },
+      {
+        "code": "P304+P340",
+        "statement": "IF INHALED: Remove person to fresh air and keep comfortable for breathing.",
+        "decoded": true
+      },
+      {
+        "code": "P305+P351+P338",
+        "statement": "IF IN EYES: Rinse cautiously with water for several minutes. Remove contact lenses, if present and easy to do. Continue rinsing.",
+        "decoded": true
+      },
+      {
+        "code": "P318",
+        "statement": "IF exposed or concerned, get medical advice.",
+        "decoded": true
+      },
+      {
+        "code": "P319",
+        "statement": "Get medical help if you feel unwell.",
+        "decoded": true
+      },
+      {
+        "code": "P321",
+        "statement": "",
+        "decoded": false
+      },
+      {
+        "code": "P332+P317",
+        "statement": "If skin irritation occurs: Get medical help.",
+        "decoded": true
+      },
+      {
+        "code": "P333+P317",
+        "statement": "If skin irritation or rash occurs: Get medical help.",
+        "decoded": true
+      },
+      {
+        "code": "P337+P317",
+        "statement": "If eye irritation persists: Get medical help.",
+        "decoded": true
+      },
+      {
+        "code": "P342+P316",
+        "statement": "If experiencing respiratory symptoms: Get emergency medical help immediately.",
+        "decoded": true
+      },
+      {
+        "code": "P362+P364",
+        "statement": "Take off contaminated clothing and wash it before reuse.",
+        "decoded": true
+      },
+      {
+        "code": "P391",
+        "statement": "Collect spillage.",
+        "decoded": true
+      },
+      {
+        "code": "P403",
+        "statement": "Store in a well-ventilated place.",
+        "decoded": true
+      },
+      {
+        "code": "P403+P233",
+        "statement": "Store in a well-ventilated place. Keep container tightly closed.",
+        "decoded": true
+      },
+      {
+        "code": "P405",
+        "statement": "Store locked up.",
+        "decoded": true
+      },
+      {
+        "code": "P501",
+        "statement": "",
+        "decoded": false
+      }
+    ]
+  }
+}

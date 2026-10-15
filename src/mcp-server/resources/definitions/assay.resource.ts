@@ -6,6 +6,7 @@
 import { resource, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { MAX_INT32 } from '@/services/pubchem/types.js';
 
 export const assayResource = resource('pubchem://assay/{aid}', {
   name: 'pubchem-assay',
@@ -13,7 +14,7 @@ export const assayResource = resource('pubchem://assay/{aid}', {
     'Summary for a PubChem BioAssay by AID — name, description, source, protocol, and substance counts.',
   mimeType: 'application/json',
   params: z.object({
-    aid: z.coerce.number().int().min(1).describe('PubChem Assay ID.'),
+    aid: z.coerce.number().int().min(1).max(MAX_INT32).describe('PubChem Assay ID.'),
   }),
   errors: [
     {

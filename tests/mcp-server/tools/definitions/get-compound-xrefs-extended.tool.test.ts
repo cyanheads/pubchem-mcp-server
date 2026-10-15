@@ -3,8 +3,9 @@
  * @module mcp-server/tools/definitions/get-compound-xrefs-extended.test
  */
 
+import { readFileSync } from 'node:fs';
 import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundXrefs } from '@/mcp-server/tools/definitions/get-compound-xrefs.tool.js';
 
 const mockClient = {
@@ -42,10 +43,12 @@ describe('getCompoundXrefs handler — input validation', () => {
     ).toThrow();
   });
 
-  it('rejects maxPerType above 500', () => {
-    expect(() =>
-      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['GeneID'], maxPerType: 501 }),
-    ).toThrow();
+  it('accepts maxPerType past the cap of 500 up to 1000, and rejects 1001 (#70)', () => {
+    const parse = (maxPerType: number) => () =>
+      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['GeneID'], maxPerType });
+    expect(parse(501)).not.toThrow();
+    expect(parse(1000)).not.toThrow();
+    expect(parse(1001)).toThrow();
   });
 
   it('accepts all valid xref types', () => {
@@ -319,6 +322,104 @@ describe('getCompoundXrefs handler — offset pagination (#38)', () => {
     expect(() =>
       getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['RN'], offset: nextOffset }),
     ).not.toThrow();
+  });
+});
+
+describe('getCompoundXrefs handler — ID order through the real client (#69)', () => {
+  /**
+   * Aspirin (CID 2244) xref responses captured from PUG REST in PubChem's wire order — lexical
+   * for the numeric types. PubMedID is sampled (every 100th ID plus the highest and lowest).
+   */
+  const aspirinXrefs = JSON.parse(
+    readFileSync(new URL('../../../fixtures/pug-rest-xrefs-2244.json', import.meta.url), 'utf8'),
+  ) as Record<string, { InformationList: { Information: Array<Record<string, unknown>> } }>;
+  const wireIds = (type: string) =>
+    aspirinXrefs[type]!.InformationList.Information[0]![type] as (string | number)[];
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(async () => {
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      const type = url.pathname.match(
+        /^\/rest\/pug\/compound\/cid\/2244\/xrefs\/(\w+)\/JSON$/,
+      )?.[1];
+      if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov' || !type || !aspirinXrefs[type]) {
+        throw new Error(`unrouted fetch: ${url}`);
+      }
+      return Response.json(aspirinXrefs[type]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    // The handler's client is the module mock; route its getXrefs to a real client so the
+    // ordering under test runs on the wire response.
+    const { PubChemClient } = await vi.importActual<
+      typeof import('@/services/pubchem/pubchem-client.js')
+    >('@/services/pubchem/pubchem-client.js');
+    const real = new PubChemClient();
+    mockClient.getXrefs.mockImplementation((cid: number, type: string, signal?: AbortSignal) =>
+      real.getXrefs(cid, type, signal),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function page(type: string, offset: number, maxPerType: number) {
+    const ctx = createMockContext();
+    const input = getCompoundXrefs.input.parse({
+      cid: 2244,
+      xrefTypes: [type],
+      offset,
+      maxPerType,
+    });
+    const result = await getCompoundXrefs.handler(input, ctx);
+    return { xref: result.xrefs[0]!, enrichment: getEnrichment(ctx) };
+  }
+
+  it('opens the first PubMedID page with the highest PMID', async () => {
+    const { xref } = await page('PubMedID', 0, 50);
+
+    expect(xref.ids[0]).toBe(38840409);
+  });
+
+  it('walks PubMedID pages strictly descending across boundaries, each ID exactly once', async () => {
+    const total = wireIds('PubMedID').length;
+    const seen: number[] = [];
+    let offset = 0;
+    for (;;) {
+      const { xref, enrichment } = await page('PubMedID', offset, 50);
+      expect(xref.totalAvailable).toBe(total);
+      expect(xref.truncated).toBe(offset + 50 < total);
+      seen.push(...(xref.ids as number[]));
+      if (enrichment.nextOffset === undefined) break;
+      expect(enrichment.nextOffset).toBe(offset + 50);
+      offset = enrichment.nextOffset as number;
+    }
+
+    expect(seen).toHaveLength(total);
+    for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeLessThan(seen[i - 1]!);
+    expect(new Set(seen)).toEqual(new Set(wireIds('PubMedID')));
+  });
+
+  it.each(['GeneID', 'TaxonomyID'])('returns %s pages numerically ascending', async (type) => {
+    const first = await page(type, 0, 5);
+    const second = await page(type, 5, 5);
+    const ids = [...first.xref.ids, ...second.xref.ids] as number[];
+
+    for (let i = 1; i < ids.length; i++) expect(ids[i]).toBeGreaterThan(ids[i - 1]!);
+  });
+
+  it('opens the TaxonomyID page with 6239', async () => {
+    const { xref } = await page('TaxonomyID', 0, 50);
+
+    expect(xref.ids[0]).toBe(6239);
+  });
+
+  it.each(['PatentID', 'RN', 'RegistryID'])('keeps PubChem’s order for %s', async (type) => {
+    const { xref } = await page(type, 0, 500);
+
+    expect(xref.ids).toEqual(wireIds(type));
   });
 });
 

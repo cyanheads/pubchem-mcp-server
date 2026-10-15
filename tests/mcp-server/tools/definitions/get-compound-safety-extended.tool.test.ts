@@ -76,6 +76,7 @@ describe('getCompoundSafety format — additional cases', () => {
             pictograms: ['Flammable'],
             hazardStatements: [{ code: 'H225', statement: 'Highly flammable' }],
             precautionaryStatements: [],
+            classifications: [],
           },
         },
       ],
@@ -114,6 +115,7 @@ describe('getCompoundSafety format — additional cases', () => {
             precautionaryStatements: [
               { code: 'P210', statement: 'Keep away `rm -rf`', decoded: true },
             ],
+            classifications: [],
           },
           source: 'ECHA',
         },

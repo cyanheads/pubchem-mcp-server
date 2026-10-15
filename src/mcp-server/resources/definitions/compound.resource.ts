@@ -6,7 +6,7 @@
 import { resource, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
-import { DEFAULT_PROPERTIES } from '@/services/pubchem/types.js';
+import { DEFAULT_PROPERTIES, MAX_CID } from '@/services/pubchem/types.js';
 
 export const compoundResource = resource('pubchem://compound/{cid}', {
   name: 'pubchem-compound',
@@ -14,7 +14,7 @@ export const compoundResource = resource('pubchem://compound/{cid}', {
     'Core physicochemical properties for a PubChem compound by CID. Use pubchem_get_compound_details to select properties or add descriptions, synonyms, drug-likeness, and classification.',
   mimeType: 'application/json',
   params: z.object({
-    cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
+    cid: z.coerce.number().int().min(1).max(MAX_CID).describe('PubChem Compound ID.'),
   }),
   errors: [
     {

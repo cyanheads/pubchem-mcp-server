@@ -3,8 +3,9 @@
  * @module mcp-server/resources/definitions/compound-safety.resource.test
  */
 
+import { readFileSync } from 'node:fs';
 import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compoundSafetyResource } from '@/mcp-server/resources/definitions/compound-safety.resource.js';
 
 const mockClient = {
@@ -100,5 +101,64 @@ describe('compoundSafetyResource handler', () => {
     const noData = await readSafety(11979316);
 
     expect(unknown.status).not.toBe(noData.status);
+  });
+});
+
+describe('compoundSafetyResource over captured PubChem records', () => {
+  const fixtures = new URL('../../../fixtures/', import.meta.url);
+  const fetchMock = vi.fn<typeof fetch>();
+
+  type Classified = SafetyPayload & {
+    ghs?: { classifications: Array<{ source?: string; notClassified?: boolean }> };
+  };
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import('@/services/pubchem/pubchem-client.js')>(
+      '@/services/pubchem/pubchem-client.js',
+    );
+    const client = new actual.PubChemClient();
+    mockClient.getSafetyData.mockImplementation((cid: number, signal?: AbortSignal) =>
+      client.getSafetyData(cid, signal),
+    );
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      const cid = url.pathname.match(/^\/rest\/pug_view\/data\/compound\/(\d+)\/JSON$/)?.[1];
+      if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov' || !cid) throw new Error('unmocked fetch');
+      return new Response(readFileSync(new URL(`ghs-${cid}.json`, fixtures), 'utf8'), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // #63 — the resource shares the parser, so it carried the same merged label and misattribution.
+  it('carries per-source classifications and the contributor source', async () => {
+    const result = (await readSafety(8929)) as Classified;
+
+    expect(result.status).toBe('ok');
+    expect(result.ghs?.classifications.map((c) => c.source)).toEqual([
+      'European Chemicals Agency (ECHA)',
+      'NITE-CMC',
+      'Hazardous Chemical Information System (HCIS), Safe Work Australia',
+    ]);
+    expect(result.source).toBe(
+      'European Chemicals Agency (ECHA); NITE-CMC; Hazardous Chemical Information System (HCIS), Safe Work Australia',
+    );
+  });
+
+  // #71 — notifier verdicts are a classification, not an absence.
+  it('reports not_classified with the verdicts for D-glucose', async () => {
+    const result = (await readSafety(5793)) as Classified;
+
+    expect(result).toMatchObject({ cid: 5793, hasData: true, status: 'not_classified' });
+    expect(result.ghs?.classifications).toHaveLength(3);
+    expect(result.ghs?.classifications.every((c) => c.notClassified === true)).toBe(true);
+    expect(result.source).toBe('European Chemicals Agency (ECHA)');
   });
 });

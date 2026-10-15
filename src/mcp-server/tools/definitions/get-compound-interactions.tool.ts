@@ -5,12 +5,23 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { MAX_CID } from '@/services/pubchem/types.js';
+import {
+  type CappedInput,
+  capPageSize,
+  cappedInputsField,
+  INPUT_CEILING,
+  renderCappedInputs,
+} from './input-caps.js';
 import { inlineData, quoteData } from './untrusted-text.js';
+
+/** Entries served per kind per page; a larger maxEntries is clamped to this. */
+const MAX_ENTRIES_CAP = 50;
 
 export const getCompoundInteractions = tool('pubchem_get_compound_interactions', {
   title: 'Get Compound Interactions',
   description:
-    "Get a compound's interaction data: drug-drug interactions (DrugBank), drug-food interactions, and chemical-target interactions (binding/activity from BindingDB, ChEMBL, and others). Each entry carries its originating source. Results are paged per kind, with the source-record total and the next offset reported for each. Richest for approved drugs; many compounds have no deposited interaction records.",
+    "Get a compound's interaction data: drug-drug interactions (DrugBank), drug-food interactions, and chemical-target interactions (binding/activity from BindingDB, ChEMBL, and others). Each entry carries its originating source. Results are paged per kind, with the source-record total and the next offset reported for each. Richest for approved drugs; many compounds have no deposited interaction records. Drug-drug and target interactions come from PubChem's SDQ service, which can refuse automated requests — a refused kind is reported in failedKinds while the others still return; per-target activity is also available from pubchem_get_bioactivity.",
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -21,13 +32,14 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       .number()
       .int()
       .min(1)
+      .max(MAX_CID)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     kinds: z
       .array(z.enum(['drug-drug', 'drug-food', 'target']))
       .min(1)
       .default(['drug-drug'])
       .describe(
-        'Interaction kinds to fetch. "drug-drug" (interactions with other drugs), "drug-food" (dietary interactions), "target" (binding/activity against molecular targets). Default: ["drug-drug"].',
+        'Interaction kinds to fetch. "drug-drug" (interactions with other drugs), "drug-food" (dietary interactions), "target" (binding/activity against molecular targets). "drug-drug" and "target" come from PubChem\'s SDQ service, which can refuse automated requests; "drug-food" comes from PUG View. Per-target activity is also available from pubchem_get_bioactivity. Default: ["drug-drug"].',
       ),
     offset: z
       .number()
@@ -45,10 +57,10 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       .number()
       .int()
       .min(1)
-      .max(50)
+      .max(INPUT_CEILING)
       .default(10)
       .describe(
-        'Max entries per kind per page (1-50). Well-studied drugs have a long tail of interactions; use offset to reach the ones past this page. Default: 10.',
+        `Max entries per kind per page. The per-call cap is ${MAX_ENTRIES_CAP}: a larger value (up to ${INPUT_CEILING}) reads a page of ${MAX_ENTRIES_CAP} per kind and is reported in cappedInputs. Well-studied drugs have a long tail of interactions; use offset to reach the ones past this page. Default: 10.`,
       ),
   }),
   // `maxEntries` is this tool's page size; the sibling search tools call the same
@@ -122,7 +134,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       .string()
       .optional()
       .describe(
-        'Interaction kinds that could not be retrieved (comma-separated). The returned entries cover the kinds that succeeded; retry to re-attempt the failed ones.',
+        "Interaction kinds that could not be retrieved (comma-separated). The returned entries cover the kinds that succeeded. The notice says, per failed kind, whether a retry can help: a timeout or upstream error can clear, while a refusal from PubChem's SDQ service (drug-drug, target) does not.",
       ),
     notice: z
       .string()
@@ -130,14 +142,18 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       .describe(
         'Guidance when a kind failed, when no interaction data was found, when the offset runs past every requested kind, or when further pages remain. Absent when this page is complete and every kind resolved.',
       ),
+    cappedInputs: cappedInputsField,
   },
+  enrichmentTrailer: { cappedInputs: { render: renderCappedInputs } },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
+    const capped: CappedInput[] = [];
+    const pageSize = capPageSize('maxEntries', input.maxEntries, MAX_ENTRIES_CAP, capped);
     const { entries, pages, failedKinds } = await client.getInteractions(
       input.cid,
       input.kinds,
-      input.maxEntries,
+      pageSize,
       input.offset,
       ctx.signal,
     );
@@ -185,19 +201,36 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
     // it would have to pick one and silently skip the other's records.
     const soleNextOffset = remaining.length === 1 ? remaining[0]?.nextOffset : undefined;
     if (soleNextOffset !== undefined) ctx.enrich({ nextOffset: soleNextOffset });
+    if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
 
     // Notice is last-wins, so every applicable signal composes into one string.
     const noticeParts: string[] = [];
 
     if (failedKinds.length > 0) {
-      const names = failedKinds.map((f) => f.kind).join(', ');
-      const plural = failedKinds.length > 1;
-      ctx.enrich({ failedKinds: names });
-      noticeParts.push(
-        `Could not retrieve ${names} interaction${plural ? 's' : ''} for CID ${input.cid}.${
-          entries.length > 0 ? ' Returned the kinds that succeeded.' : ''
-        } Retry to re-attempt ${plural ? 'them' : 'it'}.`,
-      );
+      ctx.enrich({ failedKinds: failedKinds.map((f) => f.kind).join(', ') });
+      // A refusal from PubChem's SDQ service and a transient failure need opposite advice: a
+      // retry can clear a timeout or 5xx, never a service that is not answering with data.
+      const refused = failedKinds.filter((f) => f.reason === 'sdq_unavailable').map((f) => f.kind);
+      const transient = failedKinds
+        .filter((f) => f.reason !== 'sdq_unavailable')
+        .map((f) => f.kind);
+      const couldNot = (kinds: string[]) =>
+        `Could not retrieve ${kinds.join(', ')} interaction${kinds.length > 1 ? 's' : ''} for CID ${input.cid}`;
+      if (transient.length > 0) {
+        noticeParts.push(
+          `${couldNot(transient)}. Retry to re-attempt ${transient.length > 1 ? 'them' : 'it'}.`,
+        );
+      }
+      if (refused.length > 0) {
+        noticeParts.push(
+          `${couldNot(refused)}: PubChem's SDQ service, the source of drug-drug and target interactions, did not answer with data. It can refuse automated requests, and repeating the call does not change that.${
+            refused.includes('target')
+              ? ` Per-target activity for CID ${input.cid} is available from pubchem_get_bioactivity.`
+              : ''
+          }`,
+        );
+      }
+      if (entries.length > 0) noticeParts.push('Returned the kinds that succeeded.');
     }
 
     const largestTotal = paging.reduce((max, p) => Math.max(max, p.totalRecords), 0);

@@ -10,17 +10,30 @@ import {
   notFound,
   requestCancelled,
   serviceUnavailable,
+  timeout,
   validationError,
 } from '@cyanheads/mcp-ts-core/errors';
-import { httpErrorFromResponse, logger, requestContextService } from '@cyanheads/mcp-ts-core/utils';
+import {
+  defaultIsTransient,
+  fetchWithTimeout,
+  logger,
+  requestContextService,
+  withRetry,
+} from '@cyanheads/mcp-ts-core/utils';
 import type {
+  ActivityValue,
   AidListResponse,
+  AssayCidListKeyResponse,
+  AssayCidPage,
+  AssaySummary,
   AssaySummaryTableResponse,
+  AssayTargetActivity,
   BioactivityRow,
   CidListResponse,
   CompoundClassification,
   ConformerListResponse,
   GHSClassification,
+  GHSSourceClassification,
   InteractionEntry,
   InteractionKindFetch,
   InteractionKindPage,
@@ -33,6 +46,7 @@ import type {
   SafetyLookup,
   SdqResponse,
   SynonymResponse,
+  TargetGroup,
   XrefResponse,
 } from './types.js';
 
@@ -42,7 +56,7 @@ const isNotFound = (error: unknown): boolean =>
 const isBadRequest = (error: unknown): boolean =>
   error instanceof McpError && error.data?.status === 400;
 
-/** The parsed upstream fault `fetchResponse` attaches to every HTTP failure. */
+/** The upstream fault `fetchResponse` attaches to an HTTP failure whose body states one. */
 const faultOf = (error: unknown): string | undefined => {
   const fault = error instanceof McpError ? error.data?.fault : undefined;
   return typeof fault === 'string' ? fault : undefined;
@@ -69,6 +83,10 @@ function mapRejectedSearch<T>(search: Promise<T>, message: string, hint: string)
   });
 }
 
+/** PubChem's 404 fault for an AID with no live assay. The same endpoints answer a real assay
+ * with no CIDs of the requested kind with 404 "No CIDs found for the given AID(s)". */
+const NO_LIVE_AIDS_FAULT = 'No live AIDs in the supplied AID list';
+
 /** CID 0 is PubChem's "no such structure" placeholder, never a compound: a SMILES lookup for a
  * structure that parses but is not in the database answers 200 with `CID: [0]`. Dropped
  * wherever a CID list is read, so no route can report it as a match. */
@@ -89,7 +107,7 @@ const isMissingRecord = (error: unknown): boolean =>
   isNotFound(error) && (faultOf(error)?.includes('No record found') ?? false);
 
 /** What a caller's cancellation surfaces as. `RequestCancelled` is never retried and the
- * framework logs it at `info`; raising it here keeps a withdrawn call from reading as the 30 s
+ * framework logs it at `info`; raising it here keeps a withdrawn call from reading as a
  * timeout, and from matching the not-found checks that turn a 404 into "no data". */
 const cancellation = (reason: unknown): McpError =>
   requestCancelled('PubChem request cancelled by the caller.', undefined, { cause: reason });
@@ -173,16 +191,167 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener('abort', cancel, { once: true });
   });
 
-/** Reads a response body. The platform fetch aborts the body with the request's signal, so a
- * caller abort mid-read surfaces as the cancellation instead of a raw abort. */
-async function readBody<T>(read: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
-  try {
-    return await read;
-  } catch (error) {
-    if (signal?.aborted) throw cancellation(signal.reason);
-    throw error;
+/** One wall-clock budget per tool call or resource read, shared by every PubChem request the
+ * call makes, in sequence or in parallel — each one's rate-limit wait, attempts' headers and
+ * bodies, and retry backoff. It sits below the 60 s default request timeout of MCP SDK clients,
+ * so a slow or hung upstream reaches the caller as this server's `Timeout`, not the client's. */
+const CALL_BUDGET_MS = 50_000;
+
+/** When each call's budget runs out, keyed by the call's cancellation signal — the one object
+ * every request of a call already carries, and a new one per call. The call's first request
+ * starts the clock; the entry goes with the signal. */
+const callDeadlines = new WeakMap<AbortSignal, number>();
+
+/** Milliseconds left of the budget of the call `signal` belongs to. A request with no caller
+ * signal is a call of its own. */
+function callBudgetLeft(signal: AbortSignal | undefined): number {
+  if (!signal) return CALL_BUDGET_MS;
+  let deadline = callDeadlines.get(signal);
+  if (deadline === undefined) {
+    deadline = Date.now() + CALL_BUDGET_MS;
+    callDeadlines.set(signal, deadline);
   }
+  return deadline - Date.now();
 }
+
+/** Ceiling on one attempt; the retry gets whatever the call's budget has left. */
+const ATTEMPT_TIMEOUT_MS = 30_000;
+
+/** Every non-2xx status. `fetchWithTimeout` logs a status it is not told to expect at `error`,
+ * without the route; this client logs the request's final outcome itself, with the URL. */
+const HTTP_ERROR_STATUSES = Array.from({ length: 200 }, (_, i) => 400 + i);
+
+/** Bytes of a non-2xx body kept to parse PubChem's fault from. Fault envelopes run a few
+ * hundred bytes; an HTML error page past this is cut, never read whole. */
+const ERROR_BODY_LIMIT = 2_048;
+
+/** A non-2xx response as `fetchWithTimeout` reports it. */
+const isHttpFailure = (error: unknown): error is McpError =>
+  error instanceof McpError && error.data?.errorSource === 'FetchHttpError';
+
+/** The message of an HTTP failure. PubChem sends its fault code as the status text ("400
+ * PUGREST.BadRequest"), so a parsed fault, which leads with that code, replaces the status text
+ * rather than repeating it. `attempts` names an exhausted retry in the head, where it reads as
+ * part of the sentence whatever punctuation the fault ends with. */
+function httpFailureMessage(
+  status: number,
+  statusText: string | undefined,
+  fault: string | undefined,
+  attempts?: number,
+): string {
+  const text = !fault && statusText ? ` ${statusText}` : '';
+  const head = `PubChem returned HTTP ${status}${text}${attempts ? ` after ${attempts} attempts` : ''}`;
+  return fault ? `${head}: ${fault}` : `${head}.`;
+}
+
+/** Rebuilds a non-2xx into this client's error: the status fields, the fault PubChem stated in
+ * its envelope (`Code: Message`) on `data.fault` and in the message, which is all some clients
+ * show, and neither the captured body nor the request URL — `data` reaches the client as
+ * `structuredContent.error.data`, and a PubChem URL carries the caller's own query. A body
+ * with no parseable fault, such as the HTML page PubChem throttles with, leaves `fault` unset. */
+function pubChemHttpError(error: McpError): McpError {
+  const data = error.data ?? {};
+  const status = Number(data.status);
+  const statusText = typeof data.statusText === 'string' ? data.statusText : '';
+  const body = typeof data.body === 'string' ? data.body : '';
+  const fault = parseFaultMessage(body);
+  return new McpError(error.code, httpFailureMessage(status, statusText, fault), {
+    status,
+    statusText: statusText || undefined,
+    statusCode: status,
+    ...(data.retryAfter !== undefined && { retryAfter: data.retryAfter }),
+    ...(data.retryable !== undefined && { retryable: data.retryable }),
+    ...(fault && { fault }),
+  });
+}
+
+/** An HTTP failure as the caller sees it once its retry is spent. `withRetry` appends
+ * "(failed after N attempts)" after this client's own full stop, a second sentence, so the
+ * message is rebuilt with the attempts in its head; data and cause carry over. Any other HTTP
+ * failure passes through unchanged. */
+function exhaustedHttpFailure(
+  error: McpError,
+  status: number,
+  fault: string | undefined,
+): McpError {
+  const attempts = error.data?.retryAttempts;
+  if (typeof attempts !== 'number') return error;
+  const statusText = typeof error.data?.statusText === 'string' ? error.data.statusText : undefined;
+  return new McpError(
+    error.code,
+    httpFailureMessage(status, statusText, fault, attempts),
+    error.data,
+    { cause: error },
+  );
+}
+
+/** `errorSource` of a 2xx whose body could not be read: not JSON where JSON was asked for, or
+ * cut off mid-stream. Raised as a transient `ServiceUnavailable` inside the attempt, so the
+ * retry covers the body read as well as the exchange. */
+const UNREADABLE_BODY = 'PubChemUnreadableBody';
+
+/** A body read's failure as the attempt throws it. The framework already classifies a body
+ * read the request's own clocks or the caller ended, as an `McpError`; anything else — a
+ * `SyntaxError` from `JSON.parse`, the runtime's error for a dropped connection — is the body
+ * itself failing, which is PubChem's side, never the caller's. */
+function bodyReadFailure(error: unknown): unknown {
+  if (error instanceof McpError) return error;
+  return serviceUnavailable(
+    `PubChem response body could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    { errorSource: UNREADABLE_BODY },
+    error instanceof Error ? { cause: error } : undefined,
+  );
+}
+
+/** Rebuilds a failure that carries no HTTP status — a timeout, a network error, or a body that
+ * could not be read — into what the caller sees: one fixed message per kind, with the request's
+ * host, path, and query left to the server log. The framework names the URL's origin in these
+ * messages, and the runtime's own text can quote the host. Any clock can end a request — the
+ * call's {@link CALL_BUDGET_MS} budget, running out mid-request or already spent, or one
+ * attempt's timer — and all read the same. The code and the retry count carry over; the
+ * original stays on `cause`, which never reaches the wire. */
+function requestFailure(error: unknown): unknown {
+  if (!(error instanceof McpError)) return error;
+  const data =
+    typeof error.data?.retryAttempts === 'number'
+      ? { retryAttempts: error.data.retryAttempts }
+      : undefined;
+  if (error.code === JsonRpcErrorCode.Timeout) {
+    return timeout('PubChem did not respond in time; the request timed out. Retry shortly.', data, {
+      cause: error,
+    });
+  }
+  if (error.data?.errorSource === 'FetchNetworkErrorWrapper') {
+    return new McpError(
+      error.code,
+      'PubChem could not be reached (network error). Retry shortly.',
+      data,
+      { cause: error },
+    );
+  }
+  if (error.data?.errorSource === UNREADABLE_BODY) {
+    return serviceUnavailable(
+      'PubChem sent a response that could not be read. Retry shortly.',
+      data,
+      { cause: error },
+    );
+  }
+  return error;
+}
+
+/** The framework's transient set, narrowed to this client's policy: an HTTP failure retries
+ * only on 5xx, and never when PubChem has rejected the search query itself, which faults
+ * identically on every re-send. Network errors and per-attempt timeouts stay transient. */
+function isRetryable(error: unknown): boolean {
+  const status = error instanceof McpError ? error.data?.status : undefined;
+  if (typeof status === 'number' && (status < 500 || faultOf(error) === SEARCH_REJECTED_FAULT)) {
+    return false;
+  }
+  return defaultIsTransient(error);
+}
+
+/** Reason on an SDQ answer that is not SDQ data — a refusal, which a retry does not clear. */
+const SDQ_UNAVAILABLE = 'sdq_unavailable';
 
 /** Records a failed PubChem request, with its URL, in the server's own log. The error the
  * caller receives deliberately omits the URL, so this line is the only place an operator can
@@ -192,7 +361,7 @@ function logFailedRequest(
   level: 'debug' | 'warning',
   url: string,
   method: string,
-  detail: { status: number; fault: string } | { error: string },
+  detail: { status: number; fault?: string } | { error: string },
 ): void {
   const summary = 'status' in detail ? `HTTP ${detail.status}` : detail.error;
   logger[level](
@@ -273,6 +442,56 @@ function extractStrings(section: PugViewSection): string[] {
   return strings;
 }
 
+/** A human ATC level-5 code ("N02BA01"). ATCvet codes carry a leading "Q" and never match. */
+const ATC_LEVEL5 = /^[A-Z]\d{2}[A-Z]{2}\d{2}$/;
+
+/** One WHO ATC hierarchy string at any level: "<code> - <name>" ("N02 - Analgesics"). */
+const ATC_ENTRY = /^([A-Z][0-9A-Z]*) - (.+)$/;
+
+/** Source whose code lists name other drugs' ATC codes beside the compound's own. */
+const ESSENTIAL_MEDICINES_SOURCE = 'WHO Model Lists of Essential Medicines';
+
+type AtcCode = CompoundClassification['atcCodes'][number];
+
+/** Parse PUG View's `ATC Code` section into human ATC codes with their hierarchy.
+ *
+ * Each `Information` entry is one deposit, so entries are read one at a time rather than
+ * flattened: a WHO ATC Classification entry is five "<code> - <name>" strings from anatomical
+ * group down to substance, and only within one entry do those strings describe the same code.
+ * The section also holds bare codes (NORMAN Suspect List Exchange deposits one, listed first),
+ * ATCvet blocks whose `Q…` codes never match the human pattern, and WHO Model List of Essential
+ * Medicines code lists ("C05AA09; H02AB02; L01AA01"), which can name another drug's code and so
+ * never contribute one — a list of a single code is ruled out by its source, not its shape.
+ *
+ * Codes keep first-appearance order. A hierarchy entry fills a bare code's place, so the
+ * bare-listed primary code still gets its description and levels; a code PubChem lists only
+ * bare comes back with `description: ""` and `levels: []`. */
+function parseAtcCodes(section: PugViewSection, sources: Map<number, string>): AtcCode[] {
+  const byCode = new Map<string, AtcCode>();
+  for (const info of section.Information ?? []) {
+    const strings = (info.Value.StringWithMarkup ?? []).map((swm) => swm.String.trim());
+    const entries = strings.flatMap((s) => {
+      const match = s.match(ATC_ENTRY);
+      return match?.[1] && match[2] ? [{ code: match[1], description: match[2].trim() }] : [];
+    });
+    for (const leaf of entries) {
+      if (!ATC_LEVEL5.test(leaf.code) || byCode.get(leaf.code)?.description) continue;
+      const levels = entries.filter(
+        (e) => e.code.length < leaf.code.length && leaf.code.startsWith(e.code),
+      );
+      byCode.set(leaf.code, { ...leaf, levels });
+    }
+    const source = info.ReferenceNumber != null ? sources.get(info.ReferenceNumber) : undefined;
+    if (source === ESSENTIAL_MEDICINES_SOURCE) continue;
+    for (const code of strings) {
+      if (ATC_LEVEL5.test(code) && !byCode.has(code)) {
+        byCode.set(code, { code, description: '', levels: [] });
+      }
+    }
+  }
+  return [...byCode.values()];
+}
+
 /** Extract description strings paired with their PUG View ReferenceNumber so we can attribute sources. */
 function extractDescriptionItems(
   section: PugViewSection,
@@ -297,6 +516,11 @@ function extractDescriptionItems(
     }
   }
   return items;
+}
+
+/** ReferenceNumber → SourceName for a PUG View record, so its entries can carry attribution. */
+function referenceSources(data: PugViewResponse): Map<number, string> {
+  return new Map((data.Record.Reference ?? []).map((ref) => [ref.ReferenceNumber, ref.SourceName]));
 }
 
 /** Filter to first occurrence of each non-empty key. Empty keys are dropped. */
@@ -344,12 +568,22 @@ function extractGHSInfo(section: PugViewSection): PugViewInformation[] {
  * whitespace attached and the trailing whitespace taken once after the loop. Writing it as
  * `(?:(?:\([^)]*\)|\*+)\s*)*` instead nests `\*+` inside a `*` loop, so a code followed by a
  * run of asterisks and no separator makes the engine try every partition of that run — the
- * same statements match either way, but only this form matches them in linear time. */
-function parseCodedStatement(text: string): { code: string; statement: string } | undefined {
+ * same statements match either way, but only this form matches them in linear time.
+ *
+ * The agreement percentage is returned verbatim ("37.7%", "> 99.9%") as `agreement`: on an
+ * ECHA C&L block it is the share of notifying companies that assigned the code, which is what
+ * separates a consensus hazard from a minority one. */
+function parseCodedStatement(
+  text: string,
+): { code: string; statement: string; agreement?: string } | undefined {
   const match = text.match(
-    /^([HP]\d{3}[A-Za-z]{0,2}(?:\+[HP]\d{3}[A-Za-z]{0,2})*)(?:\s*(?:\([^)]*\)|\*))*\s*[:\-–]\s*(.+)/,
+    /^([HP]\d{3}[A-Za-z]{0,2}(?:\+[HP]\d{3}[A-Za-z]{0,2})*)((?:\s*(?:\([^)]*\)|\*))*)\s*[:\-–]\s*(.+)/,
   );
-  if (match?.[1] && match[2]) return { code: match[1], statement: match[2].trim() };
+  if (match?.[1] && match[3]) {
+    const agreement = match[2]?.match(/\(([^)]*%)\)/)?.[1]?.trim();
+    const parsed = { code: match[1], statement: match[3].trim() };
+    return agreement ? { ...parsed, agreement } : parsed;
+  }
   const codeOnly = text.match(/^([HP]\d{3}[A-Za-z]{0,2}(?:\+[HP]\d{3}[A-Za-z]{0,2})*)$/);
   if (codeOnly?.[1]) return { code: codeOnly[1], statement: '' };
   return;
@@ -551,9 +785,144 @@ function parsePictogram(text: string): string {
   return text.replace(/.*\//, '').replace(/\..*/, '');
 }
 
+/** Severity order for the top-level signal word. A word outside GHS's two ranks below both,
+ * and an absent one below that. */
+function signalRank(word: string | undefined): number {
+  if (!word) return -1;
+  return { danger: 2, warning: 1 }[word.toLowerCase()] ?? 0;
+}
+
+/** ECHA's verdict that notifiers found the substance meets no GHS hazard criteria, deposited as
+ * a hazard-statement string of its own followed by the line naming the notifier counts. */
+const NOT_CLASSIFIED = /^not classified$/i;
+
+/** The boilerplate ECHA appends to its verdict line, pointing at its own website. */
+const ECHA_WEBSITE_POINTER = /\s*For more detailed information.*$/s;
+
+type HazardStatement = { code: string; statement: string };
+type PrecautionaryStatement = { code: string; statement: string; decoded: boolean };
+
+/** Parse one source's run of GHS `Information` entries into its classification plus the
+ * statements it contributes to the record-wide unions. */
+function parseGhsBlock(
+  entries: PugViewInformation[],
+  reference: { SourceName: string; Name?: string } | undefined,
+): {
+  classification: GHSSourceClassification;
+  hazardStatements: HazardStatement[];
+  precautionaryStatements: PrecautionaryStatement[];
+} {
+  let signalWord: string | undefined;
+  let summary: string | undefined;
+  let verdict: string | undefined;
+  let hasVerdict = false;
+  const pictograms: string[] = [];
+  const hazardStatements: HazardStatement[] = [];
+  const hazardCodes: GHSSourceClassification['hazardCodes'] = [];
+  const precautionaryStatements: PrecautionaryStatement[] = [];
+
+  for (const info of entries) {
+    const name = info.Name?.toLowerCase() ?? '';
+    const strings = info.Value.StringWithMarkup?.map((s) => s.String).filter(Boolean) ?? [];
+
+    if (name.includes('signal') && strings[0]) {
+      signalWord ??= strings[0];
+    } else if (name.includes('pictogram')) {
+      const extras =
+        info.Value.StringWithMarkup?.flatMap(
+          (s) => s.Markup?.map((m) => m.Extra).filter((e): e is string => e != null) ?? [],
+        ) ?? [];
+      pictograms.push(...(extras.length > 0 ? extras : strings).map(parsePictogram));
+    } else if (name.includes('hazard') && name.includes('statement')) {
+      for (const s of strings) {
+        if (NOT_CLASSIFIED.test(s.trim())) {
+          hasVerdict = true;
+          continue;
+        }
+        const parsed = parseCodedStatement(s);
+        if (parsed) {
+          hazardStatements.push({ code: parsed.code, statement: parsed.statement });
+          hazardCodes.push(
+            parsed.agreement
+              ? { code: parsed.code, agreement: parsed.agreement }
+              : { code: parsed.code },
+          );
+        } else if (hasVerdict) {
+          verdict ??= s.replace(ECHA_WEBSITE_POINTER, '').trim();
+        }
+      }
+    } else if (name.includes('precautionary') && name.includes('statement')) {
+      // PubChem deposits precautionary statements as a single comma-separated code
+      // list (codes only, no text) — not the "Pxxx: text" shape parseCodedStatement
+      // expects. Split each list into individual code entries.
+      for (const s of strings) {
+        precautionaryStatements.push(...parsePrecautionaryCodes(s));
+      }
+    } else if (name.includes('notifications summary')) {
+      summary ??= strings[0];
+    }
+  }
+
+  const uniqueCodes = dedupByKey(hazardCodes, (h) => h.code);
+  const notClassified = hasVerdict && uniqueCodes.length === 0;
+  const notifications = notClassified ? (verdict ?? summary) : summary;
+  return {
+    classification: {
+      ...(reference && { source: reference.SourceName }),
+      ...(reference?.Name && { sourceRecord: reference.Name }),
+      ...(signalWord && { signalWord }),
+      pictograms: [...new Set(pictograms)],
+      hazardCodes: uniqueCodes,
+      ...(notClassified && { notClassified: true as const }),
+      ...(notifications && { notifications }),
+    },
+    hazardStatements,
+    precautionaryStatements,
+  };
+}
+
 /** Identity key for bioactivity entry dedup within an AID. */
 const activityKey = (v: { name?: string; value: number; unit?: string }) =>
   `${v.name ?? ''}|${v.value}|${v.unit ?? ''}`;
+
+/**
+ * Connected components of the accession ↔ Gene ID graph whose edges are the given pairs.
+ * One protein's UniProt, RefSeq and GenBank accessions meet through its gene, and one
+ * accession deposited against several strain or readthrough genes meets them through it.
+ */
+function groupTargetPairs(pairs: Iterable<readonly [string, number]>): TargetGroup[] {
+  const adjacency = new Map<string, string[]>();
+  const link = (from: string, to: string) => {
+    const neighbors = adjacency.get(from);
+    if (neighbors) neighbors.push(to);
+    else adjacency.set(from, [to]);
+  };
+  for (const [accession, geneId] of pairs) {
+    link(`a:${accession}`, `g:${geneId}`);
+    link(`g:${geneId}`, `a:${accession}`);
+  }
+
+  const groups: TargetGroup[] = [];
+  const seen = new Set<string>();
+  for (const start of adjacency.keys()) {
+    if (seen.has(start)) continue;
+    const group: TargetGroup = { accessions: [], geneIds: [] };
+    seen.add(start);
+    const stack = [start];
+    for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+      if (node.startsWith('a:')) group.accessions.push(node.slice(2));
+      else group.geneIds.push(Number(node.slice(2)));
+      for (const next of adjacency.get(node) ?? []) {
+        if (!seen.has(next)) {
+          seen.add(next);
+          stack.push(next);
+        }
+      }
+    }
+    groups.push(group);
+  }
+  return groups;
+}
 
 // ── Client ───────────────────────────────────────────────────────────
 
@@ -565,105 +934,114 @@ export class PubChemClient {
 
   // ── Core HTTP ────────────────────────────────────────────────────
 
-  /** Shared HTTP core: rate-limit, 30s timeout, retry once on 5xx (except a rejected search
-   * query) and once on a transient network error, and surface a clean timeout message. Returns
-   * the ok Response; callers extract the body (JSON, bytes, or text). Centralizing this keeps
-   * every fetch variant on one resilience contract — the divergence that left fetchBinary
-   * without retry or a clean timeout message (#16) cannot recur.
+  /** Shared HTTP core: one PubChem request, end to end, and its body read by `read`. Every
+   * fetch variant runs on this one resilience contract, so the divergence that left
+   * fetchBinary without retry or a clean timeout (#16) cannot recur.
    *
-   * `init.signal` is the caller's cancellation, combined with the per-attempt timeout. Once it
-   * aborts — queued for a slot, mid-fetch, or in a retry backoff — the request ends with
-   * `RequestCancelled`: no retry, and no failed-request log, since nothing failed upstream. */
-  private async fetchResponse(url: string, { signal, ...init }: FetchInit): Promise<Response> {
+   * The request draws on its call's {@link CALL_BUDGET_MS} budget: whatever the call has left
+   * bounds the rate-limit wait, each attempt's headers and body (capped at
+   * {@link ATTEMPT_TIMEOUT_MS} per attempt), and the backoff, and expires as a `Timeout`; a call
+   * with nothing left fails the request before it is sent. The body is read inside the attempt,
+   * so a response that stalls after its headers is bounded too. One retry, after 1 s — or after
+   * the `Retry-After` PubChem names, up to 30 s, when the budget still covers it — on a 5xx
+   * (except a rejected search query), a network error, an attempt timeout, or a body that could
+   * not be read; any other non-2xx fails at once, carrying PubChem's parsed fault on
+   * `data.fault` when the body states one. A failure with no HTTP status reaches the caller as
+   * {@link requestFailure} rebuilds it, with nothing of the request in it.
+   *
+   * `init.signal` is the caller's cancellation, and identifies the call whose budget the request
+   * draws on. Once it aborts — queued for a slot, mid-fetch, mid-body, or in the backoff — the
+   * request ends with `RequestCancelled`: no retry, and no failed-request log, since nothing
+   * failed upstream. */
+  private async fetchResponse<T>(
+    url: string,
+    { signal, ...init }: FetchInit,
+    read: (response: Response) => Promise<T>,
+  ): Promise<T> {
     const method = init.method ?? 'GET';
-    for (let attempt = 0; ; attempt++) {
-      await this.rateLimiter.acquire(signal);
-
-      const timeout = new AbortController();
-      const timeoutId = setTimeout(() => timeout.abort(), 30_000);
-
-      try {
-        const response = await fetch(url, {
-          ...init,
-          signal: signal ? AbortSignal.any([signal, timeout.signal]) : timeout.signal,
-        });
-
-        if (response.ok) return response;
-
-        const text = await response.text();
-        const fault = parseFaultMessage(text) ?? text.slice(0, 300);
-
-        /** `data` reaches the client as `structuredContent.error.data`, and a PubChem
-         * request URL carries the caller's own query — a compound name, a SMILES string,
-         * an SDQ query blob. Only the parsed fault travels; the framework omits the URL
-         * by default and names the host in the message, which is enough to place the
-         * failure without echoing the request back. */
-        const error = await httpErrorFromResponse(response, {
-          captureBody: false,
-          service: 'PubChem',
-          data: { fault },
-        });
-
-        // Retry once on 5xx unless the framework marks the failure as permanent or PubChem
-        // has rejected the search query itself, which faults identically on every re-send.
-        if (
-          response.status >= 500 &&
-          error.data?.retryable !== false &&
-          fault !== SEARCH_REJECTED_FAULT &&
-          attempt < 1
-        ) {
-          await sleep(1000 * 2 ** attempt, signal);
-          continue;
-        }
-
-        // A 404 is routine — most callers read it as "no data" — so it logs below warning.
-        logFailedRequest(response.status === 404 ? 'debug' : 'warning', url, method, {
-          status: response.status,
-          fault,
-        });
-        throw error;
-      } catch (error) {
-        // The caller withdrew the call: whatever this attempt rejected with, it is over.
-        if (signal?.aborted) throw cancellation(signal.reason);
-
-        // HTTP errors are already classified and logged — surface them, don't retry.
-        if (error instanceof McpError) throw error;
-
-        // Retry once on network errors
-        if (attempt < 1) {
-          await sleep(1000 * 2 ** attempt, signal);
-          continue;
-        }
-
-        // With the caller's signal ruled out, an abort can only be this attempt's timeout.
-        const failure =
-          error instanceof Error && error.name === 'AbortError'
-            ? new Error('PubChem request timed out (30s)')
-            : error;
-        logFailedRequest('warning', url, method, {
-          error: failure instanceof Error ? failure.message : String(failure),
-        });
-        throw failure;
-      } finally {
-        clearTimeout(timeoutId);
+    const context = requestContextService.createRequestContext({
+      operation: 'PubChemClient.fetch',
+      additionalContext: { url, method },
+    });
+    try {
+      const budgetLeftMs = callBudgetLeft(signal);
+      if (budgetLeftMs <= 0) {
+        throw timeout(`The call spent its ${CALL_BUDGET_MS}ms budget before this request.`);
       }
+      return await withRetry(
+        async (attempt) => {
+          await this.rateLimiter.acquire(attempt.signal);
+          let response: Response;
+          try {
+            response = await fetchWithTimeout(
+              url,
+              Math.min(ATTEMPT_TIMEOUT_MS, attempt.remainingMs),
+              context,
+              {
+                ...init,
+                signal: attempt.signal,
+                expectedStatuses: HTTP_ERROR_STATUSES,
+                errorBodyLimit: ERROR_BODY_LIMIT,
+              },
+            );
+          } catch (error) {
+            throw isHttpFailure(error) ? pubChemHttpError(error) : error;
+          }
+          try {
+            return await read(response);
+          } catch (error) {
+            throw bodyReadFailure(error);
+          }
+        },
+        {
+          operation: 'PubChem request',
+          context,
+          ...(signal && { signal }),
+          deadlineMs: budgetLeftMs,
+          maxRetries: 1,
+          baseDelayMs: 1000,
+          jitter: 0,
+          isTransient: isRetryable,
+        },
+      );
+    } catch (error) {
+      // The caller withdrew the call: whatever shape the abort took on the way out, it is over.
+      if (signal?.aborted) throw cancellation(signal.reason);
+
+      const status = error instanceof McpError ? error.data?.status : undefined;
+      if (error instanceof McpError && typeof status === 'number') {
+        const fault = faultOf(error);
+        // A 404 is routine — most callers read it as "no data" — so it logs below warning.
+        logFailedRequest(status === 404 ? 'debug' : 'warning', url, method, {
+          status,
+          ...(fault && { fault }),
+        });
+        throw exhaustedHttpFailure(error, status, fault);
+      }
+      logFailedRequest('warning', url, method, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw requestFailure(error);
     }
   }
 
-  private async fetchJson<T>(url: string, init: FetchInit): Promise<T> {
-    const response = await this.fetchResponse(url, init);
-    return (await readBody(response.json(), init.signal)) as T;
+  /** Parsed inside the attempt, so a body that is not JSON is retried and fails as
+   * {@link requestFailure} reports an unreadable body. */
+  private fetchJson<T>(url: string, init: FetchInit): Promise<T> {
+    return this.fetchResponse(
+      url,
+      init,
+      async (response) => JSON.parse(await response.text()) as T,
+    );
   }
 
-  private async fetchBinary(url: string, signal: AbortSignal | undefined): Promise<ArrayBuffer> {
-    const response = await this.fetchResponse(url, { signal });
-    return readBody(response.arrayBuffer(), signal);
+  private fetchBinary(url: string, signal: AbortSignal | undefined): Promise<ArrayBuffer> {
+    return this.fetchResponse(url, { signal }, (response) => response.arrayBuffer());
   }
 
   /** Fetch a text/plain body (e.g. an SDF record). Non-2xx is classified and thrown. */
-  private async fetchText(url: string, signal: AbortSignal | undefined): Promise<string> {
-    const response = await this.fetchResponse(url, { signal });
-    return readBody(response.text(), signal);
+  private fetchText(url: string, signal: AbortSignal | undefined): Promise<string> {
+    return this.fetchResponse(url, { signal }, (response) => response.text());
   }
 
   // ── CID Resolution ──────────────────────────────────────────────
@@ -726,9 +1104,10 @@ export class PubChemClient {
       return await this.fetchCids(url, init);
     } catch (error) {
       if (!isBadRequest(error)) throw error;
+      const fault = faultOf(error);
       throw validationError(
         'PubChem could not interpret the identifier.',
-        { reason: 'identifier_rejected', fault: faultOf(error) },
+        { reason: 'identifier_rejected', ...(fault && { fault }) },
         { cause: error },
       );
     }
@@ -920,7 +1299,17 @@ export class PubChemClient {
       const info = data.InformationList.Information[0];
       if (!info) return [];
       const values = info[xrefType];
-      return Array.isArray(values) ? (values as (string | number)[]) : [];
+      if (!Array.isArray(values)) return [];
+      const ids = values as (string | number)[];
+      /** PubChem sorts numeric IDs as strings ("10027656" before "1003266"), so its order is
+       * neither oldest nor newest. Numeric types are sorted before any caller windows them:
+       * PubMed IDs descending, a recency proxy since PMIDs are assigned roughly in time order;
+       * the rest ascending. String types (CAS numbers, registry IDs, patents) keep PubChem's
+       * order. */
+      if (ids.every((id): id is number => typeof id === 'number')) {
+        ids.sort(xrefType === 'PubMedID' ? (a, b) => b - a : (a, b) => a - b);
+      }
+      return ids;
     } catch (error) {
       if (isNotFound(error)) return [];
       throw error;
@@ -945,12 +1334,7 @@ export class PubChemClient {
       const descSection = findSection(sections, 'Record Description');
       if (!descSection) return [];
 
-      // Build refNum → SourceName lookup so each description can carry attribution.
-      const refToSource = new Map<number, string>();
-      for (const ref of data.Record.Reference ?? []) {
-        refToSource.set(ref.ReferenceNumber, ref.SourceName);
-      }
-
+      const refToSource = referenceSources(data);
       const raw = extractDescriptionItems(descSection);
       const deduped = dedupByKey(raw, descriptionKey);
       return deduped.map((item) => {
@@ -968,11 +1352,19 @@ export class PubChemClient {
    * Reports "this CID has no PubChem record" separately from "this compound has no deposited
    * GHS classification" — a nonexistent CID and a real compound without safety data are
    * different answers that call for different follow-up, and both used to surface as an
-   * absent result. */
+   * absent result.
+   *
+   * PubChem deposits one classification per source — EU harmonised, the ECHA C&L aggregate,
+   * single-company ECHA notifications, NITE-CMC revisions — each a run of `Information` entries
+   * sharing a `ReferenceNumber`. Each run is kept as its own classification, attributed through
+   * that number rather than to `Record.Reference[0]`, which is not necessarily a GHS
+   * contributor. The record-wide unions (pictograms, hazard and precautionary statements) are
+   * kept alongside, and the record-wide signal word is the most severe any source assigns, so
+   * it does not depend on the order PubChem lists the sources in. */
   async getSafetyData(cid: number, signal?: AbortSignal): Promise<SafetyLookup> {
     try {
       const data = await this.fetchJson<PugViewResponse>(
-        `${this.viewBase}/data/compound/${cid}/JSON?heading=Safety+and+Hazards`,
+        `${this.viewBase}/data/compound/${cid}/JSON?heading=GHS+Classification`,
         { signal },
       );
 
@@ -982,37 +1374,39 @@ export class PubChemClient {
       const ghsSection = findSection(sections, 'GHS Classification');
       if (!ghsSection) return { status: 'no_ghs_data' };
 
-      const infos = extractGHSInfo(ghsSection);
+      const blocks = new Map<number | undefined, PugViewInformation[]>();
+      for (const info of extractGHSInfo(ghsSection)) {
+        const block = blocks.get(info.ReferenceNumber);
+        if (block) block.push(info);
+        else blocks.set(info.ReferenceNumber, [info]);
+      }
+      const references = new Map(
+        (data.Record.Reference ?? []).map((ref) => [ref.ReferenceNumber, ref]),
+      );
+
       const result: GHSClassification = {
+        classifications: [],
         pictograms: [],
         hazardStatements: [],
         precautionaryStatements: [],
       };
-
-      for (const info of infos) {
-        const name = info.Name?.toLowerCase() ?? '';
-        const strings = info.Value.StringWithMarkup?.map((s) => s.String).filter(Boolean) ?? [];
-
-        if (name.includes('signal') && strings[0]) {
-          result.signalWord = strings[0];
-        } else if (name.includes('pictogram')) {
-          const extras =
-            info.Value.StringWithMarkup?.flatMap(
-              (s) => s.Markup?.map((m) => m.Extra).filter((e): e is string => e != null) ?? [],
-            ) ?? [];
-          result.pictograms.push(...(extras.length > 0 ? extras : strings).map(parsePictogram));
-        } else if (name.includes('hazard') && name.includes('statement')) {
-          for (const s of strings) {
-            const parsed = parseCodedStatement(s);
-            if (parsed) result.hazardStatements.push(parsed);
-          }
-        } else if (name.includes('precautionary') && name.includes('statement')) {
-          // PubChem deposits precautionary statements as a single comma-separated code
-          // list (codes only, no text) — not the "Pxxx: text" shape parseCodedStatement
-          // expects. Split each list into individual code entries.
-          for (const s of strings) {
-            result.precautionaryStatements.push(...parsePrecautionaryCodes(s));
-          }
+      for (const [refNum, entries] of blocks) {
+        const parsed = parseGhsBlock(
+          entries,
+          refNum === undefined ? undefined : references.get(refNum),
+        );
+        const { classification } = parsed;
+        result.pictograms.push(...classification.pictograms);
+        result.hazardStatements.push(...parsed.hazardStatements);
+        result.precautionaryStatements.push(...parsed.precautionaryStatements);
+        // A run that deposits only notes or P-codes is not a classification of its own.
+        if (
+          classification.signalWord ||
+          classification.pictograms.length > 0 ||
+          classification.hazardCodes.length > 0 ||
+          classification.notClassified
+        ) {
+          result.classifications.push(classification);
         }
       }
 
@@ -1021,14 +1415,19 @@ export class PubChemClient {
       result.hazardStatements = dedupByKey(result.hazardStatements, (h) => h.code);
       result.precautionaryStatements = dedupByKey(result.precautionaryStatements, (p) => p.code);
 
-      // Extract source from references
-      const refs = data.Record.Reference;
-      if (refs?.[0]?.SourceName) {
-        result.source = refs[0].SourceName;
+      for (const { signalWord: word } of result.classifications) {
+        if (word && signalRank(word) > signalRank(result.signalWord)) result.signalWord = word;
       }
+      const sources = [
+        ...new Set(result.classifications.flatMap((c) => (c.source ? [c.source] : []))),
+      ];
+      if (sources.length > 0) result.source = sources.join('; ');
 
-      return result.signalWord || result.pictograms.length > 0 || result.hazardStatements.length > 0
-        ? { status: 'ok', ghs: result }
+      if (result.signalWord || result.pictograms.length > 0 || result.hazardStatements.length > 0) {
+        return { status: 'ok', ghs: result };
+      }
+      return result.classifications.some((c) => c.notClassified)
+        ? { status: 'not_classified', ghs: result }
         : { status: 'no_ghs_data' };
     } catch (error) {
       if (isMissingRecord(error)) return { status: 'cid_not_found' };
@@ -1090,16 +1489,7 @@ export class PubChemClient {
       // ATC Code
       const atcSection = findSection(sections, 'ATC Code');
       if (atcSection) {
-        const strings = extractStrings(atcSection);
-        for (const s of strings) {
-          // Match leaf codes like "N02BA01 - Acetylsalicylic acid" or bare "N02BA01"
-          const match = s.match(/^([A-Z]\d{2}[A-Z]{2}\d{2})\b/);
-          if (match) {
-            const desc = s.includes(' - ') ? s.split(' - ').slice(1).join(' - ').trim() : '';
-            result.atcCodes.push({ code: match[1] ?? '', description: desc });
-          }
-        }
-        result.atcCodes = dedupByKey(result.atcCodes, (a) => a.code);
+        result.atcCodes = parseAtcCodes(atcSection, referenceSources(data));
       }
 
       const hasData =
@@ -1116,7 +1506,7 @@ export class PubChemClient {
 
   // ── Bioactivity ─────────────────────────────────────────────────
 
-  async getAssaySummary(cid: number, signal?: AbortSignal): Promise<BioactivityRow[]> {
+  async getAssaySummary(cid: number, signal?: AbortSignal): Promise<AssaySummary> {
     try {
       const data = await this.fetchJson<AssaySummaryTableResponse>(
         `${this.pugBase}/compound/cid/${cid}/assaysummary/JSON`,
@@ -1124,12 +1514,12 @@ export class PubChemClient {
       );
       return this.parseAssayTable(data);
     } catch (error) {
-      if (isNotFound(error)) return [];
+      if (isNotFound(error)) return { rows: [], targetGroups: [] };
       throw error;
     }
   }
 
-  private parseAssayTable(data: AssaySummaryTableResponse): BioactivityRow[] {
+  private parseAssayTable(data: AssaySummaryTableResponse): AssaySummary {
     const columns = data.Table.Columns.Column;
     const rows = data.Table.Row;
 
@@ -1150,28 +1540,71 @@ export class PubChemClient {
     const actValueUnit =
       actValueIdx >= 0 ? (columns[actValueIdx]?.match(/\[(.+)\]/)?.[1] ?? '') : '';
 
-    // Group by AID to collect multiple activity values
-    const byAid = new Map<number, BioactivityRow>();
+    const targetOf = (cell: (string | number | null)[]) => {
+      const accession =
+        targetAccIdx >= 0 && cell[targetAccIdx] ? String(cell[targetAccIdx]) : undefined;
+      const rawGeneId = geneIdIdx >= 0 && cell[geneIdIdx] != null ? Number(cell[geneIdIdx]) : NaN;
+      return { accession, geneId: rawGeneId > 0 ? rawGeneId : undefined };
+    };
 
-    for (const row of rows) {
-      const cell = row.Cell;
+    // Every row naming both identifiers pairs them, whichever row of its AID it is.
+    const targetPairs: Array<[string, number]> = [];
+    for (const { Cell: cell } of rows) {
+      const { accession, geneId } = targetOf(cell);
+      if (accession && geneId) targetPairs.push([accession, geneId]);
+    }
+    const targetGroups = groupTargetPairs(targetPairs);
+    const groupIndex = new Map<string, number>();
+    for (const [i, group] of targetGroups.entries()) {
+      for (const accession of group.accessions) groupIndex.set(`a:${accession}`, i);
+      for (const geneId of group.geneIds) groupIndex.set(`g:${geneId}`, i);
+    }
+    // Rows of one AID name the same target when their identifiers fall in one group — a row
+    // missing one identifier, or naming another of the protein's accessions — or are equal.
+    const targetKey = (accession: string | undefined, geneId: number | undefined): string => {
+      const node = accession ? `a:${accession}` : geneId ? `g:${geneId}` : '';
+      const group = groupIndex.get(node);
+      return group === undefined ? node : `group:${group}`;
+    };
+
+    // One record per AID. Its first target fills the record; each further target the AID's
+    // rows name joins otherTargets with its own outcome. Every activity value stays with the
+    // target its row names.
+    const byAid = new Map<
+      number,
+      { row: BioactivityRow; valuesByTarget: Map<string, ActivityValue[]> }
+    >();
+
+    for (const { Cell: cell } of rows) {
       const aid = Number(cell[aidIdx]);
       if (!aid || Number.isNaN(aid)) continue;
 
-      if (!byAid.has(aid)) {
-        const entry: BioactivityRow = {
+      const { accession, geneId } = targetOf(cell);
+      const outcome = String(cell[outcomeIdx] ?? '');
+      const key = targetKey(accession, geneId);
+
+      let assay = byAid.get(aid);
+      if (!assay) {
+        const row: BioactivityRow = {
           aid,
           assayName: String(cell[nameIdx] ?? ''),
-          outcome: String(cell[outcomeIdx] ?? ''),
+          outcome,
           activityValues: [],
         };
-        if (targetAccIdx >= 0 && cell[targetAccIdx])
-          entry.targetAccession = String(cell[targetAccIdx]);
-        if (geneIdIdx >= 0 && cell[geneIdIdx] != null) {
-          const gid = Number(cell[geneIdIdx]);
-          if (!Number.isNaN(gid) && gid > 0) entry.targetGeneId = gid;
-        }
-        byAid.set(aid, entry);
+        if (accession) row.targetAccession = accession;
+        if (geneId) row.targetGeneId = geneId;
+        assay = { row, valuesByTarget: new Map([[key, row.activityValues]]) };
+        byAid.set(aid, assay);
+      }
+      let values = assay.valuesByTarget.get(key);
+      if (!values) {
+        const other: AssayTargetActivity = { outcome, activityValues: [] };
+        if (accession) other.accession = accession;
+        if (geneId) other.geneId = geneId;
+        assay.row.otherTargets ??= [];
+        assay.row.otherTargets.push(other);
+        values = other.activityValues;
+        assay.valuesByTarget.set(key, values);
       }
 
       // Collect activity value if present — omit name/unit when genuinely unknown.
@@ -1182,23 +1615,21 @@ export class PubChemClient {
       if (rawValue == null || String(rawValue).trim().length === 0) continue;
       const value = Number(rawValue);
       if (!Number.isFinite(value)) continue;
-      const bucket = byAid.get(aid);
-      if (!bucket) continue;
 
-      const entry: { name?: string; value: number; unit?: string } = { value };
+      const entry: ActivityValue = { value };
       const rawName = actNameIdx >= 0 ? cell[actNameIdx] : null;
       if (rawName != null && String(rawName).trim().length > 0) {
         entry.name = String(rawName);
       }
       if (actValueUnit) entry.unit = actValueUnit;
 
-      const key = activityKey(entry);
-      if (!bucket.activityValues.some((v) => activityKey(v) === key)) {
-        bucket.activityValues.push(entry);
+      const entryKey = activityKey(entry);
+      if (!values.some((v) => activityKey(v) === entryKey)) {
+        values.push(entry);
       }
     }
 
-    return [...byAid.values()];
+    return { rows: [...byAid.values()].map(({ row }) => row), targetGroups };
   }
 
   // ── Assay Search ────────────────────────────────────────────────
@@ -1220,6 +1651,47 @@ export class PubChemClient {
       if (isNotFound(error)) return [];
       throw error;
     }
+  }
+
+  /** One page of the compounds an assay tested (or found active), without moving the whole
+   * list: PubChem stores the list behind a ListKey and reports its exact size, then serves
+   * `count` CIDs from `offset`. A tested-CID list runs to 305,439 entries (AID 2551).
+   *
+   * Returns null when PubChem has no live assay with that AID. An assay with no CIDs of the
+   * requested kind is an empty page with total 0 — PubChem answers both with HTTP 404 and
+   * only the fault message tells them apart. No page is requested at or past the end, which
+   * PubChem answers with HTTP 500. */
+  async getAssayCidPage(
+    aid: number,
+    activeOnly: boolean,
+    offset: number,
+    count: number,
+    signal?: AbortSignal,
+  ): Promise<AssayCidPage | null> {
+    const cidsType = activeOnly ? 'active' : 'all';
+    let list: AssayCidListKeyResponse['IdentifierList'];
+    try {
+      const data = await this.fetchJson<AssayCidListKeyResponse>(
+        `${this.pugBase}/assay/aid/${aid}/cids/JSON?cids_type=${cidsType}&list_return=listkey`,
+        { signal },
+      );
+      list = data.IdentifierList;
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+      if (faultOf(error)?.includes(NO_LIVE_AIDS_FAULT)) return null;
+      return { total: 0, cids: [] };
+    }
+
+    if (offset >= list.Size) return { total: list.Size, cids: [] };
+    const params = new URLSearchParams({
+      listkey_start: String(offset),
+      listkey_count: String(count),
+    });
+    const page = await this.fetchJson<CidListResponse>(
+      `${this.pugBase}/compound/listkey/${list.ListKey}/cids/JSON?${params}`,
+      { signal },
+    );
+    return { total: list.Size, cids: page.IdentifierList.CID };
   }
 
   // ── Entity Summaries ────────────────────────────────────────────
@@ -1288,7 +1760,7 @@ export class PubChemClient {
     if (signal?.aborted) throw cancellation(signal.reason);
     const entries: InteractionEntry[] = [];
     const pages: InteractionKindPage[] = [];
-    const failedKinds: Array<{ kind: string; message: string }> = [];
+    const failedKinds: InteractionsResult['failedKinds'] = [];
     kinds.forEach((kind, i) => {
       const result = settled[i];
       if (result?.status === 'fulfilled') {
@@ -1300,6 +1772,8 @@ export class PubChemClient {
         failedKinds.push({
           kind,
           message: reason instanceof Error ? reason.message : String(reason),
+          ...(reason instanceof McpError &&
+            reason.data?.reason === SDQ_UNAVAILABLE && { reason: SDQ_UNAVAILABLE }),
         });
       }
     });
@@ -1448,10 +1922,7 @@ export class PubChemClient {
       const section = findSection(sections, 'Drug-Food Interactions');
       if (!section) return empty;
 
-      const refToSource = new Map<number, string>();
-      for (const ref of data.Record.Reference ?? []) {
-        refToSource.set(ref.ReferenceNumber, ref.SourceName);
-      }
+      const refToSource = referenceSources(data);
 
       // PUG View returns the whole section inline, so the deduped item list is the complete
       // record stream and the page is a plain slice of it.
@@ -1480,11 +1951,14 @@ export class PubChemClient {
    * beside the requested window, which is the only way to tell a full page from the last one.
    * `start` is 1-based upstream; `offset` here is zero-based like every other paging input.
    *
-   * Returns an empty page on not-found. A rejected query is reported, never read as "no data":
-   * SDQ answers a malformed query with a 5xx that the shared HTTP core already classifies and
-   * throws, and the `status.error` check covers the same rejection arriving inside a 2xx body.
-   * An unparseable body throws with the collection and a body snippet attached, so per-kind
-   * isolation can name what failed. */
+   * Only a JSON body carrying `SDQOutputSet` is an SDQ answer; SDQ reports "no rows" inside
+   * that envelope (`eNoHitsFound`, `totalCount` 0), never as an HTTP status. Anything else —
+   * a non-2xx the retry policy does not treat as transient (404 included), an HTML page at 200
+   * (the reCAPTCHA wall), JSON without the envelope — throws `sdq_unavailable`: the service is
+   * not answering with data, and a retry does not change that. The error names the status,
+   * never the page. A transient failure (5xx, rate limit, timeout) keeps its own class. A
+   * rejected query is reported, never read as "no data": the `status.error` check covers it
+   * inside a 2xx body, and a JSON-shaped body that fails to parse throws with a snippet. */
   private async fetchSdq(
     collection: string,
     cid: number,
@@ -1494,7 +1968,6 @@ export class PubChemClient {
     signal: AbortSignal | undefined,
     order?: string[],
   ): Promise<{ rows: Array<Record<string, unknown>>; totalCount: number }> {
-    const empty = { rows: [], totalCount: 0 };
     const query = JSON.stringify({
       select: columns,
       collection,
@@ -1505,19 +1978,40 @@ export class PubChemClient {
     });
     const url = `${this.sdqBase}?infmt=json&outfmt=json&query=${encodeURIComponent(query)}`;
 
-    let body: string;
-    try {
-      body = await this.fetchText(url, signal);
-    } catch (error) {
-      if (isNotFound(error)) return empty;
-      throw error;
-    }
-
-    // Both rejections below arrive inside a 2xx, past fetchResponse's failure logging.
+    // Rejections that bypass fetchResponse's failure logging, so they log here.
     const reject = (message: string, data: Record<string, unknown>): never => {
       logFailedRequest('warning', url, 'GET', { error: message });
       throw serviceUnavailable(message, data);
     };
+
+    // A refusal: `sdq_unavailable`, not retryable, carrying no part of the body.
+    const unavailable = (answered: string, status?: number): never =>
+      reject(
+        `PubChem's SDQ service answered ${answered} instead of SDQ data for collection "${collection}".`,
+        {
+          reason: SDQ_UNAVAILABLE,
+          retryable: false,
+          collection,
+          cid,
+          ...(status !== undefined && { status }),
+        },
+      );
+
+    let body: string;
+    try {
+      body = await this.fetchText(url, signal);
+    } catch (error) {
+      const status = error instanceof McpError ? error.data?.status : undefined;
+      if (typeof status === 'number' && !defaultIsTransient(error)) {
+        return unavailable(`HTTP ${status}`, status);
+      }
+      throw error;
+    }
+
+    const trimmed = body.trimStart();
+    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+      return unavailable('with a non-JSON page');
+    }
 
     let parsed: unknown;
     try {
@@ -1530,8 +2024,10 @@ export class PubChemClient {
       });
     }
 
-    const set = (parsed as SdqResponse).SDQOutputSet?.[0];
-    if (!set) return empty;
+    const output = (parsed as SdqResponse).SDQOutputSet;
+    if (!Array.isArray(output)) return unavailable('with JSON carrying no SDQOutputSet');
+    const set = output[0];
+    if (!set) return { rows: [], totalCount: 0 };
     if (set.status?.error) {
       return reject(
         `PubChem SDQ rejected the query for collection "${collection}": ${set.status.error}`,

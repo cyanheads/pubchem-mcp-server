@@ -293,3 +293,317 @@ describe('pubchem_search_compounds rejected search query (#52)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('pubchem_search_compounds assay mode (#68)', () => {
+  /** CID lists sized to AID 1000's live counts (57 tested, 36 active; CIDCountAll /
+   * CIDCountActive), in the ascending order PubChem keeps them. */
+  const AID_1000_ALL = Array.from({ length: 57 }, (_, i) => 16749963 + i);
+  const AID_1000_ACTIVE = AID_1000_ALL.filter((_, i) => i % 8 !== 3 && i % 8 !== 6).slice(0, 36);
+  const LISTS: Record<string, number[]> = {
+    '1000-active': AID_1000_ACTIVE,
+    '1000-all': AID_1000_ALL,
+    // A list naming one CID twice, which the tool dedups within a page.
+    '2000-all': [501, 501, 502, 503, 504],
+  };
+
+  const fault = (status: number, code: string, message: string) =>
+    Response.json({ Fault: { Code: code, Message: message } }, { status });
+
+  /** Answers the two assay-listing requests the way PubChem does: the listkey request returns
+   * the key and exact Size (envelope as captured live for AID 1000), the page request serves
+   * `listkey_count` CIDs from `listkey_start`, and a start at or past the end is HTTP 500. */
+  const pubchemAssayLists: typeof fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov') throw new Error('unmocked fetch');
+    const listMatch = /^\/rest\/pug\/assay\/aid\/(\d+)\/cids\/JSON$/.exec(url.pathname);
+    if (listMatch && url.searchParams.get('list_return') === 'listkey') {
+      const aid = listMatch[1];
+      if (aid === '99999999') {
+        return fault(404, 'PUGREST.NotFound', 'No live AIDs in the supplied AID list');
+      }
+      const key = `${aid}-${url.searchParams.get('cids_type')}`;
+      const list = LISTS[key];
+      if (!list) return fault(404, 'PUGREST.NotFound', 'No CIDs found for the given AID(s)');
+      return Response.json({
+        IdentifierList: {
+          ListKey: key,
+          Size: list.length,
+          EntrezDB: 'pccompound',
+          EntrezWebEnv: 'MCID_6ad01b42e62f0ac05509fef1',
+          EntrezQueryKey: 1,
+        },
+      });
+    }
+    const pageMatch = /^\/rest\/pug\/compound\/listkey\/([^/]+)\/cids\/JSON$/.exec(url.pathname);
+    if (pageMatch) {
+      const list = LISTS[pageMatch[1] ?? ''] ?? [];
+      const start = Number(url.searchParams.get('listkey_start'));
+      const count = Number(url.searchParams.get('listkey_count'));
+      if (start >= list.length) return fault(500, 'PUGREST.ServerError', 'Invalid listkey start');
+      return cidList(list.slice(start, start + count));
+    }
+    const propsMatch = /^\/rest\/pug\/compound\/cid\/([\d,]+)\/property\/Title\/JSON$/.exec(
+      url.pathname,
+    );
+    if (propsMatch) {
+      const cids = (propsMatch[1] ?? '').split(',').map(Number);
+      return Response.json({
+        PropertyTable: { Properties: cids.map((CID) => ({ CID, Title: `Compound ${CID}` })) },
+      });
+    }
+    throw new Error('unmocked fetch');
+  };
+
+  /** Request kinds the stub received, in order. */
+  const requestKinds = () =>
+    fetchMock.mock.calls.map(([input]) => {
+      const { pathname, searchParams } = new URL(String(input));
+      if (pathname.includes('/compound/listkey/')) {
+        return `page ${searchParams.get('listkey_start')}+${searchParams.get('listkey_count')}`;
+      }
+      if (pathname.includes('/assay/aid/')) return `listkey ${searchParams.get('cids_type')}`;
+      return 'properties';
+    });
+
+  type AssayContent = {
+    results: Array<{ cid: number; properties?: Record<string, unknown> }>;
+    totalFound?: number;
+    totalFoundAtLeast?: number;
+    nextOffset?: number;
+    activeOnly?: boolean;
+    notice?: string;
+  };
+  const contentOf = (result: Awaited<ReturnType<typeof runToolContract>>) => {
+    expect(result.isError).toBeFalsy();
+    return result.structuredContent as AssayContent;
+  };
+
+  it('lists an assay’s active compounds by default, with the exact active count as totalFound', async () => {
+    fetchMock.mockImplementation(pubchemAssayLists);
+
+    const result = await runToolContract(searchCompounds, { searchType: 'assay', aid: 1000 });
+
+    const content = contentOf(result);
+    expect(content.results.map((r) => r.cid)).toEqual(AID_1000_ACTIVE.slice(0, 20));
+    expect(content.totalFound).toBe(36);
+    expect(content).not.toHaveProperty('totalFoundAtLeast');
+    expect(content.nextOffset).toBe(20);
+    expect(content.activeOnly).toBe(true);
+    expect(requestKinds()).toEqual(['listkey active', 'page 0+20']);
+    const text = textOf(result);
+    expect(text).toContain(`CIDs: ${AID_1000_ACTIVE.slice(0, 20).join(', ')}`);
+    expect(text).toMatch(/activeOnly.*true/);
+    expect(text).toContain('Showing matches 1-20 of 36');
+  });
+
+  it('advances nextOffset by the list page it read, not the deduped page it returned', async () => {
+    fetchMock.mockImplementation(pubchemAssayLists);
+
+    const walked: number[] = [];
+    const starts: number[] = [];
+    let offset: number | undefined = 0;
+    while (offset !== undefined) {
+      starts.push(offset);
+      const result = await runToolContract(searchCompounds, {
+        searchType: 'assay',
+        aid: 2000,
+        activeOnly: false,
+        maxResults: 2,
+        offset,
+      });
+      const content = contentOf(result);
+      walked.push(...content.results.map((r) => r.cid));
+      offset = content.nextOffset;
+    }
+
+    expect(starts).toEqual([0, 2, 4]);
+    expect(walked).toEqual([501, 502, 503, 504]);
+  });
+
+  it('activeOnly: false lists every tested compound, totalFound = 57', async () => {
+    fetchMock.mockImplementation(pubchemAssayLists);
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'assay',
+      aid: 1000,
+      activeOnly: false,
+      maxResults: 5,
+    });
+
+    const content = contentOf(result);
+    expect(content.totalFound).toBe(57);
+    expect(content.results.map((r) => r.cid)).toEqual(AID_1000_ALL.slice(0, 5));
+    expect(content.activeOnly).toBe(false);
+    expect(requestKinds()).toEqual(['listkey all', 'page 0+5']);
+  });
+
+  it('walking every page yields each CID once, in the full list’s order, and stops at the end', async () => {
+    fetchMock.mockImplementation(pubchemAssayLists);
+
+    const walked: number[] = [];
+    let offset: number | undefined = 0;
+    let pages = 0;
+    while (offset !== undefined) {
+      const result = await runToolContract(searchCompounds, {
+        searchType: 'assay',
+        aid: 1000,
+        activeOnly: false,
+        maxResults: 20,
+        offset,
+      });
+      const content = contentOf(result);
+      expect(content.totalFound).toBe(57);
+      walked.push(...content.results.map((r) => r.cid));
+      offset = content.nextOffset;
+      pages++;
+    }
+
+    expect(pages).toBe(3);
+    expect(walked).toEqual(AID_1000_ALL);
+    expect(requestKinds().filter((k) => k.startsWith('page'))).toEqual([
+      'page 0+20',
+      'page 20+20',
+      'page 40+20',
+    ]);
+  });
+
+  it.each([36, 37, 10000])(
+    'offset %i at or past the 36 actives returns an empty page and the past-the-end notice without a page request',
+    async (offset) => {
+      fetchMock.mockImplementation(pubchemAssayLists);
+
+      const result = await runToolContract(searchCompounds, {
+        searchType: 'assay',
+        aid: 1000,
+        offset,
+      });
+
+      const content = contentOf(result);
+      expect(content.results).toEqual([]);
+      expect(content.totalFound).toBe(36);
+      expect(content).not.toHaveProperty('nextOffset');
+      expect(content.notice).toBe(
+        `offset ${offset} is past the 36 match(es) found. Pass an offset below 36.`,
+      );
+      expect(requestKinds()).toEqual(['listkey active']);
+      expect(textOf(result)).toContain(content.notice!);
+    },
+  );
+
+  it('serves the last partial page at offset 35 with no nextOffset', async () => {
+    fetchMock.mockImplementation(pubchemAssayLists);
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'assay',
+      aid: 1000,
+      offset: 35,
+    });
+
+    const content = contentOf(result);
+    expect(content.results.map((r) => r.cid)).toEqual([AID_1000_ACTIVE[35]]);
+    expect(content).not.toHaveProperty('nextOffset');
+    expect(requestKinds()).toEqual(['listkey active', 'page 35+20']);
+  });
+
+  it('an assay with no active compounds is an empty result with a notice suggesting activeOnly: false', async () => {
+    fetchMock.mockImplementation(pubchemAssayLists);
+
+    const result = await runToolContract(searchCompounds, { searchType: 'assay', aid: 3365 });
+
+    const content = contentOf(result);
+    expect(content.results).toEqual([]);
+    expect(content.totalFound).toBe(0);
+    expect(content.notice).toBe(
+      'AID 3365 has no compounds marked active. Pass activeOnly: false to list every compound it tested.',
+    );
+    expect(requestKinds()).toEqual(['listkey active']);
+    const text = textOf(result);
+    expect(text).toContain('No results.');
+    expect(text).toContain('activeOnly: false');
+  });
+
+  it('an assay with no tested compounds at all says so without suggesting activeOnly', async () => {
+    fetchMock.mockImplementation(pubchemAssayLists);
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'assay',
+      aid: 435008,
+      activeOnly: false,
+    });
+
+    const content = contentOf(result);
+    expect(content.totalFound).toBe(0);
+    expect(content.notice).toBe('AID 435008 has no tested compounds recorded in PubChem.');
+  });
+
+  it('a nonexistent AID fails as aid_not_found after the one listkey request', async () => {
+    fetchMock.mockImplementation(pubchemAssayLists);
+
+    const result = await runToolContract(searchCompounds, { searchType: 'assay', aid: 99999999 });
+
+    const error = errorOf(result) as ErrorEnvelope & { data?: { recovery?: { hint?: string } } };
+    expect(error.code).toBe(JsonRpcErrorCode.NotFound);
+    expect(error.data?.reason).toBe('aid_not_found');
+    expect(error.data?.recovery?.hint).toContain('pubchem_search_assays');
+    expect(textOf(result)).toContain('AID 99999999');
+    expect(requestKinds()).toEqual(['listkey active']);
+  });
+
+  it('rejects an assay search without aid as missing_aid before any PubChem request', async () => {
+    const result = await runToolContract(searchCompounds, { searchType: 'assay' });
+
+    const error = errorOf(result);
+    expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+    expect(error.data?.reason).toBe('missing_aid');
+    expect(textOf(result)).toContain('pubchem_search_assays');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([0, -1, 2.5])('rejects aid %d at the schema', async (aid) => {
+    const result = await runToolContract(searchCompounds, { searchType: 'assay', aid });
+
+    expect(errorOf(result).code).toBe(JsonRpcErrorCode.InvalidParams);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('hydrates the page with requested properties', async () => {
+    fetchMock.mockImplementation(pubchemAssayLists);
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'assay',
+      aid: 1000,
+      maxResults: 2,
+      properties: ['Title'],
+    });
+
+    const content = contentOf(result);
+    expect(content.results).toEqual([
+      { cid: AID_1000_ACTIVE[0], properties: { Title: `Compound ${AID_1000_ACTIVE[0]}` } },
+      { cid: AID_1000_ACTIVE[1], properties: { Title: `Compound ${AID_1000_ACTIVE[1]}` } },
+    ]);
+    expect(requestKinds()).toEqual(['listkey active', 'page 0+2', 'properties']);
+    expect(textOf(result)).toContain(`Title: Compound ${AID_1000_ACTIVE[0]}`);
+  });
+
+  it('does not echo activeOnly on other modes', async () => {
+    fetchMock.mockResolvedValueOnce(cidList([2244]));
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'formula',
+      formula: 'C9H8O4',
+    });
+
+    expect(result.structuredContent).not.toHaveProperty('activeOnly');
+  });
+
+  it('names aid as the assay mode’s field in the searchType description', () => {
+    const properties = advertisedInputSchema().properties as Record<
+      string,
+      { description?: string }
+    >;
+
+    expect(properties.searchType?.description).toMatch(/"assay"[^.]*requires aid/);
+    expect(properties.aid).toMatchObject({ type: 'integer', minimum: 1 });
+    expect(advertisedInputSchema().required).toEqual(['searchType']);
+  });
+});

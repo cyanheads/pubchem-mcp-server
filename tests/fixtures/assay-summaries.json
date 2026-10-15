@@ -1,0 +1,1359 @@
+{
+  "AssaySummaries": {
+    "AssaySummary": [
+      {
+        "AID": 1000,
+        "SourceName": "SRMLSC",
+        "SourceID": "SPE-MK-Sec",
+        "Name": "Screening for Inhibitors of the Mevalonate Pathway in Streptococcus Pneumoniae - MK Secondary Assay",
+        "NumberOfTIDs": 27,
+        "HasScore": true,
+        "Method": "confirmatory",
+        "Target": [
+          {
+            "Accession": "YP_815859",
+            "Name": "mevalonate kinase"
+          }
+        ],
+        "Version": 1,
+        "Revision": 2,
+        "LastDataChange": {
+          "Year": 2008,
+          "Month": 3,
+          "Day": 5
+        },
+        "SIDCountAll": 57,
+        "SIDCountActive": 36,
+        "SIDCountInactive": 21,
+        "SIDCountInconclusive": 0,
+        "SIDCountUnspecified": 0,
+        "SIDCountProbe": 0,
+        "CIDCountAll": 57,
+        "CIDCountActive": 36,
+        "CIDCountInactive": 21,
+        "CIDCountInconclusive": 0,
+        "CIDCountUnspecified": 0,
+        "CIDCountProbe": 0
+      },
+      {
+        "AID": 1982,
+        "SourceName": "Burnham Center for Chemical Genomics",
+        "SourceID": "BCCG-A228-NF-kB-kinase-Assay_10",
+        "Name": "Kinase inhibition selectivity assay for compound SID-48409448",
+        "NumberOfTIDs": 4,
+        "HasScore": false,
+        "Method": "other",
+        "Target": [
+          {
+            "Accession": "AAA61480",
+            "Name": "clk1; putative"
+          },
+          {
+            "Accession": "AAA75374",
+            "Name": "receptor tyrosine kinase TrkC"
+          },
+          {
+            "Accession": "AAB40118",
+            "Name": "p38gamma MAP Kinase"
+          },
+          {
+            "Accession": "AAB60430",
+            "Name": "novel cellular proto-oncogene"
+          },
+          {
+            "Accession": "AAC05299",
+            "Name": "serine kinase SRPK2"
+          },
+          {
+            "Accession": "AAC50911",
+            "Name": "68 kDa type I phosphatidylinositol-4-phosphate 5-kinase alpha"
+          },
+          {
+            "Accession": "AAC77369",
+            "Name": "serine/threonine kinase 13"
+          },
+          {
+            "Accession": "AAD20442",
+            "Name": "multifunctional calcium/calmodulin-dependent protein kinase II delta2 isoform"
+          },
+          {
+            "Accession": "AAF03095",
+            "Name": "tousled-like kinase 2"
+          },
+          {
+            "Accession": "AAF17226",
+            "Name": "map kinase-interacting kinase"
+          },
+          {
+            "Accession": "AAH00442",
+            "Name": "Aurora kinase B"
+          },
+          {
+            "Accession": "AAH35782",
+            "Name": "TNK1 protein"
+          },
+          {
+            "Accession": "BAA35073",
+            "Name": "protein kinase"
+          },
+          {
+            "Accession": "BAA36547",
+            "Name": "AMP-activated protein kinase alpha-1"
+          },
+          {
+            "Accession": "BAB69958",
+            "Name": "Sak"
+          },
+          {
+            "Accession": "CAA06700",
+            "Name": "PKL12 protein"
+          },
+          {
+            "Accession": "CAA47004",
+            "Name": "serine/threonine protein kinase"
+          },
+          {
+            "Accession": "CAA49505",
+            "Name": "unnamed protein product"
+          },
+          {
+            "Accession": "CAA52777",
+            "Name": "protein-tyrosine kinase"
+          },
+          {
+            "Accession": "CAH72463",
+            "Name": "MAP/microtubule affinity-regulating kinase 1"
+          },
+          {
+            "Accession": "CAI14764",
+            "Name": "MAP kinase interacting serine/threonine kinase 1"
+          },
+          {
+            "Accession": "NP_000011",
+            "Name": "serine/threonine-protein kinase receptor R3 precursor"
+          },
+          {
+            "Accession": "NP_000052",
+            "Name": "tyrosine-protein kinase BTK isoform 1"
+          },
+          {
+            "Accession": "NP_000133",
+            "Name": "fibroblast growth factor receptor 3 isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_000199",
+            "Name": "insulin receptor isoform Long preproprotein"
+          },
+          {
+            "Accession": "NP_000206",
+            "Name": "tyrosine-protein kinase JAK3"
+          },
+          {
+            "Accession": "NP_000213",
+            "Name": "mast/stem cell growth factor receptor Kit isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_000236",
+            "Name": "hepatocyte growth factor receptor isoform b preproprotein"
+          },
+          {
+            "Accession": "NP_000285",
+            "Name": "phosphorylase b kinase gamma catalytic chain, liver/testis isoform isoform 1"
+          },
+          {
+            "Accession": "NP_000446",
+            "Name": "serine/threonine-protein kinase STK11"
+          },
+          {
+            "Accession": "NP_000450",
+            "Name": "angiopoietin-1 receptor isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_000866",
+            "Name": "insulin-like growth factor 1 receptor isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_001001852",
+            "Name": "serine/threonine-protein kinase pim-3"
+          },
+          {
+            "Accession": "NP_001005735",
+            "Name": "serine/threonine-protein kinase Chk2 isoform c"
+          },
+          {
+            "Accession": "NP_001005862",
+            "Name": "receptor tyrosine-protein kinase erbB-2 isoform b"
+          },
+          {
+            "Accession": "NP_001006666",
+            "Name": "ribosomal protein S6 kinase alpha-1 isoform b"
+          },
+          {
+            "Accession": "NP_001006933",
+            "Name": "ribosomal protein S6 kinase alpha-2 isoform b"
+          },
+          {
+            "Accession": "NP_001006945",
+            "Name": "ribosomal protein S6 kinase alpha-4 isoform b"
+          },
+          {
+            "Accession": "NP_001010938",
+            "Name": "activated CDC42 kinase 1 isoform 2"
+          },
+          {
+            "Accession": "NP_001012331",
+            "Name": "high affinity nerve growth factor receptor isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_001012418",
+            "Name": "myosin light chain kinase family member 4 isoform 1"
+          },
+          {
+            "Accession": "NP_001013725",
+            "Name": "eIF-2-alpha kinase GCN2"
+          },
+          {
+            "Accession": "NP_001014833",
+            "Name": "p21-activated kinase 4 isoform 3"
+          },
+          {
+            "Accession": "NP_001020108",
+            "Name": "misshapen-like kinase 1 isoform 4"
+          },
+          {
+            "Accession": "NP_001035351",
+            "Name": "serine/threonine-protein kinase DCLK2 isoform b [Homo sapiens]"
+          },
+          {
+            "Accession": "NP_001036064",
+            "Name": "receptor tyrosine-protein kinase erbB-4 isoform JM-a/CVT-2 precursor"
+          },
+          {
+            "Accession": "NP_001036065",
+            "Name": "mitogen-activated protein kinase kinase kinase kinase 1 isoform 1"
+          },
+          {
+            "Accession": "NP_001073917",
+            "Name": "ephrin type-A receptor 6 isoform a"
+          },
+          {
+            "Accession": "NP_001092906",
+            "Name": "serine/threonine-protein kinase ULK3 isoform a"
+          },
+          {
+            "Accession": "NP_001096",
+            "Name": "activin receptor type-1 precursor"
+          },
+          {
+            "Accession": "NP_001097",
+            "Name": "activin receptor type-2B precursor [Homo sapiens]"
+          },
+          {
+            "Accession": "NP_001153221",
+            "Name": "serine/threonine-protein kinase RIO2 isoform 2"
+          },
+          {
+            "Accession": "NP_001194",
+            "Name": "bone morphogenetic protein receptor type-1B isoform b precursor"
+          },
+          {
+            "Accession": "NP_001195",
+            "Name": "bone morphogenetic protein receptor type-2 precursor"
+          },
+          {
+            "Accession": "NP_001211",
+            "Name": "calcium/calmodulin-dependent protein kinase type II subunit beta isoform 1"
+          },
+          {
+            "Accession": "NP_001249",
+            "Name": "cyclin-dependent kinase 3"
+          },
+          {
+            "Accession": "NP_001251",
+            "Name": "cyclin-dependent kinase 8 isoform 1"
+          },
+          {
+            "Accession": "NP_001252",
+            "Name": "cyclin-dependent kinase 9"
+          },
+          {
+            "Accession": "NP_001265",
+            "Name": "serine/threonine-protein kinase Chk1 isoform 1"
+          },
+          {
+            "Accession": "NP_001269",
+            "Name": "inhibitor of nuclear factor kappa-B kinase subunit alpha isoform 1"
+          },
+          {
+            "Accession": "NP_001310",
+            "Name": "casein kinase I isoform gamma-2"
+          },
+          {
+            "Accession": "NP_001339",
+            "Name": "death-associated protein kinase 3"
+          },
+          {
+            "Accession": "NP_001547",
+            "Name": "inhibitor of nuclear factor kappa-B kinase subunit beta isoform 1"
+          },
+          {
+            "Accession": "NP_001607",
+            "Name": "activin receptor type-2A isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_001617",
+            "Name": "RAC-beta serine/threonine-protein kinase isoform 1"
+          },
+          {
+            "Accession": "NP_001690",
+            "Name": "tyrosine-protein kinase receptor UFO isoform 2 precursor"
+          },
+          {
+            "Accession": "NP_001706",
+            "Name": "tyrosine-protein kinase Blk isoform 1"
+          },
+          {
+            "Accession": "NP_001712",
+            "Name": "cytoplasmic tyrosine-protein kinase BMX isoform 1"
+          },
+          {
+            "Accession": "NP_001735",
+            "Name": "calcium/calmodulin-dependent protein kinase type IV isoform 1"
+          },
+          {
+            "Accession": "NP_001789",
+            "Name": "cyclin-dependent kinase 2 isoform 1"
+          },
+          {
+            "Accession": "NP_001790",
+            "Name": "cyclin-dependent kinase 7 isoform 1"
+          },
+          {
+            "Accession": "NP_001885",
+            "Name": "casein kinase I isoform epsilon"
+          },
+          {
+            "Accession": "NP_001886",
+            "Name": "casein kinase II subunit alpha isoform a"
+          },
+          {
+            "Accession": "NP_001887",
+            "Name": "casein kinase II subunit alpha'"
+          },
+          {
+            "Accession": "NP_001945",
+            "Name": "epithelial discoidin domain-containing receptor 1 isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_001996",
+            "Name": "tyrosine-protein kinase Fes/Fps isoform 1"
+          },
+          {
+            "Accession": "NP_002010",
+            "Name": "vascular endothelial growth factor receptor 1 isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_002022",
+            "Name": "tyrosine-protein kinase FRK"
+          },
+          {
+            "Accession": "NP_002084",
+            "Name": "glycogen synthase kinase-3 beta isoform 1"
+          },
+          {
+            "Accession": "NP_002101",
+            "Name": "tyrosine-protein kinase HCK isoform a"
+          },
+          {
+            "Accession": "NP_002218",
+            "Name": "tyrosine-protein kinase JAK1 isoform 1"
+          },
+          {
+            "Accession": "NP_002244",
+            "Name": "vascular endothelial growth factor receptor 2 precursor"
+          },
+          {
+            "Accession": "NP_002305",
+            "Name": "LIM domain kinase 1 isoform 1"
+          },
+          {
+            "Accession": "NP_002341",
+            "Name": "tyrosine-protein kinase Lyn isoform A"
+          },
+          {
+            "Accession": "NP_002367",
+            "Name": "MAP/microtubule affinity-regulating kinase 3 isoform c"
+          },
+          {
+            "Accession": "NP_002392",
+            "Name": "mitogen-activated protein kinase kinase kinase 3 isoform 2"
+          },
+          {
+            "Accession": "NP_002410",
+            "Name": "mitogen-activated protein kinase kinase kinase 11"
+          },
+          {
+            "Accession": "NP_002437",
+            "Name": "mitogen-activated protein kinase kinase kinase 10"
+          },
+          {
+            "Accession": "NP_002438",
+            "Name": "macrophage-stimulating protein receptor isoform 1 preproprotein"
+          },
+          {
+            "Accession": "NP_002488",
+            "Name": "serine/threonine-protein kinase Nek2 isoform 1"
+          },
+          {
+            "Accession": "NP_002567",
+            "Name": "serine/threonine-protein kinase PAK 1 isoform 2"
+          },
+          {
+            "Accession": "NP_002568",
+            "Name": "serine/threonine-protein kinase PAK 2"
+          },
+          {
+            "Accession": "NP_002569",
+            "Name": "serine/threonine-protein kinase PAK 3 isoform a"
+          },
+          {
+            "Accession": "NP_002587",
+            "Name": "cyclin-dependent kinase 18 isoform b"
+          },
+          {
+            "Accession": "NP_002600",
+            "Name": "platelet-derived growth factor receptor beta isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_002604",
+            "Name": "3-phosphoinositide-dependent protein kinase 1 isoform 1"
+          },
+          {
+            "Accession": "NP_002637",
+            "Name": "phosphatidylinositol 4-phosphate 3-kinase C2 domain-containing subunit beta isoform 1"
+          },
+          {
+            "Accession": "NP_002639",
+            "Name": "serine/threonine-protein kinase pim-1 isoform 2"
+          },
+          {
+            "Accession": "NP_002640",
+            "Name": "phosphatidylinositol 4,5-bisphosphate 3-kinase catalytic subunit gamma isoform"
+          },
+          {
+            "Accession": "NP_002721",
+            "Name": "cAMP-dependent protein kinase catalytic subunit alpha isoform Calpha1"
+          },
+          {
+            "Accession": "NP_002722",
+            "Name": "cAMP-dependent protein kinase catalytic subunit beta isoform 2"
+          },
+          {
+            "Accession": "NP_002733",
+            "Name": "serine/threonine-protein kinase D1 isoform 2"
+          },
+          {
+            "Accession": "NP_002737",
+            "Name": "mitogen-activated protein kinase 3 isoform 1"
+          },
+          {
+            "Accession": "NP_002738",
+            "Name": "mitogen-activated protein kinase 4 isoform 1"
+          },
+          {
+            "Accession": "NP_002739",
+            "Name": "mitogen-activated protein kinase 6"
+          },
+          {
+            "Accession": "NP_002740",
+            "Name": "mitogen-activated protein kinase 7 isoform 1"
+          },
+          {
+            "Accession": "NP_002741",
+            "Name": "mitogen-activated protein kinase 8 isoform alpha1"
+          },
+          {
+            "Accession": "NP_002742",
+            "Name": "mitogen-activated protein kinase 11"
+          },
+          {
+            "Accession": "NP_002744",
+            "Name": "mitogen-activated protein kinase 10 isoform 2"
+          },
+          {
+            "Accession": "NP_002745",
+            "Name": "mitogen-activated protein kinase 13"
+          },
+          {
+            "Accession": "NP_002746",
+            "Name": "dual specificity mitogen-activated protein kinase kinase 1"
+          },
+          {
+            "Accession": "NP_002747",
+            "Name": "dual specificity mitogen-activated protein kinase kinase 3 isoform A"
+          },
+          {
+            "Accession": "NP_002749",
+            "Name": "dual specificity mitogen-activated protein kinase kinase 6 isoform 1"
+          },
+          {
+            "Accession": "NP_002750",
+            "Name": "interferon-induced, double-stranded RNA-activated protein kinase isoform a"
+          },
+          {
+            "Accession": "NP_002871",
+            "Name": "RAF proto-oncogene serine/threonine-protein kinase isoform b"
+          },
+          {
+            "Accession": "NP_002935",
+            "Name": "proto-oncogene tyrosine-protein kinase ROS isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_003001",
+            "Name": "dual specificity mitogen-activated protein kinase kinase 4 isoform 1"
+          },
+          {
+            "Accession": "NP_003128",
+            "Name": "SRSF protein kinase 1"
+          },
+          {
+            "Accession": "NP_003168",
+            "Name": "tyrosine-protein kinase SYK isoform Syk(L)"
+          },
+          {
+            "Accession": "NP_003206",
+            "Name": "tyrosine-protein kinase Tec"
+          },
+          {
+            "Accession": "NP_003233",
+            "Name": "TGF-beta receptor type-2 isoform B precursor"
+          },
+          {
+            "Accession": "NP_003309",
+            "Name": "dual specificity protein kinase TTK isoform 1"
+          },
+          {
+            "Accession": "NP_003319",
+            "Name": "tyrosine-protein kinase TXK"
+          },
+          {
+            "Accession": "NP_003322",
+            "Name": "non-receptor tyrosine-protein kinase TYK2 isoform 2"
+          },
+          {
+            "Accession": "NP_003381",
+            "Name": "wee1-like protein kinase isoform 1"
+          },
+          {
+            "Accession": "NP_003550",
+            "Name": "phosphatidylinositol 5-phosphate 4-kinase type-2 beta"
+          },
+          {
+            "Accession": "NP_003556",
+            "Name": "serine/threonine-protein kinase ULK1"
+          },
+          {
+            "Accession": "NP_003567",
+            "Name": "serine/threonine-protein kinase 24 isoform a precursor"
+          },
+          {
+            "Accession": "NP_003591",
+            "Name": "aurora kinase A"
+          },
+          {
+            "Accession": "NP_003598",
+            "Name": "serine/threonine-protein kinase MRCK alpha isoform B"
+          },
+          {
+            "Accession": "NP_003609",
+            "Name": "mitogen-activated protein kinase kinase kinase kinase 3 isoform 1"
+          },
+          {
+            "Accession": "NP_003647",
+            "Name": "calcium/calmodulin-dependent protein kinase type 1"
+          },
+          {
+            "Accession": "NP_003659",
+            "Name": "MAP kinase-activated protein kinase 5 isoform 1"
+          },
+          {
+            "Accession": "NP_003795",
+            "Name": "receptor-interacting serine/threonine-protein kinase 1 isoform 1"
+          },
+          {
+            "Accession": "NP_003812",
+            "Name": "receptor-interacting serine/threonine-protein kinase 2 isoform 1"
+          },
+          {
+            "Accession": "NP_003822",
+            "Name": "serine/threonine-protein kinase RIO3 isoform 1"
+          },
+          {
+            "Accession": "NP_003939",
+            "Name": "cyclin-dependent kinase-like 2 isoform 1"
+          },
+          {
+            "Accession": "NP_003948",
+            "Name": "serine/threonine-protein kinase BRSK2 isoform 2"
+          },
+          {
+            "Accession": "NP_003983",
+            "Name": "dual specificity protein kinase CLK3"
+          },
+          {
+            "Accession": "NP_003984",
+            "Name": "dual specificity protein kinase CLK2 isoform 2"
+          },
+          {
+            "Accession": "NP_004064",
+            "Name": "serine/threonine-protein kinase PLK3"
+          },
+          {
+            "Accession": "NP_004110",
+            "Name": "receptor-type tyrosine-protein kinase FLT3 precursor"
+          },
+          {
+            "Accession": "NP_004217",
+            "Name": "serine/threonine-protein kinase 17B"
+          },
+          {
+            "Accession": "NP_004293",
+            "Name": "activin receptor type-1B isoform a precursor"
+          },
+          {
+            "Accession": "NP_004295",
+            "Name": "ALK tyrosine kinase receptor isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_004320",
+            "Name": "bone morphogenetic protein receptor type-1A precursor"
+          },
+          {
+            "Accession": "NP_004324",
+            "Name": "serine/threonine-protein kinase B-raf isoform 1"
+          },
+          {
+            "Accession": "NP_004374",
+            "Name": "tyrosine-protein kinase CSK isoform 1"
+          },
+          {
+            "Accession": "NP_004375",
+            "Name": "casein kinase I isoform gamma-3 isoform 1 [Homo sapiens]"
+          },
+          {
+            "Accession": "NP_004400",
+            "Name": "myotonin-protein kinase isoform 2"
+          },
+          {
+            "Accession": "NP_004422",
+            "Name": "ephrin type-A receptor 2 isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_004429",
+            "Name": "ephrin type-A receptor 4 isoform a precursor [Homo sapiens]"
+          },
+          {
+            "Accession": "NP_004430",
+            "Name": "ephrin type-A receptor 5 isoform a"
+          },
+          {
+            "Accession": "NP_004431",
+            "Name": "ephrin type-A receptor 7 isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_004432",
+            "Name": "ephrin type-B receptor 1 precursor"
+          },
+          {
+            "Accession": "NP_004434",
+            "Name": "ephrin type-B receptor 3 precursor"
+          },
+          {
+            "Accession": "NP_004435",
+            "Name": "ephrin type-B receptor 4 precursor"
+          },
+          {
+            "Accession": "NP_004570",
+            "Name": "mitogen-activated protein kinase kinase kinase kinase 2 isoform 1"
+          },
+          {
+            "Accession": "NP_004577",
+            "Name": "ribosomal protein S6 kinase alpha-3"
+          },
+          {
+            "Accession": "NP_004603",
+            "Name": "TGF-beta receptor type-1 isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_004681",
+            "Name": "serine/threonine-protein kinase LATS1 isoform 1"
+          },
+          {
+            "Accession": "NP_004705",
+            "Name": "dual specificity tyrosine-phosphorylation-regulated kinase 1B isoform p69"
+          },
+          {
+            "Accession": "NP_004725",
+            "Name": "serine/threonine-protein kinase DCLK1 isoform 1"
+          },
+          {
+            "Accession": "NP_004746",
+            "Name": "ribosomal protein S6 kinase alpha-5 isoform a"
+          },
+          {
+            "Accession": "NP_004751",
+            "Name": "serine/threonine-protein kinase 17A"
+          },
+          {
+            "Accession": "NP_004841",
+            "Name": "rho-associated protein kinase 2 isoform 1"
+          },
+          {
+            "Accession": "NP_004926",
+            "Name": "cyclin-dependent-like kinase 5 isoform 1"
+          },
+          {
+            "Accession": "NP_004929",
+            "Name": "death-associated protein kinase 1"
+          },
+          {
+            "Accession": "NP_004963",
+            "Name": "tyrosine-protein kinase JAK2 isoform a"
+          },
+          {
+            "Accession": "NP_005017",
+            "Name": "phosphatidylinositol 4,5-bisphosphate 3-kinase catalytic subunit delta isoform isoform 1"
+          },
+          {
+            "Accession": "NP_005021",
+            "Name": "serine/threonine-protein kinase PLK1"
+          },
+          {
+            "Accession": "NP_005035",
+            "Name": "cAMP-dependent protein kinase catalytic subunit PRKX"
+          },
+          {
+            "Accession": "NP_005148",
+            "Name": "tyrosine-protein kinase ABL1 isoform a"
+          },
+          {
+            "Accession": "NP_005149",
+            "Name": "tyrosine-protein kinase ABL2 isoform c"
+          },
+          {
+            "Accession": "NP_005154",
+            "Name": "RAC-alpha serine/threonine-protein kinase"
+          },
+          {
+            "Accession": "NP_005202",
+            "Name": "macrophage colony-stimulating factor 1 receptor isoform a precursor"
+          },
+          {
+            "Accession": "NP_005219",
+            "Name": "epidermal growth factor receptor isoform a precursor"
+          },
+          {
+            "Accession": "NP_005223",
+            "Name": "ephrin type-A receptor 1 precursor"
+          },
+          {
+            "Accession": "NP_005224",
+            "Name": "ephrin type-A receptor 3 isoform a precursor"
+          },
+          {
+            "Accession": "NP_005237",
+            "Name": "tyrosine-protein kinase Fer isoform a"
+          },
+          {
+            "Accession": "NP_005239",
+            "Name": "tyrosine-protein kinase Fgr"
+          },
+          {
+            "Accession": "NP_005246",
+            "Name": "cyclin-G-associated kinase isoform 1"
+          },
+          {
+            "Accession": "NP_005347",
+            "Name": "tyrosine-protein kinase Lck isoform a"
+          },
+          {
+            "Accession": "NP_005391",
+            "Name": "protein kinase C epsilon type"
+          },
+          {
+            "Accession": "NP_005408",
+            "Name": "proto-oncogene tyrosine-protein kinase Src"
+          },
+          {
+            "Accession": "NP_005415",
+            "Name": "tyrosine-protein kinase receptor Tie-1 isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_005424",
+            "Name": "tyrosine-protein kinase Yes"
+          },
+          {
+            "Accession": "NP_005456",
+            "Name": "RAC-gamma serine/threonine-protein kinase isoform 1"
+          },
+          {
+            "Accession": "NP_005537",
+            "Name": "tyrosine-protein kinase ITK/TSK"
+          },
+          {
+            "Accession": "NP_005560",
+            "Name": "LIM domain kinase 2 isoform 2a"
+          },
+          {
+            "Accession": "NP_005583",
+            "Name": "muscle, skeletal receptor tyrosine-protein kinase isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_005804",
+            "Name": "serine/threonine-protein kinase D3"
+          },
+          {
+            "Accession": "NP_005913",
+            "Name": "mitogen-activated protein kinase kinase kinase 4 isoform a"
+          },
+          {
+            "Accession": "NP_005914",
+            "Name": "mitogen-activated protein kinase kinase kinase 5"
+          },
+          {
+            "Accession": "NP_005966",
+            "Name": "protein-tyrosine kinase 6 isoform 1"
+          },
+          {
+            "Accession": "NP_006026",
+            "Name": "serine/threonine-protein kinase MRCK beta"
+          },
+          {
+            "Accession": "NP_006171",
+            "Name": "BDNF/NT-3 growth factors receptor isoform a precursor"
+          },
+          {
+            "Accession": "NP_006192",
+            "Name": "cyclin-dependent kinase 16 isoform 1"
+          },
+          {
+            "Accession": "NP_006197",
+            "Name": "platelet-derived growth factor receptor alpha isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_006204",
+            "Name": "phosphorylase b kinase gamma catalytic chain, skeletal muscle/heart isoform isoform 2"
+          },
+          {
+            "Accession": "NP_006209",
+            "Name": "phosphatidylinositol 4,5-bisphosphate 3-kinase catalytic subunit alpha isoform"
+          },
+          {
+            "Accession": "NP_006210",
+            "Name": "phosphatidylinositol 4,5-bisphosphate 3-kinase catalytic subunit beta isoform isoform 1"
+          },
+          {
+            "Accession": "NP_006243",
+            "Name": "5'-AMP-activated protein kinase catalytic subunit alpha-2"
+          },
+          {
+            "Accession": "NP_006245",
+            "Name": "protein kinase C delta type isoform c"
+          },
+          {
+            "Accession": "NP_006246",
+            "Name": "protein kinase C eta type"
+          },
+          {
+            "Accession": "NP_006247",
+            "Name": "serine/threonine-protein kinase N2 isoform 1"
+          },
+          {
+            "Accession": "NP_006248",
+            "Name": "protein kinase C theta type isoform 1"
+          },
+          {
+            "Accession": "NP_006249",
+            "Name": "cGMP-dependent protein kinase 1 isoform 2"
+          },
+          {
+            "Accession": "NP_006250",
+            "Name": "cGMP-dependent protein kinase 2 isoform a"
+          },
+          {
+            "Accession": "NP_006272",
+            "Name": "serine/threonine-protein kinase 3 isoform 1"
+          },
+          {
+            "Accession": "NP_006273",
+            "Name": "serine/threonine-protein kinase 4 isoform 1"
+          },
+          {
+            "Accession": "NP_006276",
+            "Name": "dual specificity testis-specific protein kinase 1 isoform 1"
+          },
+          {
+            "Accession": "NP_006284",
+            "Name": "tyrosine-protein kinase receptor TYRO3 isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_006292",
+            "Name": "mitogen-activated protein kinase kinase kinase 12 isoform 2"
+          },
+          {
+            "Accession": "NP_006365",
+            "Name": "serine/threonine-protein kinase 25 isoform 1 [Homo sapiens]"
+          },
+          {
+            "Accession": "NP_006540",
+            "Name": "calcium/calmodulin-dependent protein kinase kinase 2 isoform 1"
+          },
+          {
+            "Accession": "NP_006566",
+            "Name": "mitogen-activated protein kinase kinase kinase kinase 5"
+          },
+          {
+            "Accession": "NP_006866",
+            "Name": "serine/threonine-protein kinase pim-2"
+          },
+          {
+            "Accession": "NP_009105",
+            "Name": "citron Rho-interacting kinase isoform 2"
+          },
+          {
+            "Accession": "NP_009130",
+            "Name": "interleukin-1 receptor-associated kinase 3 isoform a"
+          },
+          {
+            "Accession": "NP_036356",
+            "Name": "serine/threonine-protein kinase Nek1 isoform 2"
+          },
+          {
+            "Accession": "NP_036422",
+            "Name": "serine/threonine-protein kinase tousled-like 1 isoform 1"
+          },
+          {
+            "Accession": "NP_036527",
+            "Name": "cyclin-dependent kinase 14 isoform b"
+          },
+          {
+            "Accession": "NP_054721",
+            "Name": "inhibitor of nuclear factor kappa-B kinase subunit epsilon isoform 1"
+          },
+          {
+            "Accession": "NP_055030",
+            "Name": "insulin receptor-related protein precursor"
+          },
+          {
+            "Accession": "NP_055141",
+            "Name": "death-associated protein kinase 2 isoform 1"
+          },
+          {
+            "Accession": "NP_055185",
+            "Name": "SRSF protein kinase 3 isoform 1"
+          },
+          {
+            "Accession": "NP_055212",
+            "Name": "serine/threonine-protein kinase Nek6 isoform 2"
+          },
+          {
+            "Accession": "NP_055311",
+            "Name": "ribosomal protein S6 kinase alpha-6 isoform 2"
+          },
+          {
+            "Accession": "NP_055387",
+            "Name": "serine/threonine-protein kinase LATS2"
+          },
+          {
+            "Accession": "NP_055498",
+            "Name": "serine/threonine-protein kinase ULK2"
+          },
+          {
+            "Accession": "NP_055535",
+            "Name": "STE20-like serine/threonine-protein kinase isoform 1"
+          },
+          {
+            "Accession": "NP_055606",
+            "Name": "maternal embryonic leucine zipper kinase isoform 1"
+          },
+          {
+            "Accession": "NP_055655",
+            "Name": "NUAK family SNF1-like kinase 1"
+          },
+          {
+            "Accession": "NP_055726",
+            "Name": "AP2-associated protein kinase 1 isoform 1"
+          },
+          {
+            "Accession": "NP_055815",
+            "Name": "serine/threonine-protein kinase 38-like"
+          },
+          {
+            "Accession": "NP_055843",
+            "Name": "TRAF2 and NCK-interacting protein kinase isoform 1"
+          },
+          {
+            "Accession": "NP_055891",
+            "Name": "cyclin-dependent kinase 19 isoform 1"
+          },
+          {
+            "Accession": "NP_056006",
+            "Name": "serine/threonine-protein kinase SIK2"
+          },
+          {
+            "Accession": "NP_056505",
+            "Name": "serine/threonine-protein kinase 36 isoform 1"
+          },
+          {
+            "Accession": "NP_057062",
+            "Name": "serine/threonine-protein kinase TNNI3K"
+          },
+          {
+            "Accession": "NP_057315",
+            "Name": "serine/threonine-protein kinase NLK"
+          },
+          {
+            "Accession": "NP_057365",
+            "Name": "serine/threonine-protein kinase TAO3 isoform b [Homo sapiens]"
+          },
+          {
+            "Accession": "NP_057541",
+            "Name": "serine/threonine-protein kinase D2 isoform A"
+          },
+          {
+            "Accession": "NP_057626",
+            "Name": "serine/threonine-protein kinase 26 isoform 1 [Homo sapiens]"
+          },
+          {
+            "Accession": "NP_059129",
+            "Name": "myosin-IIIa isoform 1"
+          },
+          {
+            "Accession": "NP_059145",
+            "Name": "ephrin type-B receptor 2 isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_059672",
+            "Name": "serine/threonine-protein kinase MARK2 isoform a"
+          },
+          {
+            "Accession": "NP_059995",
+            "Name": "serine/threonine-protein kinase MRCK gamma"
+          },
+          {
+            "Accession": "NP_060063",
+            "Name": "BMP-2-inducible protein kinase isoform b"
+          },
+          {
+            "Accession": "NP_060871",
+            "Name": "serine/threonine-protein kinase 32B isoform 1"
+          },
+          {
+            "Accession": "NP_063937",
+            "Name": "glycogen synthase kinase-3 alpha"
+          },
+          {
+            "Accession": "NP_064553",
+            "Name": "serine/threonine-protein kinase PAK 6 isoform 1"
+          },
+          {
+            "Accession": "NP_064632",
+            "Name": "atypical kinase COQ8A, mitochondrial"
+          },
+          {
+            "Accession": "NP_065074",
+            "Name": "serine/threonine-protein kinase PAK 5"
+          },
+          {
+            "Accession": "NP_065130",
+            "Name": "calcium/calmodulin-dependent protein kinase type 1D isoform 1"
+          },
+          {
+            "Accession": "NP_065172",
+            "Name": "calcium/calmodulin-dependent protein kinase type 1G"
+          },
+          {
+            "Accession": "NP_065387",
+            "Name": "ephrin type-A receptor 8 isoform 1 precursor"
+          },
+          {
+            "Accession": "NP_065681",
+            "Name": "proto-oncogene tyrosine-protein kinase receptor Ret isoform c precursor"
+          },
+          {
+            "Accession": "NP_065690",
+            "Name": "receptor-interacting serine/threonine-protein kinase 4"
+          },
+          {
+            "Accession": "NP_065717",
+            "Name": "dual specificity protein kinase CLK4"
+          },
+          {
+            "Accession": "NP_065842",
+            "Name": "serine/threonine-protein kinase TAO1 isoform 1"
+          },
+          {
+            "Accession": "NP_071331",
+            "Name": "casein kinase I isoform gamma-1 isoform 1"
+          },
+          {
+            "Accession": "NP_075252",
+            "Name": "fibroblast growth factor receptor 4 isoform 2 precursor"
+          },
+          {
+            "Accession": "NP_075259",
+            "Name": "fibroblast growth factor receptor 2 isoform 2 precursor"
+          },
+          {
+            "Accession": "NP_075593",
+            "Name": "fibroblast growth factor receptor 1 isoform 3 precursor"
+          },
+          {
+            "Accession": "NP_076916",
+            "Name": "cyclin-dependent kinase 11A isoform 1"
+          },
+          {
+            "Accession": "NP_079152",
+            "Name": "atypical kinase COQ8B, mitochondrial isoform a"
+          },
+          {
+            "Accession": "NP_109587",
+            "Name": "dual specificity mitogen-activated protein kinase kinase 2"
+          },
+          {
+            "Accession": "NP_112168",
+            "Name": "serine/threonine-protein kinase 33 isoform a"
+          },
+          {
+            "Accession": "NP_112214",
+            "Name": "NUAK family SNF1-like kinase 2"
+          },
+          {
+            "Accession": "NP_113605",
+            "Name": "MAP/microtubule affinity-regulating kinase 4 isoform 2"
+          },
+          {
+            "Accession": "NP_113668",
+            "Name": "serine/threonine-protein kinase RIO1 isoform 1"
+          },
+          {
+            "Accession": "NP_114417",
+            "Name": "testis-specific serine/threonine-protein kinase 1 [Homo sapiens]"
+          },
+          {
+            "Accession": "NP_115670",
+            "Name": "calcium/calmodulin-dependent protein kinase kinase 1 isoform a"
+          },
+          {
+            "Accession": "NP_115806",
+            "Name": "serine/threonine-protein kinase BRSK1"
+          },
+          {
+            "Accession": "NP_116584",
+            "Name": "MAP kinase-activated protein kinase 2 isoform 2"
+          },
+          {
+            "Accession": "NP_149107",
+            "Name": "serine/threonine-protein kinase Nek9 isoform 2"
+          },
+          {
+            "Accession": "NP_149109",
+            "Name": "myosin light chain kinase 2, skeletal/cardiac muscle"
+          },
+          {
+            "Accession": "NP_149132",
+            "Name": "mitogen-activated protein kinase kinase kinase 9 isoform 1"
+          },
+          {
+            "Accession": "NP_208382",
+            "Name": "serine/threonine-protein kinase DCLK3"
+          },
+          {
+            "Accession": "NP_277023",
+            "Name": "cyclin-dependent kinase 11B isoform 4"
+          },
+          {
+            "Accession": "NP_444254",
+            "Name": "myosin light chain kinase, smooth muscle isoform 2"
+          },
+          {
+            "Accession": "NP_543013",
+            "Name": "tyrosine-protein kinase Srms"
+          },
+          {
+            "Accession": "NP_543026",
+            "Name": "serine/threonine-protein kinase 35"
+          },
+          {
+            "Accession": "NP_598001",
+            "Name": "serine/threonine-protein kinase Nek7"
+          },
+          {
+            "Accession": "NP_598407",
+            "Name": "mitogen-activated protein kinase kinase kinase 20 isoform 2"
+          },
+          {
+            "Accession": "NP_620407",
+            "Name": "mitogen-activated protein kinase 1"
+          },
+          {
+            "Accession": "NP_620482",
+            "Name": "myosin-IIIb isoform 2"
+          },
+          {
+            "Accession": "NP_620581",
+            "Name": "mitogen-activated protein kinase 14 isoform 2"
+          },
+          {
+            "Accession": "NP_620590",
+            "Name": "mitogen-activated protein kinase 15"
+          },
+          {
+            "Accession": "NP_620693",
+            "Name": "casein kinase I isoform delta isoform 2"
+          },
+          {
+            "Accession": "NP_620707",
+            "Name": "mitogen-activated protein kinase 9 isoform alpha1"
+          },
+          {
+            "Accession": "NP_631897",
+            "Name": "cyclin-dependent kinase 15 isoform 3"
+          },
+          {
+            "Accession": "NP_660204",
+            "Name": "casein kinase I isoform alpha-like"
+          },
+          {
+            "Accession": "NP_663304",
+            "Name": "mitogen-activated protein kinase kinase kinase 7 isoform B"
+          },
+          {
+            "Accession": "NP_663719",
+            "Name": "mitogen-activated protein kinase kinase kinase kinase 4 isoform 2"
+          },
+          {
+            "Accession": "NP_689909",
+            "Name": "homeodomain-interacting protein kinase 1 isoform 2"
+          },
+          {
+            "Accession": "NP_694592",
+            "Name": "tyrosine-protein kinase Fyn isoform b"
+          },
+          {
+            "Accession": "NP_722560",
+            "Name": "focal adhesion kinase 1 isoform 1"
+          },
+          {
+            "Accession": "NP_741960",
+            "Name": "calcium/calmodulin-dependent protein kinase type II subunit alpha isoform 2"
+          },
+          {
+            "Accession": "NP_751913",
+            "Name": "calcium/calmodulin-dependent protein kinase type II subunit gamma isoform 6"
+          },
+          {
+            "Accession": "NP_775267",
+            "Name": "protein-tyrosine kinase 2-beta isoform b"
+          },
+          {
+            "Accession": "NP_775490",
+            "Name": "serine/threonine-protein kinase SIK1"
+          },
+          {
+            "Accession": "NP_775846",
+            "Name": "serine/threonine-protein kinase 32C isoform b"
+          },
+          {
+            "Accession": "NP_848605",
+            "Name": "ankyrin repeat and protein kinase domain-containing protein 1"
+          },
+          {
+            "Accession": "NP_872299",
+            "Name": "myosin light chain kinase 3 isoform 1"
+          },
+          {
+            "Accession": "NP_872629",
+            "Name": "membrane-associated tyrosine- and threonine-specific cdc2-inhibitory kinase isoform 2"
+          },
+          {
+            "Accession": "NP_954983",
+            "Name": "serine/threonine-protein kinase Nek5 isoform 1"
+          },
+          {
+            "Accession": "NP_996844",
+            "Name": "leukocyte tyrosine kinase receptor isoform 2 precursor"
+          },
+          {
+            "Accession": "NP_997402",
+            "Name": "tyrosine-protein kinase ZAP-70 isoform 2"
+          },
+          {
+            "Accession": "NP_998725",
+            "Name": "serine/threonine-protein kinase N1 isoform 1"
+          },
+          {
+            "Accession": "P0C1S8",
+            "Name": "Wee1-like protein kinase 2"
+          },
+          {
+            "Accession": "P0C264",
+            "Name": "Uncharacterized serine/threonine-protein kinase SBK3"
+          }
+        ],
+        "Version": 3,
+        "Revision": 3,
+        "LastDataChange": {
+          "Year": 2011,
+          "Month": 1,
+          "Day": 3
+        },
+        "SIDCountAll": 1,
+        "SIDCountActive": 1,
+        "SIDCountInactive": 1,
+        "SIDCountInconclusive": 0,
+        "SIDCountUnspecified": 0,
+        "SIDCountProbe": 0,
+        "CIDCountAll": 1,
+        "CIDCountActive": 1,
+        "CIDCountInactive": 1,
+        "CIDCountInconclusive": 0,
+        "CIDCountUnspecified": 0,
+        "CIDCountProbe": 0
+      },
+      {
+        "AID": 3365,
+        "SourceName": "ChEMBL",
+        "SourceID": "CHEMBL615490",
+        "Name": "Inhibition of ligand-induced proliferation in human EGF-R Kinase expressing 3T3 cells (Not tested)",
+        "NumberOfTIDs": 3,
+        "HasScore": false,
+        "Target": [
+          {
+            "Accession": "P00533",
+            "Name": "Epidermal growth factor receptor"
+          }
+        ],
+        "Version": 10,
+        "Revision": 1,
+        "LastDataChange": {
+          "Year": 2022,
+          "Month": 3,
+          "Day": 18
+        },
+        "SIDCountAll": 3,
+        "SIDCountActive": 0,
+        "SIDCountInactive": 0,
+        "SIDCountInconclusive": 3,
+        "SIDCountUnspecified": 0,
+        "SIDCountProbe": 0,
+        "CIDCountAll": 3,
+        "CIDCountActive": 0,
+        "CIDCountInactive": 0,
+        "CIDCountInconclusive": 3,
+        "CIDCountUnspecified": 0,
+        "CIDCountProbe": 0
+      }
+    ]
+  }
+}

@@ -163,8 +163,13 @@ describe('PubChemClient.getInteractions (#12)', () => {
 
   it('isolates a failing kind — the others still return their entries (#21)', async () => {
     fetchMock.mockImplementation((input) => {
-      const url = String(input);
-      if (url.includes('drugbankddi')) {
+      const url = new URL(String(input));
+      const collection =
+        url.hostname === 'pubchem.ncbi.nlm.nih.gov' && url.pathname === '/sdq/sdqagent.cgi'
+          ? (JSON.parse(url.searchParams.get('query') ?? '{}') as { collection?: string })
+              .collection
+          : undefined;
+      if (collection === 'drugbankddi') {
         return Promise.resolve(
           sdqResponse([{ cid: 5291, name2: 'Lepirudin', descr: 'Risk of bleeding increased.' }]),
         );
@@ -207,6 +212,113 @@ describe('PubChemClient.getInteractions (#12)', () => {
     expect(entries).toEqual([]);
     expect(pages).toEqual([]);
     expect(failedKinds[0]!.message).toContain('eSphinxSearchBusy');
+  });
+});
+
+describe('PubChemClient.getInteractions — SDQ answers that are not SDQ data (#62)', () => {
+  /** The NCBI site 404 page SDQ answers every request with — the live shape, abridged. */
+  const NCBI_404_PAGE =
+    '<!DOCTYPE html> <html lang="en"> <head> <meta charset="UTF-8"> <title>404: Not Found</title> </head><body>Page not found</body></html>';
+  const RECAPTCHA_PAGE =
+    '<!DOCTYPE html><html><head><title>reCAPTCHA</title></head><body><form>Verify you are human</form></body></html>';
+
+  const sdqHost = (input: unknown) =>
+    new URL(String(input)).pathname.startsWith('/sdq/') ? 'sdq' : 'pugview';
+
+  it.each([
+    ['an HTTP 404 HTML page', () => textResponse(NCBI_404_PAGE, 404, 'text/html')],
+    ['an HTTP 403 HTML page', () => textResponse(NCBI_404_PAGE, 403, 'text/html')],
+    ['an HTTP 200 reCAPTCHA page', () => textResponse(RECAPTCHA_PAGE, 200, 'text/html')],
+    ['HTTP 200 JSON without SDQOutputSet', () => jsonResponse({ error: 'not an SDQ envelope' })],
+  ])(
+    'fails both SDQ kinds as sdq_unavailable on %s, never as zero records',
+    async (_l, respond) => {
+      fetchMock.mockImplementation(async () => respond());
+
+      const { entries, pages, failedKinds } = await new PubChemClient().getInteractions(
+        2244,
+        ['drug-drug', 'target'],
+        10,
+        0,
+      );
+
+      expect(entries).toEqual([]);
+      expect(pages).toEqual([]);
+      expect(failedKinds).toEqual([
+        { kind: 'drug-drug', reason: 'sdq_unavailable', message: expect.any(String) },
+        { kind: 'target', reason: 'sdq_unavailable', message: expect.any(String) },
+      ]);
+      for (const { message } of failedKinds) {
+        expect(message).toContain('SDQ');
+        expect(message).not.toMatch(
+          /DOCTYPE|<html|reCAPTCHA|Verify you are human|not an SDQ envelope/,
+        );
+      }
+      // A refusal is not retried: one request per kind.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('keeps a 5xx a plain retryable failure with no sdq_unavailable reason', async () => {
+    fetchMock.mockImplementation(async () => textResponse('busy', 503));
+
+    const { failedKinds } = await new PubChemClient().getInteractions(2244, ['drug-drug'], 10, 0);
+
+    expect(failedKinds).toHaveLength(1);
+    expect(failedKinds[0]).not.toHaveProperty('reason');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  }, 10_000);
+
+  it('still returns drug-food from PUG View beside a refused SDQ kind', async () => {
+    fetchMock.mockImplementation(async (input) =>
+      sdqHost(input) === 'sdq'
+        ? textResponse(NCBI_404_PAGE, 404, 'text/html')
+        : jsonResponse({
+            Record: {
+              Reference: [{ ReferenceNumber: 1, SourceName: 'DrugBank' }],
+              Section: [
+                {
+                  TOCHeading: 'Drug-Food Interactions',
+                  Information: [
+                    {
+                      ReferenceNumber: 1,
+                      Value: { StringWithMarkup: [{ String: 'Take with food.' }] },
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+    );
+
+    const { entries, pages, failedKinds } = await new PubChemClient().getInteractions(
+      2244,
+      ['drug-drug', 'drug-food'],
+      10,
+      0,
+    );
+
+    expect(entries).toEqual([{ kind: 'drug-food', source: 'DrugBank', text: 'Take with food.' }]);
+    expect(pages.map((p) => p.kind)).toEqual(['drug-food']);
+    expect(failedKinds.map((f) => f.kind)).toEqual(['drug-drug']);
+  });
+
+  it('keeps a drug-food PUG View 404 as zero records, not a failed kind', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ Fault: { Code: 'PUGVIEW.NotFound', Message: 'No data found' } }, 404),
+    );
+
+    const { pages, failedKinds } = await new PubChemClient().getInteractions(
+      241,
+      ['drug-food'],
+      10,
+      0,
+    );
+
+    expect(failedKinds).toEqual([]);
+    expect(pages).toEqual([
+      { kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 },
+    ]);
   });
 });
 

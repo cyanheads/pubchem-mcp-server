@@ -123,12 +123,31 @@ describe('identifier batch — call-fatal upstream failures are never absorbed',
     expect(requestsFor('CCC')).toBe(2);
   });
 
-  it('fails the whole batch when one identifier is rate-limited', async () => {
-    routeIdentifiers({ CCO: [702], CCC: throttled });
+  it.each([
+    [
+      'one identifier is rate-limited',
+      { CCO: [702], CCC: throttled },
+      ['CCO', 'CCC'],
+      JsonRpcErrorCode.RateLimited,
+    ],
+    [
+      'a rejected SMILES sits beside a 5xx',
+      { 'not-a-smiles': unreadable, CCC: unavailable },
+      ['not-a-smiles', 'CCC'],
+      JsonRpcErrorCode.ServiceUnavailable,
+    ],
+    [
+      'a rejected SMILES sits beside a rate limit',
+      { CCO: [702], 'not-a-smiles': unreadable, CCC: throttled },
+      ['CCO', 'not-a-smiles', 'CCC'],
+      JsonRpcErrorCode.RateLimited,
+    ],
+  ])('fails the whole batch when %s', async (_label, table, identifiers, code) => {
+    routeIdentifiers(table);
 
-    const result = await runToolContract(searchCompounds, smilesBatch(['CCO', 'CCC']));
+    const result = await runToolContract(searchCompounds, smilesBatch(identifiers));
 
-    expect(errorOf(result).code).toBe(JsonRpcErrorCode.RateLimited);
+    expect(errorOf(result).code).toBe(code);
   });
 });
 
@@ -198,23 +217,18 @@ describe('identifier batch — a SMILES PubChem cannot interpret (#55)', () => {
     },
   );
 
-  it('does not let a rejected SMILES mask a call-fatal failure elsewhere in the batch', async () => {
-    routeIdentifiers({ 'not-a-smiles': unreadable, CCC: unavailable });
-
-    const result = await runToolContract(searchCompounds, smilesBatch(['not-a-smiles', 'CCC']));
-
-    expect(errorOf(result).code).toBe(JsonRpcErrorCode.ServiceUnavailable);
-  });
-
-  it('does not let a rejected SMILES mask a rate limit elsewhere in the batch', async () => {
-    routeIdentifiers({ CCO: [702], 'not-a-smiles': unreadable, CCC: throttled });
-
-    const result = await runToolContract(
-      searchCompounds,
-      smilesBatch(['CCO', 'not-a-smiles', 'CCC']),
+  it('fails an all-rejected batch with no fault field when PubChem stated none', async () => {
+    fetchMock.mockImplementation(
+      async () => new Response('<!DOCTYPE html><title>400 Bad Request</title>', { status: 400 }),
     );
 
-    expect(errorOf(result).code).toBe(JsonRpcErrorCode.RateLimited);
+    const result = await runToolContract(searchCompounds, smilesBatch(['not-a-smiles']));
+
+    const error = errorOf(result);
+    expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+    expect(error.data?.reason).toBe('identifier_rejected');
+    expect(Object.keys(error.data ?? {})).not.toContain('fault');
+    expect(JSON.stringify(result.structuredContent)).not.toMatch(/doctype/i);
   });
 
   it('treats a 400 on a name lookup the same way', async () => {

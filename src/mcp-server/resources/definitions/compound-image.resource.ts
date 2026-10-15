@@ -6,6 +6,7 @@
 import { resource, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { MAX_CID } from '@/services/pubchem/types.js';
 
 export const compoundImageResource = resource('pubchem://compound/{cid}/image', {
   name: 'pubchem-compound-image',
@@ -13,7 +14,7 @@ export const compoundImageResource = resource('pubchem://compound/{cid}/image', 
     'A 2D structure diagram (PNG, 300x300) for a PubChem compound by CID. Use pubchem_get_compound_image to choose the image size.',
   mimeType: 'image/png',
   params: z.object({
-    cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
+    cid: z.coerce.number().int().min(1).max(MAX_CID).describe('PubChem Compound ID.'),
   }),
   output: z.object({
     base64: z.string().describe('Base64-encoded PNG image data.'),

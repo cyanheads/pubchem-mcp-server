@@ -21,76 +21,37 @@ beforeEach(() => {
 });
 
 describe('searchAssays handler — all target types', () => {
-  it('searches by proteinname', async () => {
-    mockClient.searchAssaysByTarget.mockResolvedValueOnce([100, 200]);
+  it.each([
+    ['proteinname', 'Epidermal growth factor receptor', [100, 200]],
+    ['proteinaccession', 'P00533', [300, 400, 500]],
+    ['geneid', '5743', [600]],
+  ] as const)('searches by %s', async (targetType, targetQuery, aids) => {
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([...aids]);
     const ctx = createMockContext({ errors: searchAssays.errors });
-    const input = searchAssays.input.parse({
-      targetType: 'proteinname',
-      targetQuery: 'Epidermal growth factor receptor',
-    });
+    const input = searchAssays.input.parse({ targetType, targetQuery });
     const result = await searchAssays.handler(input, ctx);
     const enrichment = getEnrichment(ctx);
 
     expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
-      'proteinname',
-      'Epidermal growth factor receptor',
+      targetType,
+      targetQuery,
       expect.any(AbortSignal),
     );
-    expect(result.aids).toEqual([100, 200]);
-    expect(enrichment.targetType).toBe('proteinname');
-    expect(enrichment.targetQuery).toBe('Epidermal growth factor receptor');
-  });
-
-  it('searches by proteinaccession', async () => {
-    mockClient.searchAssaysByTarget.mockResolvedValueOnce([300, 400, 500]);
-    const ctx = createMockContext({ errors: searchAssays.errors });
-    const input = searchAssays.input.parse({
-      targetType: 'proteinaccession',
-      targetQuery: 'P00533',
-    });
-    const result = await searchAssays.handler(input, ctx);
-
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
-      'proteinaccession',
-      'P00533',
-      expect.any(AbortSignal),
-    );
-    expect(result.aids).toEqual([300, 400, 500]);
-  });
-
-  it('searches by geneid', async () => {
-    mockClient.searchAssaysByTarget.mockResolvedValueOnce([600]);
-    const ctx = createMockContext({ errors: searchAssays.errors });
-    const input = searchAssays.input.parse({
-      targetType: 'geneid',
-      targetQuery: '5743',
-    });
-    const result = await searchAssays.handler(input, ctx);
-
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
-      'geneid',
-      '5743',
-      expect.any(AbortSignal),
-    );
-    expect(result.aids).toEqual([600]);
+    expect(result.aids).toEqual(aids);
+    expect(enrichment.targetType).toBe(targetType);
+    expect(enrichment.targetQuery).toBe(targetQuery);
   });
 });
 
 describe('searchAssays handler — target query validation (#26)', () => {
-  it('throws blank_target_query for an empty targetQuery', async () => {
+  it.each([
+    ['an empty', ''],
+    ['a whitespace-only', '   '],
+  ])('throws blank_target_query for %s targetQuery', async (_label, targetQuery) => {
     const ctx = createMockContext({ errors: searchAssays.errors });
-    const input = searchAssays.input.parse({ targetType: 'genesymbol', targetQuery: '' });
+    const input = searchAssays.input.parse({ targetType: 'genesymbol', targetQuery });
     await expect(searchAssays.handler(input, ctx)).rejects.toMatchObject({
       code: JsonRpcErrorCode.ValidationError,
-      data: { reason: 'blank_target_query' },
-    });
-    expect(mockClient.searchAssaysByTarget).not.toHaveBeenCalled();
-  });
-
-  it('throws blank_target_query for a whitespace-only targetQuery', async () => {
-    const ctx = createMockContext({ errors: searchAssays.errors });
-    const input = searchAssays.input.parse({ targetType: 'genesymbol', targetQuery: '   ' });
-    await expect(searchAssays.handler(input, ctx)).rejects.toMatchObject({
       data: { reason: 'blank_target_query' },
     });
     expect(mockClient.searchAssaysByTarget).not.toHaveBeenCalled();
@@ -148,62 +109,25 @@ describe('searchAssays handler — target query validation (#26)', () => {
 });
 
 describe('searchAssays handler — input validation', () => {
-  it('rejects invalid targetType', () => {
+  it.each([
+    ['an unknown targetType', { targetType: 'invalidtype' }],
+    ['maxResults below 1', { maxResults: 0 }],
+    ['a fractional maxResults', { maxResults: 2.5 }],
+    ['maxResults 1001 (#70)', { maxResults: 1001 }],
+  ])('rejects %s', (_label, override) => {
     expect(() =>
-      searchAssays.input.parse({
-        targetType: 'invalidtype' as unknown as 'genesymbol',
-        targetQuery: 'EGFR',
-      }),
+      searchAssays.input.parse({ targetType: 'genesymbol', targetQuery: 'EGFR', ...override }),
     ).toThrow();
   });
 
-  it('rejects maxResults below 1', () => {
-    expect(() =>
-      searchAssays.input.parse({
-        targetType: 'genesymbol',
-        targetQuery: 'EGFR',
-        maxResults: 0,
-      }),
-    ).toThrow();
-  });
-
-  it('rejects a fractional maxResults', () => {
-    expect(() =>
-      searchAssays.input.parse({
-        targetType: 'genesymbol',
-        targetQuery: 'EGFR',
-        maxResults: 2.5,
-      }),
-    ).toThrow();
-  });
-
-  it('rejects maxResults above 200', () => {
-    expect(() =>
-      searchAssays.input.parse({
-        targetType: 'genesymbol',
-        targetQuery: 'EGFR',
-        maxResults: 201,
-      }),
-    ).toThrow();
-  });
-
-  it('accepts maxResults at boundary values', () => {
-    expect(() =>
-      searchAssays.input.parse({
-        targetType: 'genesymbol',
-        targetQuery: 'EGFR',
-        maxResults: 1,
-      }),
-    ).not.toThrow();
-
-    expect(() =>
-      searchAssays.input.parse({
-        targetType: 'genesymbol',
-        targetQuery: 'EGFR',
-        maxResults: 200,
-      }),
-    ).not.toThrow();
-  });
+  it.each([1, 200, 201, 1000])(
+    'accepts maxResults=%i (cap raised from 200 to 1000, #70)',
+    (maxResults) => {
+      expect(() =>
+        searchAssays.input.parse({ targetType: 'genesymbol', targetQuery: 'EGFR', maxResults }),
+      ).not.toThrow();
+    },
+  );
 });
 
 describe('searchAssays handler — enrichment details', () => {
@@ -240,53 +164,26 @@ describe('searchAssays handler — enrichment details', () => {
 });
 
 describe('searchAssays handler — security', () => {
-  it('passes injection strings as targetQuery without interpreting them', async () => {
-    mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
-    const ctx = createMockContext({ errors: searchAssays.errors });
-    const injected = "'; DROP TABLE assays; --";
-    const input = searchAssays.input.parse({
-      targetType: 'proteinname',
-      targetQuery: injected,
-    });
-    const result = await searchAssays.handler(input, ctx);
+  it.each([
+    ['an injection string', 'proteinname', "'; DROP TABLE assays; --"],
+    ['unicode', 'proteinname', '受体激酶'],
+    ['a very long string', 'genesymbol', 'EGFR'.repeat(1000)],
+  ] as const)(
+    'passes %s through as targetQuery uninterpreted',
+    async (_label, targetType, targetQuery) => {
+      mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
+      const ctx = createMockContext({ errors: searchAssays.errors });
+      const input = searchAssays.input.parse({ targetType, targetQuery });
+      const result = await searchAssays.handler(input, ctx);
 
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
-      'proteinname',
-      injected,
-      expect.any(AbortSignal),
-    );
-    expect(result.aids).toHaveLength(0);
-  });
-
-  it('handles unicode in targetQuery without crashing', async () => {
-    mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
-    const ctx = createMockContext({ errors: searchAssays.errors });
-    const input = searchAssays.input.parse({
-      targetType: 'proteinname',
-      targetQuery: '受体激酶',
-    });
-    const result = await searchAssays.handler(input, ctx);
-
-    expect(result.aids).toHaveLength(0);
-    expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
-      'proteinname',
-      '受体激酶',
-      expect.any(AbortSignal),
-    );
-  });
-
-  it('handles very long targetQuery without crashing', async () => {
-    mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
-    const ctx = createMockContext({ errors: searchAssays.errors });
-    const longQuery = 'EGFR'.repeat(1000);
-    const input = searchAssays.input.parse({
-      targetType: 'genesymbol',
-      targetQuery: longQuery,
-    });
-    const result = await searchAssays.handler(input, ctx);
-
-    expect(result.aids).toHaveLength(0);
-  });
+      expect(mockClient.searchAssaysByTarget).toHaveBeenCalledWith(
+        targetType,
+        targetQuery,
+        expect.any(AbortSignal),
+      );
+      expect(result.aids).toHaveLength(0);
+    },
+  );
 });
 
 describe('searchAssays format — additional cases', () => {

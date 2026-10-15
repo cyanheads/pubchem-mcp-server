@@ -6,6 +6,7 @@
  * @module services/pubchem/pubchem-client-extended.test
  */
 
+import { readFileSync } from 'node:fs';
 import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PubChemClient } from '@/services/pubchem/pubchem-client.js';
@@ -59,12 +60,16 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
               Section: [
                 {
                   TOCHeading: 'GHS Classification',
+                  // Every entry names the reference that deposited it, as on the wire — the
+                  // source is attributed through ReferenceNumber, not Reference[0].
                   Information: [
                     {
+                      ReferenceNumber: 1,
                       Name: 'Signal',
                       Value: { StringWithMarkup: [{ String: 'Danger' }] },
                     },
                     {
+                      ReferenceNumber: 1,
                       Name: 'Pictogram(s)',
                       Value: {
                         StringWithMarkup: [
@@ -79,6 +84,7 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
                       // Verbatim from CID 2244 (aspirin). PubChem interposes the
                       // depositor-agreement percentage between the code and the colon, and
                       // appends the GHS hazard class in brackets.
+                      ReferenceNumber: 1,
                       Name: 'GHS Hazard Statements',
                       Value: {
                         StringWithMarkup: [
@@ -98,6 +104,7 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
                       // trailing "(click each P-code to see the statement)" prose PubChem
                       // appends to every list. Splitting on the delimiter and anchoring each
                       // token drops whichever code that prose is glued to.
+                      ReferenceNumber: 1,
                       Name: 'Precautionary Statement Codes',
                       Value: {
                         StringWithMarkup: [
@@ -221,25 +228,18 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
   it('keeps the final P-code when PubChem appends prose to the list', async () => {
     // Verbatim from CID 702 (ethanol). The list ends "…, and P501 (click each P-code to see
     // the statement)" — the prose is attached to the last code, not to a token of its own.
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        ghsRecord(
-          702,
-          ['H225: Highly Flammable liquid and vapor [Danger Flammable liquids]'],
-          [
-            'P210, P233, P240, P241, P242, P243, P280, P303+P361+P353, P370+P378, P403+P235, and P501 (click each P-code to see the statement)',
-          ],
-        ),
+    const ghs = await ghsFrom(
+      ghsRecord(
+        702,
+        ['H225: Highly Flammable liquid and vapor [Danger Flammable liquids]'],
+        [
+          'P210, P233, P240, P241, P242, P243, P280, P303+P361+P353, P370+P378, P403+P235, and P501 (click each P-code to see the statement)',
+        ],
       ),
+      702,
     );
 
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(702);
-    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
-    const codes = ghs.precautionaryStatements.map((p) => p.code);
-
-    expect(codes).toContain('P501');
-    expect(codes).toEqual([
+    expect(ghs.precautionaryStatements.map((p) => p.code)).toEqual([
       'P210',
       'P233',
       'P240',
@@ -257,19 +257,14 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
   it('extracts P-codes independently of the delimiter and the appended wording', async () => {
     // The parse must not depend on commas or on the exact prose PubChem appends, so a change
     // to either costs no data.
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        ghsRecord(
-          1,
-          ['H302: Harmful if swallowed'],
-          ['P210; P264+P265; P405; P501 (see each P-code for the full statement text)'],
-        ),
+    const ghs = await ghsFrom(
+      ghsRecord(
+        1,
+        ['H302: Harmful if swallowed'],
+        ['P210; P264+P265; P405; P501 (see each P-code for the full statement text)'],
       ),
+      1,
     );
-
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(1);
-    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
 
     expect(ghs.precautionaryStatements.map((p) => p.code)).toEqual([
       'P210',
@@ -282,23 +277,18 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
   it('parses hazard statements carrying a depositor-agreement percentage', async () => {
     // Verbatim from CID 962 (water), whose depositors report only the annotated form — the
     // record surfaced zero hazard statements because every one failed the parse.
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        ghsRecord(
-          962,
-          [
-            'H315 (100%): Causes skin irritation [Warning Skin corrosion/irritation]',
-            'H319 (100%): Causes serious eye irritation [Warning Serious eye damage/eye irritation]',
-            'H335 (100%): May cause respiratory irritation [Warning Specific target organ toxicity, single exposure; Respiratory tract irritation]',
-          ],
-          ['P261, P264, P271, P280, and P501 (click each P-code to see the statement)'],
-        ),
+    const ghs = await ghsFrom(
+      ghsRecord(
+        962,
+        [
+          'H315 (100%): Causes skin irritation [Warning Skin corrosion/irritation]',
+          'H319 (100%): Causes serious eye irritation [Warning Serious eye damage/eye irritation]',
+          'H335 (100%): May cause respiratory irritation [Warning Specific target organ toxicity, single exposure; Respiratory tract irritation]',
+        ],
+        ['P261, P264, P271, P280, and P501 (click each P-code to see the statement)'],
       ),
+      962,
     );
-
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(962);
-    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
 
     expect(ghs.hazardStatements.map((h) => h.code)).toEqual(['H315', 'H319', 'H335']);
     expect(ghs.hazardStatements[0]!.statement).toBe(
@@ -307,13 +297,10 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
   });
 
   it('still parses a hazard statement with no percentage annotation', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(ghsRecord(1, ['H302: Harmful if swallowed [Warning Acute toxicity, oral]'], [])),
+    const ghs = await ghsFrom(
+      ghsRecord(1, ['H302: Harmful if swallowed [Warning Acute toxicity, oral]'], []),
+      1,
     );
-
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(1);
-    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
 
     expect(ghs.hazardStatements).toEqual([
       { code: 'H302', statement: 'Harmful if swallowed [Warning Acute toxicity, oral]' },
@@ -324,25 +311,20 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
     // Verbatim shapes from CID 23954 (H361f), CID 24261 (H350i), CID 887 (H360FD) and the
     // asterisk marker CID 241/887 carry. A suffixed code names a narrower classification than
     // its base, and on CID 23954 H361f is deposited with no bare H361 to fall back on.
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        ghsRecord(
-          23954,
-          [
-            'H361f: Suspected of damaging fertility [Warning Reproductive toxicity]',
-            'H350i: May cause cancer by inhalation [Danger Carcinogenicity]',
-            'H360FD (100%): May damage fertility; May damage the unborn child [Danger Reproductive toxicity]',
-            'H370 **: Causes damage to organs [Danger Specific target organ toxicity, single exposure]',
-            'H361d ***: Suspected of damaging the unborn child [Warning Reproductive toxicity]',
-          ],
-          [],
-        ),
+    const ghs = await ghsFrom(
+      ghsRecord(
+        23954,
+        [
+          'H361f: Suspected of damaging fertility [Warning Reproductive toxicity]',
+          'H350i: May cause cancer by inhalation [Danger Carcinogenicity]',
+          'H360FD (100%): May damage fertility; May damage the unborn child [Danger Reproductive toxicity]',
+          'H370 **: Causes damage to organs [Danger Specific target organ toxicity, single exposure]',
+          'H361d ***: Suspected of damaging the unborn child [Warning Reproductive toxicity]',
+        ],
+        [],
       ),
+      23954,
     );
-
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(23954);
-    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
 
     expect(ghs.hazardStatements).toEqual([
       {
@@ -388,93 +370,67 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
 
   it('keeps a suffixed code distinct from its base code', async () => {
     // H360 and H360D are different classifications, so dedup-by-code must not collapse them.
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        ghsRecord(
-          6228,
-          [
-            'H360: May damage fertility or the unborn child [Danger Reproductive toxicity]',
-            'H360D: May damage the unborn child [Danger Reproductive toxicity]',
-          ],
-          [],
-        ),
+    const ghs = await ghsFrom(
+      ghsRecord(
+        6228,
+        [
+          'H360: May damage fertility or the unborn child [Danger Reproductive toxicity]',
+          'H360D: May damage the unborn child [Danger Reproductive toxicity]',
+        ],
+        [],
       ),
+      6228,
     );
-
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(6228);
-    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
 
     expect(ghs.hazardStatements.map((h) => h.code)).toEqual(['H360', 'H360D']);
   });
 
-  it('reports no_ghs_data when no GHS Classification section exists', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        Record: {
-          RecordType: 'CID',
-          RecordNumber: 999,
-          Section: [{ TOCHeading: 'Names and Identifiers' }],
-        },
-      }),
-    );
+  // #42 — PUG View answers both 404 outcomes as PUGVIEW.NotFound. Collapsing them made a
+  // mistyped CID indistinguishable from a real compound carrying no safety classification.
+  // An unrecognizable 404 falls back to no_ghs_data: understating what is known beats sending
+  // the caller after a "wrong" CID that is fine.
+  it.each([
+    [
+      'no GHS Classification section exists',
+      () =>
+        jsonResponse({
+          Record: {
+            RecordType: 'CID',
+            RecordNumber: 999,
+            Section: [{ TOCHeading: 'Names and Identifiers' }],
+          },
+        }),
+      'no_ghs_data',
+    ],
+    [
+      'the GHS section has no parseable data',
+      () =>
+        jsonResponse({
+          Record: {
+            RecordType: 'CID',
+            RecordNumber: 1,
+            Section: [{ TOCHeading: 'GHS Classification', Information: [] }],
+          },
+        }),
+      'no_ghs_data',
+    ],
+    ['PUG View has no record for the CID', () => pugViewFault('No record found'), 'cid_not_found'],
+    [
+      'the CID exists but the heading carries no data',
+      () => pugViewFault('No data found'),
+      'no_ghs_data',
+    ],
+    [
+      'a 404 carries no recognizable fault message',
+      () => textResponse('Not Found', 404),
+      'no_ghs_data',
+    ],
+  ])('reports the right status when %s', async (_label, respond, status) => {
+    fetchMock.mockResolvedValueOnce(respond());
 
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(999);
+    const result = await new PubChemClient().getSafetyData(999999999);
 
-    expect(result).toEqual({ status: 'no_ghs_data' });
-  });
-
-  it('reports no_ghs_data when GHS section has no parseable data', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        Record: {
-          RecordType: 'CID',
-          RecordNumber: 1,
-          Section: [
-            {
-              TOCHeading: 'GHS Classification',
-              Information: [],
-            },
-          ],
-        },
-      }),
-    );
-
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(1);
-
-    expect(result).toEqual({ status: 'no_ghs_data' });
-  });
-
-  // #42 — PUG View answers both outcomes with HTTP 404 PUGVIEW.NotFound. Collapsing them made
-  // a mistyped CID indistinguishable from a real compound carrying no safety classification.
-  it('reports cid_not_found when PUG View has no record for the CID', async () => {
-    fetchMock.mockResolvedValueOnce(pugViewFault('No record found'));
-
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(999999999);
-
-    expect(result).toEqual({ status: 'cid_not_found' });
-  });
-
-  it('reports no_ghs_data when the CID exists but the heading carries no data', async () => {
-    fetchMock.mockResolvedValueOnce(pugViewFault('No data found'));
-
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(11979316);
-
-    expect(result).toEqual({ status: 'no_ghs_data' });
-  });
-
-  it('falls back to no_ghs_data when a 404 carries no recognizable fault message', async () => {
-    fetchMock.mockResolvedValueOnce(textResponse('Not Found', 404));
-
-    const client = new PubChemClient();
-    const result = await client.getSafetyData(999999999);
-
-    // Understating what is known beats sending the caller after a "wrong" CID that is fine.
-    expect(result).toEqual({ status: 'no_ghs_data' });
+    expect(result).toEqual({ status });
   });
 
   it('deduplicates hazard statement codes across depositors', async () => {
@@ -526,6 +482,365 @@ describe('PubChemClient.getSafetyData — GHS parsing', () => {
     const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
     // H302 must appear only once
     expect(ghs.hazardStatements.filter((h) => h.code === 'H302')).toHaveLength(1);
+  });
+});
+
+// ── getSafetyData — per-source classifications ───────────────────────
+
+/** Captured PUG View `heading=GHS+Classification` responses (2026-10-14), `Record.Reference`
+ * trimmed to the fields the parser reads; `Section` is verbatim. */
+const FIXTURES = new URL('../../fixtures/', import.meta.url);
+
+type PugViewFixture = {
+  Record: {
+    Reference: Array<{ ReferenceNumber: number; SourceName: string; Name?: string }>;
+    Section: Array<Record<string, unknown>>;
+  };
+};
+
+function ghsFixture(cid: number): PugViewFixture {
+  return JSON.parse(readFileSync(new URL(`ghs-${cid}.json`, FIXTURES), 'utf8')) as PugViewFixture;
+}
+
+/** The fixture's GHS Classification `Information` array (Safety and Hazards > Hazards
+ * Identification > GHS Classification on every captured record). */
+function ghsInformation(record: PugViewFixture): Array<{ ReferenceNumber?: number }> {
+  const find = (sections: Array<Record<string, unknown>>): Array<{ ReferenceNumber?: number }> => {
+    for (const s of sections) {
+      if (s.TOCHeading === 'GHS Classification') {
+        return s.Information as Array<{ ReferenceNumber?: number }>;
+      }
+      if (s.Section) {
+        const found = find(s.Section as Array<Record<string, unknown>>);
+        if (found.length > 0) return found;
+      }
+    }
+    return [];
+  };
+  return find(record.Record.Section);
+}
+
+/** Replace the fixture's GHS `Information` array in place. */
+function setGhsInformation(record: PugViewFixture, infos: Array<{ ReferenceNumber?: number }>) {
+  const current = ghsInformation(record);
+  current.splice(0, current.length, ...infos);
+}
+
+const baseline = JSON.parse(
+  readFileSync(new URL('ghs-toplevel-baseline.json', FIXTURES), 'utf8'),
+) as Record<
+  string,
+  Pick<GHSClassification, 'pictograms' | 'hazardStatements' | 'precautionaryStatements'>
+>;
+
+async function safetyFrom(record: unknown, cid: number) {
+  fetchMock.mockResolvedValueOnce(jsonResponse(record));
+  return await new PubChemClient().getSafetyData(cid);
+}
+
+async function ghsFrom(record: unknown, cid: number): Promise<GHSClassification> {
+  const result = await safetyFrom(record, cid);
+  expect(result.status).toBe('ok');
+  return (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+}
+
+describe('PubChemClient.getSafetyData — per-source classifications (#63)', () => {
+  // Characterization: the merged top-level unions are part of the contract and must not move.
+  // The baseline file is the pre-change parser's own output over these fixtures.
+  it.each([702, 2244, 5743])(
+    'keeps the top-level pictogram, hazard, and precautionary unions for CID %i',
+    async (cid) => {
+      const ghs = await ghsFrom(ghsFixture(cid), cid);
+
+      expect({
+        pictograms: ghs.pictograms,
+        hazardStatements: ghs.hazardStatements,
+        precautionaryStatements: ghs.precautionaryStatements,
+      }).toStrictEqual(baseline[String(cid)]);
+    },
+  );
+
+  it('fetches only the GHS Classification heading', async () => {
+    await ghsFrom(ghsFixture(5743), 5743);
+
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]));
+    expect(url.hostname).toBe('pubchem.ncbi.nlm.nih.gov');
+    expect(url.pathname).toBe('/rest/pug_view/data/compound/5743/JSON');
+    expect(url.searchParams.get('heading')).toBe('GHS Classification');
+  });
+
+  it("returns each source's classification intact for ethanol (CID 702)", async () => {
+    const ghs = await ghsFrom(ghsFixture(702), 702);
+    const classifications = ghs.classifications;
+
+    expect(classifications).toHaveLength(11);
+    // EU harmonised classification: H225 only, no notifier percentage on a regulation.
+    expect(classifications[0]).toStrictEqual({
+      source: 'Regulation (EC) No 1272/2008 of the European Parliament and of the Council',
+      sourceRecord: 'ethanol; ethyl alcohol',
+      signalWord: 'Danger',
+      pictograms: ['Flammable'],
+      hazardCodes: [{ code: 'H225' }],
+    });
+    // ECHA aggregate keeps the agreement percentages verbatim and the notification count.
+    expect(classifications[1]).toMatchObject({
+      source: 'European Chemicals Agency (ECHA)',
+      sourceRecord: 'Ethanol (EC: 200-578-6)',
+      signalWord: 'Danger',
+      pictograms: ['Flammable', 'Irritant'],
+    });
+    expect(classifications[1]!.hazardCodes).toStrictEqual([
+      { code: 'H225', agreement: '> 99.9%' },
+      { code: 'H319', agreement: '37.7%' },
+    ]);
+    expect(classifications[1]!.notifications).toBe(
+      'Aggregated GHS information provided per 13886 reports by companies from 79 notifications to the ECHA C&L Inventory. Each notification may be associated with multiple companies.',
+    );
+    // A single-company ECHA notification is a separate classification with its own 100%.
+    expect(classifications[2]).toMatchObject({
+      sourceRecord: 'Alcohol',
+      signalWord: 'Warning',
+      hazardCodes: [
+        { code: 'H319', agreement: '100%' },
+        { code: 'H412', agreement: '100%' },
+      ],
+      notifications:
+        'The GHS information provided by 1 company from 1 notification to the ECHA C&L Inventory.',
+    });
+    // Classifications follow PubChem's order.
+    expect(classifications.map((c) => c.source)).toEqual([
+      'Regulation (EC) No 1272/2008 of the European Parliament and of the Council',
+      'European Chemicals Agency (ECHA)',
+      'European Chemicals Agency (ECHA)',
+      'European Chemicals Agency (ECHA)',
+      'European Chemicals Agency (ECHA)',
+      'European Chemicals Agency (ECHA)',
+      'NITE-CMC',
+      'NITE-CMC',
+      'NITE-CMC',
+      'Hazardous Chemical Information System (HCIS), Safe Work Australia',
+      'Hazardous Substances Data Bank (HSDB)',
+    ]);
+    expect(classifications.some((c) => c.notClassified)).toBe(false);
+  });
+
+  it('attributes a minority hazard code to the one classification that made it (CID 702 H350)', async () => {
+    const ghs = await ghsFrom(ghsFixture(702), 702);
+    const withH350 = ghs.classifications.filter((c) =>
+      c.hazardCodes.some((h) => h.code === 'H350'),
+    );
+
+    expect(withH350).toHaveLength(1);
+    expect(withH350[0]).toMatchObject({
+      source: 'NITE-CMC',
+      sourceRecord: 'Ethanol - FY2013 (Revised classification)',
+    });
+    // Still in the top-level union.
+    expect(ghs.hazardStatements.map((h) => h.code)).toContain('H350');
+  });
+
+  it('credits source to the GHS contributors only, never Reference[0]', async () => {
+    const dexamethasone = await ghsFrom(ghsFixture(5743), 5743);
+    expect(dexamethasone.source).toBe('European Chemicals Agency (ECHA)');
+
+    // CID 8929's Reference[0] is the Emergency Response Guidebook, which deposits no GHS entry.
+    const record = ghsFixture(8929);
+    expect(record.Record.Reference[0]!.SourceName).toBe('Emergency Response Guidebook (ERG)');
+    const cyanide = await ghsFrom(record, 8929);
+    expect(cyanide.source).toBe(
+      'European Chemicals Agency (ECHA); NITE-CMC; Hazardous Chemical Information System (HCIS), Safe Work Australia',
+    );
+
+    // Distinct sources, PubChem order, five ECHA classifications named once.
+    const ethanol = await ghsFrom(ghsFixture(702), 702);
+    expect(ethanol.source).toBe(
+      'Regulation (EC) No 1272/2008 of the European Parliament and of the Council; European Chemicals Agency (ECHA); NITE-CMC; Hazardous Chemical Information System (HCIS), Safe Work Australia; Hazardous Substances Data Bank (HSDB)',
+    );
+  });
+
+  it('reports the most severe signal word regardless of block order (CID 2244)', async () => {
+    const ghs = await ghsFrom(ghsFixture(2244), 2244);
+    expect(ghs.signalWord).toBe('Danger');
+    // The ECHA aggregate's own label says Warning — kept on its classification.
+    expect(ghs.classifications[0]).toMatchObject({
+      source: 'European Chemicals Agency (ECHA)',
+      signalWord: 'Warning',
+    });
+
+    // Reverse the classification blocks so the ECHA Warning block is read last.
+    const reversed = ghsFixture(2244);
+    const infos = ghsInformation(reversed);
+    const order = [...new Set(infos.map((i) => i.ReferenceNumber))].reverse();
+    setGhsInformation(
+      reversed,
+      order.flatMap((ref) => infos.filter((i) => i.ReferenceNumber === ref)),
+    );
+    expect(ghsInformation(reversed).at(-1)?.ReferenceNumber).toBe(51);
+
+    const reversedGhs = await ghsFrom(reversed, 2244);
+    expect(reversedGhs.signalWord).toBe('Danger');
+    expect(reversedGhs.classifications.at(-1)).toMatchObject({ signalWord: 'Warning' });
+  });
+
+  it('keeps a classification that carries no signal word (CID 241, NITE-CMC FY2014)', async () => {
+    const ghs = await ghsFrom(ghsFixture(241), 241);
+    const fy2014 = ghs.classifications.find(
+      (c) => c.sourceRecord === 'Benzene - FY2014 (Revised classification)',
+    );
+
+    expect(fy2014).toBeDefined();
+    expect(fy2014).not.toHaveProperty('signalWord');
+    expect(fy2014!.hazardCodes.map((h) => h.code)).toEqual(['H401', 'H411']);
+    expect(ghs.classifications).toHaveLength(7);
+  });
+
+  it('reads the agreement annotation and ignores asterisk markers', async () => {
+    // Sparse shape: no ReferenceNumber, no Reference list — one classification, no source.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        Record: {
+          RecordType: 'CID',
+          RecordNumber: 23954,
+          Section: [
+            {
+              TOCHeading: 'GHS Classification',
+              Information: [
+                {
+                  Name: 'GHS Hazard Statements',
+                  Value: {
+                    StringWithMarkup: [
+                      { String: 'H361f: Suspected of damaging fertility' },
+                      {
+                        String: 'H360FD (100%): May damage fertility; May damage the unborn child',
+                      },
+                      { String: 'H370 **: Causes damage to organs' },
+                      { String: 'H370 (12.5%) *: Causes damage to organs' },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    const result = await new PubChemClient().getSafetyData(23954);
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+
+    expect(ghs.classifications).toHaveLength(1);
+    expect(ghs.classifications[0]).not.toHaveProperty('source');
+    expect(ghs.source).toBeUndefined();
+    // First occurrence of a code wins within one classification, as in the top-level union.
+    expect(ghs.classifications[0]!.hazardCodes).toStrictEqual([
+      { code: 'H361f' },
+      { code: 'H360FD', agreement: '100%' },
+      { code: 'H370' },
+    ]);
+    // The top-level statements never carry the annotation.
+    expect(ghs.hazardStatements).toStrictEqual([
+      { code: 'H361f', statement: 'Suspected of damaging fertility' },
+      { code: 'H360FD', statement: 'May damage fertility; May damage the unborn child' },
+      { code: 'H370', statement: 'Causes damage to organs' },
+    ]);
+  });
+});
+
+describe('PubChemClient.getSafetyData — ECHA "Not Classified" verdicts (#71)', () => {
+  it('reports not_classified for D-glucose (CID 5793), every block a verdict', async () => {
+    const result = await safetyFrom(ghsFixture(5793), 5793);
+
+    expect(result.status).toBe('not_classified');
+    const ghs = (result as { status: 'not_classified'; ghs: GHSClassification }).ghs;
+    expect(ghs.classifications).toStrictEqual([
+      {
+        source: 'European Chemicals Agency (ECHA)',
+        sourceRecord: 'Glucose (EC: 200-075-1)',
+        pictograms: [],
+        hazardCodes: [],
+        notClassified: true,
+        notifications:
+          'Reported as not meeting GHS hazard criteria by 946 of 969 companies (only 2.4% companies provided GHS information).',
+      },
+      {
+        source: 'European Chemicals Agency (ECHA)',
+        sourceRecord: 'D-Glucose (EC: 807-615-0)',
+        pictograms: [],
+        hazardCodes: [],
+        notClassified: true,
+        notifications: 'Reported as not meeting GHS hazard criteria by 3 of 3 companies.',
+      },
+      {
+        // This block deposits no notifications summary; the verdict line still carries counts.
+        source: 'European Chemicals Agency (ECHA)',
+        sourceRecord: 'D-glucose (EC: 218-914-5)',
+        pictograms: [],
+        hazardCodes: [],
+        notClassified: true,
+        notifications: 'Reported as not meeting GHS hazard criteria by 1 of 1 companies.',
+      },
+    ]);
+    expect(ghs.signalWord).toBeUndefined();
+    expect(ghs.pictograms).toEqual([]);
+    expect(ghs.hazardStatements).toEqual([]);
+    expect(ghs.precautionaryStatements).toEqual([]);
+    expect(ghs.source).toBe('European Chemicals Agency (ECHA)');
+  });
+
+  it('reports not_classified for folic acid (CID 135398658) with the notifier counts', async () => {
+    const result = await safetyFrom(ghsFixture(135398658), 135398658);
+
+    expect(result.status).toBe('not_classified');
+    const ghs = (result as { status: 'not_classified'; ghs: GHSClassification }).ghs;
+    expect(ghs.classifications).toHaveLength(1);
+    expect(ghs.classifications[0]).toMatchObject({
+      notClassified: true,
+      hazardCodes: [],
+      notifications:
+        'Reported as not meeting GHS hazard criteria by 188 of 203 companies (only 7.4% companies provided GHS information).',
+    });
+  });
+
+  it('keeps ok and flags the verdict block when hazard classifications sit beside it', async () => {
+    // Ethanol's 11 classifications plus folic acid's not-classified ECHA block, renumbered.
+    const mixed = ghsFixture(702);
+    const verdict = ghsFixture(135398658);
+    const verdictBlock = ghsInformation(verdict).map((info) => ({ ...info, ReferenceNumber: 900 }));
+    setGhsInformation(mixed, [...ghsInformation(mixed), ...verdictBlock]);
+    mixed.Record.Reference.push({
+      ReferenceNumber: 900,
+      SourceName: 'European Chemicals Agency (ECHA)',
+      Name: 'Folic acid (EC: 200-419-0)',
+    });
+
+    const result = await safetyFrom(mixed, 702);
+
+    expect(result.status).toBe('ok');
+    const ghs = (result as { status: 'ok'; ghs: GHSClassification }).ghs;
+    expect(ghs.classifications).toHaveLength(12);
+    expect(ghs.classifications.at(-1)).toMatchObject({
+      sourceRecord: 'Folic acid (EC: 200-419-0)',
+      notClassified: true,
+      hazardCodes: [],
+    });
+    expect(ghs.classifications.filter((c) => c.notClassified)).toHaveLength(1);
+    // The verdict changes none of the merged top-level fields.
+    expect(ghs.signalWord).toBe('Danger');
+    expect({
+      pictograms: ghs.pictograms,
+      hazardStatements: ghs.hazardStatements,
+      precautionaryStatements: ghs.precautionaryStatements,
+    }).toStrictEqual(baseline['702']);
+  });
+
+  it('keeps no_ghs_data and cid_not_found for the two 404 faults', async () => {
+    fetchMock.mockResolvedValueOnce(pugViewFault('No data found'));
+    expect(await new PubChemClient().getSafetyData(11979316)).toEqual({ status: 'no_ghs_data' });
+
+    fetchMock.mockResolvedValueOnce(pugViewFault('No record found'));
+    expect(await new PubChemClient().getSafetyData(999999999)).toEqual({
+      status: 'cid_not_found',
+    });
   });
 });
 
@@ -686,10 +1001,170 @@ describe('PubChemClient.getClassification — pharmacology parsing', () => {
   });
 });
 
+// ── getClassification: ATC (#64) ──────────────────────────────────────
+
+/**
+ * Real PUG View `ATC Code` sections for aspirin (2244), ibuprofen (3672), dexamethasone (5743)
+ * and atorvastatin (60823), trimmed to the fields the parser reads: every `Information` entry
+ * in deposit order with its ReferenceNumber, Name and strings, plus the `Record.Reference`
+ * entries those numbers point at. Each section opens with a bare code from NORMAN Suspect List
+ * Exchange, then one five-string WHO ATC block per code, ATCvet blocks (`Q…`), and a WHO Model
+ * List of Essential Medicines code list (`"C05AA09; H02AB02; L01AA01"` on 5743).
+ */
+type PugViewRecordFixture = {
+  Record: {
+    Section: Array<{ Section: Array<{ Information: Array<Record<string, unknown>> }> }>;
+    Reference: Array<{ ReferenceNumber: number; SourceName: string }>;
+  };
+};
+const atcFixtures = JSON.parse(
+  readFileSync(new URL('../../fixtures/pug-view-atc.json', import.meta.url), 'utf8'),
+) as Record<string, PugViewRecordFixture>;
+
+/** A deep copy of one fixture, so a test can reshape its ATC entries without leaking. */
+function atcFixture(cid: number): PugViewRecordFixture {
+  return structuredClone(atcFixtures[String(cid)]!);
+}
+
+function atcInformation(record: PugViewRecordFixture): Array<Record<string, unknown>> {
+  return record.Record.Section[0]!.Section[0]!.Information;
+}
+
+async function classify(record: PugViewRecordFixture, cid: number) {
+  fetchMock.mockResolvedValueOnce(jsonResponse(record));
+  return new PubChemClient().getClassification(cid);
+}
+
+describe('PubChemClient.getClassification — ATC codes on real PUG View sections (#64)', () => {
+  const expectedCodes: Record<number, string[]> = {
+    2244: ['N02BA01', 'A01AD05', 'B01AC06'],
+    3672: ['M01AE01', 'M02AA13', 'C01EB16', 'R02AX02', 'G02CC01'],
+    5743: [
+      'H02AB02',
+      'R01AD03',
+      'A01AC02',
+      'S01BA01',
+      'S03BA01',
+      'D07AB19',
+      'D10AA03',
+      'C05AA09',
+      'S02BA06',
+      'S01CB01',
+      'D07XB05',
+    ],
+    60823: ['C10AA05'],
+  };
+
+  it.each([2244, 3672, 5743, 60823])(
+    'returns the human ATC codes of CID %i in first-appearance order, without ATCvet or Essential Medicines extras',
+    async (cid) => {
+      const result = await classify(atcFixture(cid), cid);
+      const codes = result!.atcCodes.map((a) => a.code);
+
+      expect(codes).toEqual(expectedCodes[cid]);
+      expect(codes.some((code) => code.startsWith('Q'))).toBe(false);
+      expect(codes).not.toContain('L01AA01');
+    },
+  );
+
+  it.each([2244, 3672, 5743, 60823])(
+    'gives every code of CID %i its WHO description and four levels forming a prefix chain',
+    async (cid) => {
+      const result = await classify(atcFixture(cid), cid);
+
+      for (const atc of result!.atcCodes) {
+        expect(atc.description).not.toBe('');
+        expect(atc.levels.map((l) => l.code)).toEqual([
+          atc.code.slice(0, 1),
+          atc.code.slice(0, 3),
+          atc.code.slice(0, 4),
+          atc.code.slice(0, 5),
+        ]);
+        for (const level of atc.levels) expect(level.description).not.toBe('');
+      }
+    },
+  );
+
+  it('returns atorvastatin C10AA05 with its name and full hierarchy, not an empty bare code', async () => {
+    const result = await classify(atcFixture(60823), 60823);
+
+    expect(result!.atcCodes).toEqual([
+      {
+        code: 'C10AA05',
+        description: 'Atorvastatin',
+        levels: [
+          { code: 'C', description: 'Cardiovascular system' },
+          { code: 'C10', description: 'Lipid modifying agents' },
+          { code: 'C10A', description: 'Lipid modifying agents, plain' },
+          { code: 'C10AA', description: 'Hmg coa reductase inhibitors' },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps aspirin's NORMAN-first N02BA01 in first place with the WHO entry's content", async () => {
+    const result = await classify(atcFixture(2244), 2244);
+
+    expect(result!.atcCodes[0]).toEqual({
+      code: 'N02BA01',
+      description: 'Acetylsalicylic acid',
+      levels: [
+        { code: 'N', description: 'Nervous system' },
+        { code: 'N02', description: 'Analgesics' },
+        { code: 'N02B', description: 'Other analgesics and antipyretics' },
+        { code: 'N02BA', description: 'Salicylic acid and derivatives' },
+      ],
+    });
+  });
+
+  it('takes levels from the code’s own block when two blocks share an anatomical group', async () => {
+    // Ibuprofen carries two M blocks (M02AA13, then M01AE01); each code's levels come from
+    // its own Information entry, never from the neighbouring block.
+    const result = await classify(atcFixture(3672), 3672);
+    const byCode = new Map(result!.atcCodes.map((a) => [a.code, a]));
+
+    expect(byCode.get('M01AE01')!.levels.map((l) => l.code)).toEqual(['M', 'M01', 'M01A', 'M01AE']);
+    expect(byCode.get('M02AA13')!.levels.map((l) => l.code)).toEqual(['M', 'M02', 'M02A', 'M02AA']);
+  });
+
+  it('returns a code deposited only bare with an empty description and no levels', async () => {
+    const record = atcFixture(60823);
+    const infos = atcInformation(record);
+    // Drop atorvastatin's WHO ATC block; the NORMAN bare "C10AA05" and the ATCvet block remain.
+    infos.splice(
+      infos.findIndex((i) => i.ReferenceNumber === 143),
+      1,
+    );
+
+    const result = await classify(record, 60823);
+
+    expect(result!.atcCodes).toEqual([{ code: 'C10AA05', description: '', levels: [] }]);
+  });
+
+  it('never returns a code that only a WHO Essential Medicines code list carries', async () => {
+    const record = atcFixture(5743);
+    const essentialMedicines = atcInformation(record).find((i) => i.ReferenceNumber === 186)!;
+    // A list of one code is a bare-looking string; its source still rules it out.
+    essentialMedicines.Value = { StringWithMarkup: [{ String: 'L01AA01' }] };
+
+    const result = await classify(record, 5743);
+
+    expect(result!.atcCodes.map((a) => a.code)).toEqual(expectedCodes[5743]);
+  });
+
+  it('returns null for a compound with no ATC section (CID 241)', async () => {
+    fetchMock.mockResolvedValueOnce(pugViewFault('No data found'));
+
+    const result = await new PubChemClient().getClassification(241);
+
+    expect(result).toBeNull();
+  });
+});
+
 // ── getXrefs ──────────────────────────────────────────────────────────
 
 describe('PubChemClient.getXrefs', () => {
-  it('returns array of numeric IDs for PubMedID xref type', async () => {
+  it('returns numeric PubMedID xrefs highest (newest) first', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         InformationList: {
@@ -701,7 +1176,7 @@ describe('PubChemClient.getXrefs', () => {
     const client = new PubChemClient();
     const ids = await client.getXrefs(2244, 'PubMedID');
 
-    expect(ids).toEqual([11111, 22222, 33333]);
+    expect(ids).toEqual([33333, 22222, 11111]);
   });
 
   it('returns array of string IDs for PatentID xref type', async () => {
@@ -719,44 +1194,105 @@ describe('PubChemClient.getXrefs', () => {
     expect(ids).toEqual(['US-1234567', 'EP-9876543']);
   });
 
-  it('returns empty array on 404', async () => {
-    fetchMock.mockResolvedValueOnce(textResponse('Not Found', 404));
+  it.each([
+    ['PubChem answers 404', () => textResponse('Not Found', 404)],
+    [
+      'the xrefType is absent from the response',
+      () => jsonResponse({ InformationList: { Information: [{ CID: 2244 }] } }),
+    ],
+    [
+      'InformationList has no entries',
+      () => jsonResponse({ InformationList: { Information: [] } }),
+    ],
+  ])('returns an empty array when %s', async (_label, respond) => {
+    fetchMock.mockResolvedValueOnce(respond());
 
-    const client = new PubChemClient();
-    const ids = await client.getXrefs(999999999, 'GeneID');
+    expect(await new PubChemClient().getXrefs(2244, 'PatentID')).toEqual([]);
+  });
+});
 
-    expect(ids).toEqual([]);
+/**
+ * Aspirin (CID 2244) xref responses captured from PUG REST, in PubChem's wire order (lexical
+ * for the numeric types). Long lists are sampled — every 100th PubMedID and every 10th GeneID,
+ * plus each list's highest and lowest ID — so the order PubChem sends is preserved.
+ */
+const aspirinXrefs = JSON.parse(
+  readFileSync(new URL('../../fixtures/pug-rest-xrefs-2244.json', import.meta.url), 'utf8'),
+) as Record<string, { InformationList: { Information: Array<Record<string, unknown>> } }>;
+
+/** The IDs one fixture response carries, in wire order. */
+const wireIds = (type: string) =>
+  aspirinXrefs[type]!.InformationList.Information[0]![type] as (string | number)[];
+
+/** Serve the aspirin fixture for whichever xref type the request path names. */
+function routeAspirinXrefs(): void {
+  fetchMock.mockImplementation(async (input) => {
+    const url = new URL(String(input));
+    const type = url.pathname.match(/^\/rest\/pug\/compound\/cid\/2244\/xrefs\/(\w+)\/JSON$/)?.[1];
+    if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov' || !type || !aspirinXrefs[type]) {
+      throw new Error(`unrouted fetch: ${url}`);
+    }
+    return jsonResponse(aspirinXrefs[type]);
+  });
+}
+
+describe('PubChemClient.getXrefs — numeric ordering on real aspirin xrefs (#69)', () => {
+  it('arrives from PubChem in lexical, not numeric, order', () => {
+    // The premise: PubChem sends numeric IDs sorted as strings ("10027656" before "1003266").
+    const wire = wireIds('PubMedID').map(String);
+    expect(wire).toEqual([...wire].sort());
+    expect(wire[0]).not.toBe('38840409');
   });
 
-  it('returns empty array when xrefType is absent from response', async () => {
+  it('orders PubMedIDs strictly descending, opening with the highest', async () => {
+    routeAspirinXrefs();
+
+    const ids = (await new PubChemClient().getXrefs(2244, 'PubMedID')) as number[];
+
+    expect(ids[0]).toBe(38840409);
+    expect(ids.at(-1)).toBe(22385);
+    for (let i = 1; i < ids.length; i++) expect(ids[i]).toBeLessThan(ids[i - 1]!);
+    expect([...ids].sort()).toEqual([...wireIds('PubMedID')].sort());
+  });
+
+  it.each(['GeneID', 'TaxonomyID'])('orders %s strictly ascending', async (type) => {
+    routeAspirinXrefs();
+
+    const ids = (await new PubChemClient().getXrefs(2244, type)) as number[];
+
+    for (let i = 1; i < ids.length; i++) expect(ids[i]).toBeGreaterThan(ids[i - 1]!);
+    expect([...ids].sort()).toEqual([...wireIds(type)].sort());
+  });
+
+  it('opens the TaxonomyID list with 6239', async () => {
+    routeAspirinXrefs();
+
+    const ids = await new PubChemClient().getXrefs(2244, 'TaxonomyID');
+
+    expect(ids[0]).toBe(6239);
+  });
+
+  it('sorts ProteinGI numerically too when PubChem returns it', async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        InformationList: {
-          Information: [{ CID: 2244 }], // no PatentID field
-        },
-      }),
+      jsonResponse({ InformationList: { Information: [{ CID: 2244, ProteinGI: [10, 100, 9] }] } }),
     );
 
-    const client = new PubChemClient();
-    const ids = await client.getXrefs(2244, 'PatentID');
+    const ids = await new PubChemClient().getXrefs(2244, 'ProteinGI');
 
-    expect(ids).toEqual([]);
+    // PubChem's lexical order is "10" < "100" < "9"; numerically ascending puts 9 first.
+    expect(ids).toEqual([9, 10, 100]);
   });
 
-  it('returns empty array when InformationList has no entries', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        InformationList: {
-          Information: [],
-        },
-      }),
-    );
+  it.each(['RN', 'RegistryID', 'PatentID'])(
+    'keeps PubChem’s order for string %s IDs',
+    async (type) => {
+      routeAspirinXrefs();
 
-    const client = new PubChemClient();
-    const ids = await client.getXrefs(2244, 'GeneID');
+      const ids = await new PubChemClient().getXrefs(2244, type);
 
-    expect(ids).toEqual([]);
-  });
+      expect(ids).toEqual(wireIds(type));
+    },
+  );
 });
 
 // ── getSynonyms ───────────────────────────────────────────────────────
@@ -784,28 +1320,16 @@ describe('PubChemClient.getSynonyms', () => {
     expect(synonyms).toHaveLength(4);
   });
 
-  it('returns empty array on 404', async () => {
-    fetchMock.mockResolvedValueOnce(textResponse('Not Found', 404));
+  it.each([
+    ['PubChem answers 404', () => textResponse('Not Found', 404)],
+    [
+      'the Synonym field is absent',
+      () => jsonResponse({ InformationList: { Information: [{ CID: 2244 }] } }),
+    ],
+  ])('returns an empty array when %s', async (_label, respond) => {
+    fetchMock.mockResolvedValueOnce(respond());
 
-    const client = new PubChemClient();
-    const synonyms = await client.getSynonyms(999999999);
-
-    expect(synonyms).toEqual([]);
-  });
-
-  it('returns empty array when Synonym field is absent', async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        InformationList: {
-          Information: [{ CID: 2244 }], // no Synonym field
-        },
-      }),
-    );
-
-    const client = new PubChemClient();
-    const synonyms = await client.getSynonyms(2244);
-
-    expect(synonyms).toEqual([]);
+    expect(await new PubChemClient().getSynonyms(2244)).toEqual([]);
   });
 });
 
@@ -858,6 +1382,86 @@ describe('PubChemClient.searchAssaysByTarget', () => {
     // Space must be encoded
     expect(calledUrl).not.toContain(' ');
     expect(calledUrl).toContain('Epidermal');
+  });
+});
+
+// ── getAssayCidPage ───────────────────────────────────────────────────
+
+describe('PubChemClient.getAssayCidPage (#68)', () => {
+  /** The listkey envelope as PubChem returned it live for AID 1000's actives. */
+  const listKey = (size: number) =>
+    jsonResponse({
+      IdentifierList: {
+        ListKey: '2084619401385678753',
+        Size: size,
+        EntrezDB: 'pccompound',
+        EntrezWebEnv: 'MCID_6ad01b42e62f0ac05509fef1',
+        EntrezQueryKey: 1,
+      },
+    });
+  const fault = (status: number, message: string) =>
+    jsonResponse({ Fault: { Code: 'PUGREST.NotFound', Message: message } }, status);
+
+  it('asks for the listkey, then exactly the requested page of it', async () => {
+    fetchMock
+      .mockResolvedValueOnce(listKey(36))
+      .mockResolvedValueOnce(jsonResponse({ IdentifierList: { CID: [101, 102, 103] } }));
+
+    const page = await new PubChemClient().getAssayCidPage(1000, true, 30, 3);
+
+    expect(page).toEqual({ total: 36, cids: [101, 102, 103] });
+    const [listUrl, pageUrl] = fetchMock.mock.calls.map(([u]) => new URL(String(u)));
+    expect(listUrl!.pathname).toBe('/rest/pug/assay/aid/1000/cids/JSON');
+    expect(Object.fromEntries(listUrl!.searchParams)).toEqual({
+      cids_type: 'active',
+      list_return: 'listkey',
+    });
+    expect(pageUrl!.pathname).toBe('/rest/pug/compound/listkey/2084619401385678753/cids/JSON');
+    expect(Object.fromEntries(pageUrl!.searchParams)).toEqual({
+      listkey_start: '30',
+      listkey_count: '3',
+    });
+  });
+
+  it('asks for every tested CID when activeOnly is false', async () => {
+    fetchMock
+      .mockResolvedValueOnce(listKey(57))
+      .mockResolvedValueOnce(jsonResponse({ IdentifierList: { CID: [1] } }));
+
+    await new PubChemClient().getAssayCidPage(1000, false, 0, 1);
+
+    expect(new URL(String(fetchMock.mock.calls[0]![0])).searchParams.get('cids_type')).toBe('all');
+  });
+
+  it('sends no page request at or past the end of the list', async () => {
+    fetchMock.mockResolvedValueOnce(listKey(36));
+
+    const page = await new PubChemClient().getAssayCidPage(1000, true, 36, 20);
+
+    expect(page).toEqual({ total: 36, cids: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null for "No live AIDs" and an empty page for "No CIDs found"', async () => {
+    fetchMock
+      .mockResolvedValueOnce(fault(404, 'No live AIDs in the supplied AID list'))
+      .mockResolvedValueOnce(fault(404, 'No CIDs found for the given AID(s)'));
+    const client = new PubChemClient();
+
+    await expect(client.getAssayCidPage(99999999, true, 0, 20)).resolves.toBeNull();
+    await expect(client.getAssayCidPage(3365, true, 0, 20)).resolves.toEqual({
+      total: 0,
+      cids: [],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a non-404 listkey failure as the call’s failure', async () => {
+    fetchMock.mockResolvedValue(textResponse('Bad Request', 400));
+
+    await expect(new PubChemClient().getAssayCidPage(1000, true, 0, 20)).rejects.toBeInstanceOf(
+      McpError,
+    );
   });
 });
 
@@ -979,7 +1583,7 @@ describe('PubChemClient.getAssaySummary — additional parsing cases', () => {
     );
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(2244);
+    const { rows } = await client.getAssaySummary(2244);
 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.activityValues).toEqual([]);
@@ -998,7 +1602,7 @@ describe('PubChemClient.getAssaySummary — additional parsing cases', () => {
     );
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(2244);
+    const { rows } = await client.getAssaySummary(2244);
 
     expect(rows[0]!.activityValues).toHaveLength(1);
     expect(rows[0]!.activityValues[0]!.value).toBe(5.0);
@@ -1010,7 +1614,7 @@ describe('PubChemClient.getAssaySummary — additional parsing cases', () => {
     fetchMock.mockResolvedValueOnce(textResponse('Not Found', 404));
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(999999999);
+    const { rows } = await client.getAssaySummary(999999999);
 
     expect(rows).toEqual([]);
   });
@@ -1030,7 +1634,7 @@ describe('PubChemClient.getAssaySummary — additional parsing cases', () => {
     );
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(1);
+    const { rows } = await client.getAssaySummary(1);
 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.aid).toBe(1000);
@@ -1049,7 +1653,7 @@ describe('PubChemClient.getAssaySummary — additional parsing cases', () => {
     );
 
     const client = new PubChemClient();
-    const rows = await client.getAssaySummary(1);
+    const { rows } = await client.getAssaySummary(1);
 
     expect(rows[0]!.targetAccession).toBe('P35354');
     expect(rows[0]!.targetGeneId).toBe(5743);
@@ -1110,11 +1714,28 @@ describe('PubChemClient.getImage', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   }, 10_000);
 
-  it('maps an AbortError timeout to a clean message instead of the raw error (#16)', async () => {
-    fetchMock.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+  it('maps a timeout to a classified Timeout instead of the raw abort (#16, #57)', async () => {
+    vi.useFakeTimers();
+    try {
+      // PubChem never answers: the fetch settles only when the request's signal aborts.
+      fetchMock.mockImplementation(
+        (_input, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+            signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+          }),
+      );
 
-    const client = new PubChemClient();
+      const captured = new PubChemClient().getImage(2244).catch((e: unknown) => e);
+      await vi.runAllTimersAsync();
+      const err = (await captured) as McpError;
 
-    await expect(client.getImage(2244)).rejects.toThrow('PubChem request timed out (30s)');
-  }, 10_000);
+      expect(err).toBeInstanceOf(McpError);
+      expect(err.code).toBe(JsonRpcErrorCode.Timeout);
+      expect(err.message).not.toMatch(/abort/i);
+      expect(err.message).not.toContain('/rest/pug');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

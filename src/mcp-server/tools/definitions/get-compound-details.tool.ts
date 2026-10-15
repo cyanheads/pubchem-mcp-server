@@ -11,7 +11,16 @@ import type {
   DrugLikenessAssessment,
   DrugLikenessRule,
 } from '@/services/pubchem/types.js';
-import { COMPOUND_PROPERTIES, DEFAULT_PROPERTIES } from '@/services/pubchem/types.js';
+import { COMPOUND_PROPERTIES, DEFAULT_PROPERTIES, MAX_CID } from '@/services/pubchem/types.js';
+import {
+  type CappedInput,
+  capPageSize,
+  cappedInputsField,
+  INPUT_CEILING,
+  renderCappedInputs,
+  renderUnprocessed,
+  splitBatch,
+} from './input-caps.js';
 import { inlineData, quoteData } from './untrusted-text.js';
 
 const propertyEnum = z.enum(COMPOUND_PROPERTIES as unknown as [string, ...string[]]);
@@ -50,12 +59,32 @@ const classificationSchema = z.object({
     .array(
       z
         .object({
-          code: z.string().describe('ATC code.'),
-          description: z.string().describe('ATC code description.'),
+          code: z.string().describe('ATC level-5 (substance) code, e.g. "N02BA01".'),
+          description: z
+            .string()
+            .describe(
+              'WHO ATC name for the code, e.g. "Acetylsalicylic acid". Empty when PubChem lists the code without a WHO ATC hierarchy entry.',
+            ),
+          levels: z
+            .array(
+              z
+                .object({
+                  code: z.string().describe('ATC code at this level, e.g. "N02".'),
+                  description: z
+                    .string()
+                    .describe('WHO ATC name at this level, e.g. "Analgesics".'),
+                })
+                .describe('One ancestor level of the code.'),
+            )
+            .describe(
+              'Levels 1-4 of the code, top-down: anatomical main group, therapeutic subgroup, pharmacological subgroup, chemical subgroup. Empty when PubChem lists the code without a WHO ATC hierarchy entry.',
+            ),
         })
-        .describe('ATC code entry with hierarchical description.'),
+        .describe('One human ATC code with its WHO hierarchy.'),
     )
-    .describe('ATC codes with hierarchical descriptions.'),
+    .describe(
+      'Human ATC codes in the order PubChem lists them. ATCvet codes and codes named only by a WHO Essential Medicines list are excluded.',
+    ),
   fdaClasses: z.array(z.string()).describe('FDA Established Pharmacologic Classes.'),
   fdaMechanisms: z.array(z.string()).describe('FDA Mechanisms of Action.'),
   meshClasses: z.array(z.string()).describe('MeSH pharmacological class descriptions.'),
@@ -112,17 +141,24 @@ function computeDrugLikeness(properties: Record<string, unknown>): DrugLikenessA
 
 /**
  * PUG View is a per-CID endpoint, so descriptions and classification fan out one request per
- * compound. The batch accepts up to 100 CIDs; this bounds that fan-out. CIDs past it come back
+ * compound. The batch serves up to CIDS_CAP CIDs; this bounds that fan-out. CIDs past it come back
  * without descriptions or classification — disclosed via enrichment (#40).
  */
 const PUG_VIEW_CID_CAP = 10;
+
+/** CIDs fetched per call; CIDs past this are returned in unprocessed. */
+const CIDS_CAP = 100;
+
+/** Per-compound page sizes; a larger maxSynonyms / maxDescriptions is clamped to these. */
+const MAX_SYNONYMS_CAP = 100;
+const MAX_DESCRIPTIONS_CAP = 20;
 
 // ── Tool definition ────────────────────────────────────────────────────
 
 export const getCompoundDetails = tool('pubchem_get_compound_details', {
   title: 'Get Compound Details',
   description:
-    'Get detailed compound information by CID. Returns physicochemical properties (molecular weight, SMILES, InChIKey, XLogP, TPSA, etc.), optionally with a textual description (pharmacology, mechanism, therapeutic use), known synonyms, drug-likeness assessment (Lipinski/Veber rules), and/or pharmacological classification (FDA classes, MeSH classes, ATC codes). Accepts up to 100 CIDs per call.',
+    'Get detailed compound information by CID. Returns physicochemical properties (molecular weight, SMILES, InChIKey, XLogP, TPSA, etc.), optionally with a textual description (pharmacology, mechanism, therapeutic use), known synonyms, drug-likeness assessment (Lipinski/Veber rules), and/or pharmacological classification (FDA classes, MeSH classes, ATC codes). Fetches up to 100 CIDs per call; CIDs past that are returned in unprocessed for a follow-up call.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -130,11 +166,11 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
   },
   input: z.object({
     cids: z
-      .array(z.number().int().min(1))
+      .array(z.number().int().min(1).max(MAX_CID))
       .min(1)
-      .max(100)
+      .max(INPUT_CEILING)
       .describe(
-        'PubChem Compound IDs to fetch (1-100). Resolve from names/SMILES with pubchem_search_compounds.',
+        `PubChem Compound IDs to fetch. The per-call cap is ${CIDS_CAP}: the first ${CIDS_CAP} are fetched, and any past that (up to ${INPUT_CEILING} in all) are returned in unprocessed, in input order, and reported in cappedInputs. Resolve from names/SMILES with pubchem_search_compounds.`,
       ),
     properties: z
       .array(propertyEnum)
@@ -160,10 +196,10 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .number()
       .int()
       .min(1)
-      .max(20)
+      .max(INPUT_CEILING)
       .default(3)
       .describe(
-        'Max number of distinct description entries per compound per page (1-20). PubChem returns near-duplicate summaries from many depositors; duplicates are collapsed before this cap applies. Default: 3.',
+        `Max number of distinct description entries per compound per page. The per-call cap is ${MAX_DESCRIPTIONS_CAP}: a larger value (up to ${INPUT_CEILING}) returns ${MAX_DESCRIPTIONS_CAP} per compound and is reported in cappedInputs. PubChem returns near-duplicate summaries from many depositors; duplicates are collapsed before this cap applies. Default: 3.`,
       ),
     includeSynonyms: z
       .boolean()
@@ -183,10 +219,10 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .number()
       .int()
       .min(1)
-      .max(100)
+      .max(INPUT_CEILING)
       .default(20)
       .describe(
-        'Max synonyms returned per compound per page (1-100). PubChem lists hundreds for common drugs; use synonymOffset to reach the ones past this page. Default: 20.',
+        `Max synonyms returned per compound per page. The per-call cap is ${MAX_SYNONYMS_CAP}: a larger value (up to ${INPUT_CEILING}) returns ${MAX_SYNONYMS_CAP} per compound and is reported in cappedInputs. PubChem lists hundreds for common drugs; use synonymOffset to reach the ones past this page. Default: 20.`,
       ),
     includeDrugLikeness: z
       .boolean()
@@ -262,7 +298,15 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
           })
           .describe('Per-CID compound detail record.'),
       )
-      .describe('Compound detail records.'),
+      .describe(
+        'Compound detail records, one per CID fetched, in input order. CIDs past the per-call cap are in unprocessed instead.',
+      ),
+    unprocessed: z
+      .array(z.number())
+      .optional()
+      .describe(
+        `CIDs past the per-call cap of ${CIDS_CAP}, in input order, not fetched. Pass them in a follow-up call. Omitted when every CID was fetched.`,
+      ),
   }),
   // Agent-facing context for the two things a per-compound record cannot say on its own:
   // which CIDs the PUG View fan-out reached (#40), and where the synonym/description windows
@@ -312,7 +356,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     truncated: z
       .boolean()
       .describe(
-        'True when this response is not the whole picture: a compound has further synonyms or descriptions past this page, or CIDs were skipped by the per-call fan-out limit. Per-compound totals are in compounds[].synonymsTotal / compounds[].descriptionsTotal; the skipped CIDs are in skippedCids.',
+        'True when this response is not the whole picture: a compound has further synonyms or descriptions past this page, CIDs were skipped by the per-call fan-out limit, or CIDs past the per-call cap were left unfetched. Per-compound totals are in compounds[].synonymsTotal / compounds[].descriptionsTotal; the skipped CIDs are in skippedCids, the unfetched ones in unprocessed.',
       ),
     notice: z
       .string()
@@ -320,6 +364,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .describe(
         'Recovery guidance covering the skipped CIDs, an offset that runs past every compound, and pages that remain. Absent when nothing was skipped or truncated.',
       ),
+    cappedInputs: cappedInputsField,
   },
   // Both fields are optional, so `render` sees `number[] | undefined` at the type level; the
   // framework only calls it for a populated field.
@@ -332,11 +377,23 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       render: (cids) =>
         `**Descriptions/classification skipped for:** CID ${(cids ?? []).join(', ')}`,
     },
+    cappedInputs: { render: renderCappedInputs },
   },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
     const requestedProps = input.properties ?? [...DEFAULT_PROPERTIES];
+
+    // Clamp in schema order so cappedInputs lists inputs as declared. A page size is clamped
+    // (and reported) only when its list is fetched — otherwise it has no effect.
+    const capped: CappedInput[] = [];
+    const { served: cids, unprocessed } = splitBatch('cids', input.cids, CIDS_CAP, capped);
+    const maxDescriptions = input.includeDescription
+      ? capPageSize('maxDescriptions', input.maxDescriptions, MAX_DESCRIPTIONS_CAP, capped)
+      : input.maxDescriptions;
+    const maxSynonyms = input.includeSynonyms
+      ? capPageSize('maxSynonyms', input.maxSynonyms, MAX_SYNONYMS_CAP, capped)
+      : input.maxSynonyms;
 
     // Ensure drug-likeness properties are fetched when needed
     let props = requestedProps;
@@ -347,7 +404,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     }
 
     // Batch property fetch
-    const propertyRows = await client.getProperties(input.cids, props, ctx.signal);
+    const propertyRows = await client.getProperties(cids, props, ctx.signal);
     const propsMap = new Map(propertyRows.map((r) => [r.CID, r]));
 
     // PubChem returns HTTP 200 with `{CID: x}` and no other fields for nonexistent CIDs.
@@ -359,7 +416,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     };
 
     // PUG View calls (per-CID, capped) — skip CIDs that aren't in PubChem
-    const foundCids = input.cids.filter(isFound);
+    const foundCids = cids.filter(isFound);
     const viewCids = foundCids.slice(0, PUG_VIEW_CID_CAP);
     const skippedViewCids = foundCids.slice(PUG_VIEW_CID_CAP);
     const viewCapEngaged =
@@ -404,14 +461,15 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     }
 
     ctx.log.info('Details fetched', {
-      cids: input.cids.length,
+      cids: cids.length,
+      unprocessed: unprocessed.length,
       withDescription: input.includeDescription,
       withSynonyms: input.includeSynonyms,
       withDrugLikeness: input.includeDrugLikeness,
       withClassification: input.includeClassification,
     });
 
-    const compounds = input.cids.map((cid) => {
+    const compounds = cids.map((cid) => {
       const found = isFound(cid);
       const { CID: _CID, ...properties } = propsMap.get(cid) ?? { CID: cid };
 
@@ -434,16 +492,13 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       if (allDescs && allDescs.length > 0) {
         compound.descriptions = allDescs.slice(
           input.descriptionOffset,
-          input.descriptionOffset + input.maxDescriptions,
+          input.descriptionOffset + maxDescriptions,
         );
         compound.descriptionsTotal = allDescs.length;
       }
       const syns = synMap?.get(cid);
       if (syns) {
-        compound.synonyms = syns.slice(
-          input.synonymOffset,
-          input.synonymOffset + input.maxSynonyms,
-        );
+        compound.synonyms = syns.slice(input.synonymOffset, input.synonymOffset + maxSynonyms);
         compound.synonymsTotal = syns.length;
       }
       if (input.includeDrugLikeness) compound.drugLikeness = computeDrugLikeness(properties);
@@ -472,7 +527,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       const page = listPage(
         [...(synMap?.values() ?? [])].map((s) => s.length),
         input.synonymOffset,
-        input.maxSynonyms,
+        maxSynonyms,
       );
       ctx.enrich({ synonymOffset: input.synonymOffset });
       if (page.hasMore) {
@@ -492,7 +547,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       const page = listPage(
         [...(descMap?.values() ?? [])].map((d) => d.length),
         input.descriptionOffset,
-        input.maxDescriptions,
+        maxDescriptions,
       );
       ctx.enrich({ descriptionOffset: input.descriptionOffset });
       if (page.hasMore) {
@@ -510,12 +565,14 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       }
     }
 
+    if (unprocessed.length > 0) truncated = true;
     ctx.enrich({ truncated });
+    if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
 
     // One notice field, so the sources are composed rather than overwriting one another.
     if (notices.length > 0) ctx.enrich.notice(notices.join(' '));
 
-    return { compounds };
+    return unprocessed.length > 0 ? { compounds, unprocessed } : { compounds };
   },
 
   format(result) {
@@ -630,11 +687,17 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
           lines.push('  MeSH:');
           for (const meshClass of cls.meshClasses) lines.push(`    - ${inlineData(meshClass)}`);
         }
+        /** One code per line, its hierarchy top-down: WHO level names carry commas
+         * ("Systemic hormonal preparations, excl. sex hormones and insulins"). */
         if (cls.atcCodes.length > 0) {
-          const atcDisplay = cls.atcCodes
-            .map((a) => (a.description ? `${a.code} (${a.description})` : a.code))
-            .join(', ');
-          lines.push(`  ATC: ${atcDisplay}`);
+          lines.push('  ATC:');
+          for (const atc of cls.atcCodes) {
+            const path = [...atc.levels, atc]
+              .filter((level) => level.description)
+              .map((level) => `${level.code} ${inlineData(level.description)}`)
+              .join(' > ');
+            lines.push(`    - ${atc.code}${path ? `: ${path}` : ''}`);
+          }
         }
         blocks.push(lines.join('\n'));
       }
@@ -695,6 +758,10 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       }
 
       blocks.push('');
+    }
+
+    if (result.unprocessed && result.unprocessed.length > 0) {
+      blocks.push(renderUnprocessed(result.unprocessed));
     }
 
     return [{ type: 'text', text: blocks.join('\n') }];

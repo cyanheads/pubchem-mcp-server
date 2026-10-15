@@ -7,6 +7,7 @@ import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { parseSdfV2000 } from '@/services/pubchem/sdf-parser.js';
+import { MAX_CID } from '@/services/pubchem/types.js';
 import { fencedData } from './untrusted-text.js';
 
 /**
@@ -32,6 +33,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       .number()
       .int()
       .min(1)
+      .max(MAX_CID)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
     format: z
       .enum(['sdf', 'json'])

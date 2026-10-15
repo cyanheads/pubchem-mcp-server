@@ -5,6 +5,7 @@
 
 import { resource, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { MAX_CID } from '@/services/pubchem/types.js';
 
 /** Well-studied compounds have thousands of assays — the resource read returns a head slice. */
 const MAX_RESULTS = 25;
@@ -15,12 +16,12 @@ export const compoundBioactivityResource = resource('pubchem://compound/{cid}/bi
     'Bioassay activity profile for a PubChem compound by CID. Returns up to 25 assays; use pubchem_get_bioactivity to filter by outcome or molecular target, raise the cap, and page through the rest with offset.',
   mimeType: 'application/json',
   params: z.object({
-    cid: z.coerce.number().int().min(1).describe('PubChem Compound ID.'),
+    cid: z.coerce.number().int().min(1).max(MAX_CID).describe('PubChem Compound ID.'),
   }),
 
   async handler(params, ctx) {
     const client = getPubChemClient();
-    const rows = await client.getAssaySummary(params.cid, ctx.signal);
+    const { rows } = await client.getAssaySummary(params.cid, ctx.signal);
     const activeCount = rows.filter((r) => r.outcome === 'Active').length;
     return {
       cid: params.cid,

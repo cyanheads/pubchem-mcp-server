@@ -28,7 +28,7 @@ describe('getSummary handler — protein entity type', () => {
       ScientificName: 'Homo sapiens',
       Synonym: ['ERBB1', 'HER1'],
     });
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getSummary.errors });
     const input = getSummary.input.parse({
       entityType: 'protein',
       identifiers: ['P00533'],
@@ -45,7 +45,7 @@ describe('getSummary handler — protein entity type', () => {
 
   it('handles protein not found', async () => {
     mockClient.getEntitySummary.mockResolvedValueOnce(null);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getSummary.errors });
     const input = getSummary.input.parse({
       entityType: 'protein',
       identifiers: ['NONEXISTENT'],
@@ -83,10 +83,10 @@ describe('getSummary handler — taxonomy entity type with lineage', () => {
 
   it('flattens RankedLineage most-inclusive-first and drops blank ranks (#39)', async () => {
     mockClient.getEntitySummary.mockResolvedValueOnce(TAX_9606);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getSummary.errors });
     const input = getSummary.input.parse({
       entityType: 'taxonomy',
-      identifiers: [9606],
+      identifiers: ['9606'],
     });
     const result = await getSummary.handler(input, ctx);
 
@@ -108,8 +108,8 @@ describe('getSummary handler — taxonomy entity type with lineage', () => {
 
   it('maps the taxonomy Synonym array to synonyms (#39)', async () => {
     mockClient.getEntitySummary.mockResolvedValueOnce(TAX_9606);
-    const ctx = createMockContext();
-    const input = getSummary.input.parse({ entityType: 'taxonomy', identifiers: [9606] });
+    const ctx = createMockContext({ errors: getSummary.errors });
+    const input = getSummary.input.parse({ entityType: 'taxonomy', identifiers: ['9606'] });
     const result = await getSummary.handler(input, ctx);
 
     expect(result.summaries[0]!.data!.synonyms).toEqual([
@@ -125,10 +125,10 @@ describe('getSummary handler — taxonomy entity type with lineage', () => {
       ScientificName: 'Bacteria',
       Rank: 'superkingdom',
     });
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getSummary.errors });
     const input = getSummary.input.parse({
       entityType: 'taxonomy',
-      identifiers: [1],
+      identifiers: ['1'],
     });
     const result = await getSummary.handler(input, ctx);
 
@@ -144,8 +144,8 @@ describe('getSummary handler — taxonomy entity type with lineage', () => {
       ScientificName: 'Unclassified',
       RankedLineage: { Species: '', Genus: '', Family: '' },
     });
-    const ctx = createMockContext();
-    const input = getSummary.input.parse({ entityType: 'taxonomy', identifiers: [2] });
+    const ctx = createMockContext({ errors: getSummary.errors });
+    const input = getSummary.input.parse({ entityType: 'taxonomy', identifiers: ['2'] });
     const result = await getSummary.handler(input, ctx);
 
     expect(result.summaries[0]!.data!.lineage).toBeUndefined();
@@ -158,10 +158,10 @@ describe('getSummary handler — batch behavior', () => {
       .mockResolvedValueOnce({ AID: 100, Name: 'Assay A' })
       .mockResolvedValueOnce({ AID: 200, Name: 'Assay B' })
       .mockResolvedValueOnce(null);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getSummary.errors });
     const input = getSummary.input.parse({
       entityType: 'assay',
-      identifiers: [100, 200, 999],
+      identifiers: ['100', '200', '999'],
     });
     const result = await getSummary.handler(input, ctx);
 
@@ -177,10 +177,10 @@ describe('getSummary handler — batch behavior', () => {
       Symbol: 'EGFR',
       Name: 'EGFR gene',
     });
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getSummary.errors });
     const input = getSummary.input.parse({
       entityType: 'gene',
-      identifiers: [1956],
+      identifiers: ['1956'],
     });
     const result = await getSummary.handler(input, ctx);
 
@@ -193,18 +193,24 @@ describe('getSummary handler — input validation', () => {
     expect(() => getSummary.input.parse({ entityType: 'assay', identifiers: [] })).toThrow();
   });
 
-  it('rejects more than 10 identifiers', () => {
-    const ids = Array.from({ length: 11 }, (_, i) => i + 1);
-    expect(() => getSummary.input.parse({ entityType: 'assay', identifiers: ids })).toThrow();
+  it('accepts more than 10 identifiers up to 1000, and rejects 1001 (#70)', () => {
+    const parse = (n: number) => () =>
+      getSummary.input.parse({
+        entityType: 'assay',
+        identifiers: Array.from({ length: n }, (_, i) => String(i + 1)),
+      });
+    expect(parse(11)).not.toThrow();
+    expect(parse(1000)).not.toThrow();
+    expect(parse(1001)).toThrow();
   });
 
   it('accepts exactly 10 identifiers', () => {
-    const ids = Array.from({ length: 10 }, (_, i) => i + 1);
+    const ids = Array.from({ length: 10 }, (_, i) => String(i + 1));
     expect(() => getSummary.input.parse({ entityType: 'assay', identifiers: ids })).not.toThrow();
   });
 
   it('rejects invalid entityType', () => {
-    expect(() => getSummary.input.parse({ entityType: 'compound', identifiers: [1] })).toThrow();
+    expect(() => getSummary.input.parse({ entityType: 'compound', identifiers: ['1'] })).toThrow();
   });
 
   it('accepts string identifiers for protein', () => {
@@ -372,7 +378,7 @@ describe('getSummary format — additional cases', () => {
 describe('getSummary — security', () => {
   it('injection string as identifier does not cause crash', async () => {
     mockClient.getEntitySummary.mockResolvedValueOnce(null);
-    const ctx = createMockContext();
+    const ctx = createMockContext({ errors: getSummary.errors });
     const injection = "' OR 1=1; --";
     const input = getSummary.input.parse({
       entityType: 'protein',
@@ -397,8 +403,8 @@ describe('getSummary — security', () => {
       Name: 'EGFR',
       Description: rawDescription,
     });
-    const ctx = createMockContext();
-    const input = getSummary.input.parse({ entityType: 'gene', identifiers: [1956] });
+    const ctx = createMockContext({ errors: getSummary.errors });
+    const input = getSummary.input.parse({ entityType: 'gene', identifiers: ['1956'] });
     const result = await getSummary.handler(input, ctx);
 
     // structuredContent carries the raw description verbatim.

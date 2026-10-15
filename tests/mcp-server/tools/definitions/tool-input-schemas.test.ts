@@ -48,6 +48,7 @@ const positiveIntegerInputs = [
   ['pubchem_get_compound_3d_structure', 'cid', { cid: 2244 }, '/properties/cid'],
   ['pubchem_get_compound_3d_structure', 'maxAtoms', { cid: 2244 }, '/properties/maxAtoms'],
   ['pubchem_get_compound_3d_structure', 'maxBonds', { cid: 2244 }, '/properties/maxBonds'],
+  ['pubchem_search_compounds', 'aid', { searchType: 'assay', aid: 1000 }, '/properties/aid'],
 ] as const;
 
 /** Returns a copy of `base` with the dotted `field` path set to `value`. */
@@ -95,6 +96,125 @@ describe('positive-integer tool inputs (#51)', () => {
         expect(tool.input.safeParse(withField(base, field, value)).success).toBe(false);
       }
       expect(tool.input.safeParse(withField(base, field, 1.5)).success).toBe(false);
+    },
+  );
+});
+
+/** PubChem's CID is a signed 32-bit integer: PUG REST wraps 2147483648-4294967295 into
+ * negative IDs and answers HTTP 400 from 4294967296 up. */
+const MAX_CID = 2147483647;
+
+const cidInputs = positiveIntegerInputs.filter(([, field]) => field.startsWith('cid'));
+
+describe('CID tool inputs carry the 32-bit upper bound (#59)', () => {
+  it('covers the seven tool CID fields', () => {
+    expect(cidInputs).toHaveLength(7);
+  });
+
+  it.each(cidInputs)(
+    '%s %s advertises maximum 2147483647 and no exclusiveMaximum',
+    (name, _field, _base, schemaPath) => {
+      const schema = advertisedInputSchema(toolByName.get(name)!);
+      expect(at(schema, schemaPath)).toMatchObject({ type: 'integer', maximum: MAX_CID });
+      expect(pathsOfKey(schema, 'exclusiveMaximum')).toEqual([]);
+    },
+  );
+
+  it.each(cidInputs)('%s %s accepts 2147483647 and rejects 2147483648', (name, field, base) => {
+    const tool = toolByName.get(name)!;
+    expect(tool.input.safeParse(withField(base, field, MAX_CID)).success).toBe(true);
+    for (const value of [MAX_CID + 1, 4294967296, 99999999999]) {
+      expect(tool.input.safeParse(withField(base, field, value)).success).toBe(false);
+    }
+  });
+});
+
+/** AIDs and NCBI Gene IDs share the CID's signed 32-bit range; an AID past it reaches PubChem as
+ * a wrapped negative ID or a raw HTTP 400. */
+const int32IdInputs = positiveIntegerInputs.filter(
+  ([, field]) => field === 'aid' || field === 'targetGeneId',
+);
+
+describe('AID and Gene ID tool inputs carry the 32-bit upper bound', () => {
+  it('covers search_compounds aid and get_bioactivity targetGeneId', () => {
+    expect(int32IdInputs.map(([name, field]) => `${name}.${field}`)).toEqual([
+      'pubchem_get_bioactivity.targetGeneId',
+      'pubchem_search_compounds.aid',
+    ]);
+  });
+
+  it.each(int32IdInputs)(
+    '%s %s advertises maximum 2147483647 and names it in the description',
+    (name, _field, _base, schemaPath) => {
+      const node = at(advertisedInputSchema(toolByName.get(name)!), schemaPath) as Record<
+        string,
+        unknown
+      >;
+      expect(node).toMatchObject({ type: 'integer', maximum: MAX_CID });
+      expect(String(node.description)).toContain('2147483647');
+    },
+  );
+
+  it.each(int32IdInputs)('%s %s accepts 2147483647 and rejects 3000000000', (name, field, base) => {
+    const tool = toolByName.get(name)!;
+    expect(tool.input.safeParse(withField(base, field, MAX_CID)).success).toBe(true);
+    for (const value of [MAX_CID + 1, 3000000000, 99999999999]) {
+      expect(tool.input.safeParse(withField(base, field, value)).success).toBe(false);
+    }
+  });
+
+  it('pubchem://assay/{aid} accepts "2147483647" and rejects "3000000000"', () => {
+    const assay = allResourceDefinitions.find((r) => r.uriTemplate === 'pubchem://assay/{aid}');
+    expect(assay?.params?.safeParse({ aid: String(MAX_CID) }).success).toBe(true);
+    for (const value of [String(MAX_CID + 1), '3000000000']) {
+      expect(assay?.params?.safeParse({ aid: value }).success).toBe(false);
+    }
+  });
+});
+
+/** Read-side workload inputs (#70): each serves up to its per-call cap and advertises only the
+ * 1000 ceiling, so a value between the two is clamped by the handler, not rejected. */
+const cappedWorkloadInputs = [
+  ['pubchem_get_compound_details', '/properties/cids', 'maxItems'],
+  ['pubchem_get_compound_details', '/properties/maxSynonyms', 'maximum'],
+  ['pubchem_get_compound_details', '/properties/maxDescriptions', 'maximum'],
+  ['pubchem_get_compound_safety', '/properties/cids', 'maxItems'],
+  ['pubchem_search_compounds', '/properties/identifiers', 'maxItems'],
+  ['pubchem_search_compounds', '/properties/maxResults', 'maximum'],
+  ['pubchem_get_summary', '/properties/identifiers', 'maxItems'],
+  ['pubchem_search_assays', '/properties/maxResults', 'maximum'],
+  ['pubchem_get_bioactivity', '/properties/maxResults', 'maximum'],
+  ['pubchem_get_compound_xrefs', '/properties/maxPerType', 'maximum'],
+  ['pubchem_get_compound_interactions', '/properties/maxEntries', 'maximum'],
+] as const;
+
+describe('capped workload inputs advertise the 1000 ceiling (#70)', () => {
+  it.each(cappedWorkloadInputs)('%s %s advertises %s 1000', (name, schemaPath, bound) => {
+    const node = at(advertisedInputSchema(toolByName.get(name)!), schemaPath) as Record<
+      string,
+      unknown
+    >;
+    expect(node[bound]).toBe(1000);
+    expect(String(node.description)).toMatch(/per-call cap/);
+  });
+});
+
+describe('compound resource CID params carry the 32-bit upper bound (#59)', () => {
+  const compoundResources = allResourceDefinitions.filter((r) =>
+    r.uriTemplate.startsWith('pubchem://compound/{cid}'),
+  );
+
+  it('covers the five compound resources', () => {
+    expect(compoundResources).toHaveLength(5);
+  });
+
+  it.each(compoundResources.map((r) => [r.name, r] as const))(
+    '%s accepts "2147483647" and rejects "2147483648"',
+    (_name, resource) => {
+      expect(resource.params!.safeParse({ cid: String(MAX_CID) }).success).toBe(true);
+      for (const value of [String(MAX_CID + 1), '4294967296']) {
+        expect(resource.params!.safeParse({ cid: value }).success).toBe(false);
+      }
     },
   );
 });
