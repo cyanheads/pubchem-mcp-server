@@ -2,10 +2,10 @@
 
 **Server:** pubchem-mcp-server
 **Version:** 0.6.6
-**Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) `^0.13.13`
+**Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) `^0.13.15`
 **Engines:** Bun ≥1.4.0, Node ≥24.0.0
-**MCP SDK:** `@modelcontextprotocol/server` ^2.2.0
-**Zod:** ^4.6.5
+**MCP SDK:** `@modelcontextprotocol/server` ^2.3.1
+**Zod:** ^4.6.6
 
 > **Read the framework docs first:** `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` contains the full API reference — builders, Context, error codes, exports, patterns. This file covers server-specific conventions only.
 
@@ -36,6 +36,7 @@ Tailor suggestions to what's actually missing or stale — don't recite the full
 - **Use `ctx.log`** for request-scoped logging. No `console` calls.
 - **Use `ctx.state`** for tenant-scoped storage. Never access persistence directly.
 - **Secrets in env vars only** — never hardcoded.
+- **Cut noise.** Add only what earns its place: no speculative generality, no guards for states the framework already prevents (Zod-validated params, classified errors), no abstraction until a third caller proves it, no option nothing sets.
 - **No API keys required** — PubChem's API is freely accessible. No server config schema exists.
 - **Close the loop on issues.** When implementing work tracked by a GitHub issue, comment on the issue with what landed and close it. Do both — a comment without a close leaves stale issues open; a close without a comment leaves no record of what shipped. The comment is for future readers — state the concrete changes, not the conversation that produced them.
 
@@ -191,7 +192,7 @@ src/
       types.ts                          # API response types and constants
   mcp-server/
     tools/definitions/
-      search-compounds.tool.ts          # Search by name/SMILES/InChIKey/formula/structure/similarity
+      search-compounds.tool.ts          # Search by name/SMILES/InChIKey/formula/structure/similarity/assay
       get-compound-details.tool.ts      # Properties, descriptions, synonyms
       get-compound-image.tool.ts        # 2D structure diagram (PNG)
       get-compound-3d-structure.tool.ts # 3D conformer as parsed JSON or raw SDF
@@ -202,6 +203,8 @@ src/
       search-assays.tool.ts             # Find assays by biological target
       get-summary.tool.ts               # Entity summaries (assays, genes, proteins, etc.)
       untrusted-text.ts                 # Framing helpers for upstream free text in content[]
+      identifier-case.ts                # Case normalization for InChIKeys and protein accessions
+      input-caps.ts                     # Per-call caps on ID batches and page sizes, cappedInputs disclosure
       index.ts                          # Barrel export
     resources/definitions/
       compound.resource.ts              # pubchem://compound/{cid}
