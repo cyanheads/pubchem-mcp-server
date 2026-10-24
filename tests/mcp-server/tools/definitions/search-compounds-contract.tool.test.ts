@@ -607,3 +607,351 @@ describe('pubchem_search_compounds assay mode (#68)', () => {
     expect(advertisedInputSchema().required).toEqual(['searchType']);
   });
 });
+
+describe('pubchem_search_compounds offset ceiling (#76)', () => {
+  /** AID 2551's tested-CID count; the list behind its ListKey is synthetic, position i → CID. */
+  const AID_2551_SIZE = 305439;
+  const assayCid = (position: number) => 5_000_000 + position;
+  const range = (start: number, end: number) =>
+    Array.from({ length: Math.max(0, end - start) }, (_, i) => start + i);
+
+  /** PubChem stand-in for every mode the ceiling touches. A bounded fast search saturates —
+   * it answers MaxRecords CIDs 1..MaxRecords, as a common substructure does — so the window
+   * always proves more matches past it. AID 2551's ListKey serves `listkey_count` positions
+   * from `listkey_start` and answers a start past its end with HTTP 500. "aspirin" is CID 2244. */
+  const pubchem: typeof fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov') throw new Error('unmocked fetch');
+    const { pathname, searchParams } = url;
+    if (/^\/rest\/pug\/compound\/fast[a-z_0-9]+\//.test(pathname)) {
+      return cidList(range(1, Number(searchParams.get('MaxRecords')) + 1));
+    }
+    if (pathname === '/rest/pug/assay/aid/2551/cids/JSON') {
+      return Response.json({ IdentifierList: { ListKey: 'aid2551', Size: AID_2551_SIZE } });
+    }
+    if (pathname === '/rest/pug/compound/listkey/aid2551/cids/JSON') {
+      const start = Number(searchParams.get('listkey_start'));
+      const count = Number(searchParams.get('listkey_count'));
+      if (start >= AID_2551_SIZE) {
+        return Response.json(
+          { Fault: { Code: 'PUGREST.ServerError', Message: 'Invalid listkey start' } },
+          { status: 500 },
+        );
+      }
+      return cidList(range(start, Math.min(start + count, AID_2551_SIZE)).map(assayCid));
+    }
+    if (pathname === '/rest/pug/compound/name/aspirin/cids/JSON') return cidList([2244]);
+    throw new Error('unmocked fetch');
+  };
+
+  /** What each upstream request asked for: a bounded search's record window, or a ListKey page. */
+  const requested = () =>
+    fetchMock.mock.calls.map(([input]) => {
+      const { pathname, searchParams } = new URL(String(input));
+      if (searchParams.has('MaxRecords')) return `window ${searchParams.get('MaxRecords')}`;
+      if (searchParams.has('listkey_start')) {
+        return `page ${searchParams.get('listkey_start')}+${searchParams.get('listkey_count')}`;
+      }
+      if (searchParams.get('list_return') === 'listkey') return 'listkey';
+      return pathname;
+    });
+
+  type PageContent = {
+    results: Array<{ cid: number }>;
+    totalFound?: number;
+    totalFoundAtLeast?: number;
+    offset: number;
+    nextOffset?: number;
+    truncated?: boolean;
+    notice?: string;
+  };
+  const pageOf = (result: Awaited<ReturnType<typeof runToolContract>>) => {
+    expect(result.isError).toBeFalsy();
+    return result.structuredContent as PageContent;
+  };
+
+  type CeilingEnvelope = {
+    code: number;
+    data?: { reason?: string; recovery?: { hint?: string } };
+  };
+
+  type SearchInput = z.input<typeof searchCompounds.input>;
+  const quinoline = {
+    searchType: 'substructure',
+    query: 'c1ccc2ncccc2c1',
+    queryType: 'smiles',
+  } satisfies SearchInput;
+
+  beforeEach(() => {
+    fetchMock.mockImplementation(pubchem);
+  });
+
+  it('keeps nextOffset on a bounded page whose next offset is exactly the ceiling', async () => {
+    const result = await runToolContract(searchCompounds, {
+      ...quinoline,
+      maxResults: 10,
+      offset: 9990,
+    });
+
+    const page = pageOf(result);
+    expect(page.results.map((r) => r.cid)).toEqual(range(9991, 10001));
+    expect(page.totalFoundAtLeast).toBe(10001);
+    expect(page.nextOffset).toBe(10000);
+    expect(page.truncated).toBe(true);
+    expect(page.notice).toContain('Pass offset=10000 for the next page.');
+    expect(requested()).toEqual(['window 10001']);
+  });
+
+  it('omits nextOffset on a bounded page that would continue past the ceiling, and names the page at the ceiling and how to narrow', async () => {
+    const result = await runToolContract(searchCompounds, {
+      ...quinoline,
+      maxResults: 3,
+      offset: 9998,
+    });
+
+    const page = pageOf(result);
+    expect(page.results.map((r) => r.cid)).toEqual([9999, 10000, 10001]);
+    expect(page.totalFoundAtLeast).toBe(10002);
+    expect(page).not.toHaveProperty('totalFound');
+    expect(page).not.toHaveProperty('nextOffset');
+    expect(page.truncated).toBe(true);
+    const notice =
+      'Showing matches 9999-10001; more exist, but PubChem reports no match count for a substructure search. A substructure search pages only to offset 10000, so pass offset=10000 with maxResults=200 to reach matches through 10200; past 10200, narrow it to fewer matches: use a larger, more specific query structure.';
+    expect(page.notice).toBe(notice);
+    const text = textOf(result);
+    expect(text).toContain('CIDs: 9999, 10000, 10001');
+    expect(text).toContain(notice);
+    expect(text).not.toMatch(/nextOffset/i);
+    expect(requested()).toEqual(['window 10002']);
+  });
+
+  it('names the page at the ceiling when this page stops one match short of what it reaches', async () => {
+    const result = await runToolContract(searchCompounds, {
+      ...quinoline,
+      maxResults: 200,
+      offset: 9999,
+    });
+
+    const page = pageOf(result);
+    expect(page.results.map((r) => r.cid)).toEqual(range(10000, 10200));
+    expect(page).not.toHaveProperty('nextOffset');
+    expect(page.truncated).toBe(true);
+    const nextStep =
+      'A substructure search pages only to offset 10000, so pass offset=10000 with maxResults=200 to reach matches through 10200; past 10200, narrow it to fewer matches: use a larger, more specific query structure.';
+    expect(page.notice).toBe(
+      `Showing matches 10000-10199; more exist, but PubChem reports no match count for a substructure search. ${nextStep}`,
+    );
+    expect(textOf(result)).toContain(nextStep);
+    expect(requested()).toEqual(['window 10200']);
+  });
+
+  it('serves matches 10001-10200 at the ceiling, then says no further page can be requested', async () => {
+    const result = await runToolContract(searchCompounds, {
+      ...quinoline,
+      maxResults: 200,
+      offset: 10000,
+    });
+
+    const page = pageOf(result);
+    expect(page.results.map((r) => r.cid)).toEqual(range(10001, 10201));
+    expect(page).not.toHaveProperty('nextOffset');
+    expect(page.truncated).toBe(true);
+    const notice =
+      'Showing matches 10001-10200; more exist, but PubChem reports no match count for a substructure search. A substructure search pages only to offset 10000, so no further page can be requested; narrow it to fewer matches: use a larger, more specific query structure.';
+    expect(page.notice).toBe(notice);
+    const text = textOf(result);
+    expect(text).toContain(notice);
+    expect(text).not.toContain('maxResults=200');
+    expect(requested()).toEqual(['window 10201']);
+  });
+
+  it.each<[string, SearchInput, string]>([
+    ['formula', { searchType: 'formula', formula: 'C6H12O6' }, 'search a more specific formula'],
+    [
+      'formula with allowOtherElements',
+      { searchType: 'formula', formula: 'C6H12O6', allowOtherElements: true },
+      'set allowOtherElements to false, or search a more specific formula',
+    ],
+    [
+      'superstructure',
+      { ...quinoline, searchType: 'superstructure' },
+      'use a smaller query structure',
+    ],
+    [
+      'similarity',
+      { ...quinoline, searchType: 'similarity', threshold: 80 },
+      'raise threshold above 80',
+    ],
+  ])(
+    'serves offset 10000 for a %s search and names its narrowing at the ceiling',
+    async (_label, args, narrowing) => {
+      const result = await runToolContract(searchCompounds, {
+        ...args,
+        maxResults: 5,
+        offset: 10000,
+      });
+
+      const page = pageOf(result);
+      expect(page.results.map((r) => r.cid)).toEqual(range(10001, 10006));
+      expect(page).not.toHaveProperty('nextOffset');
+      const mode = args.searchType;
+      const notice = `Showing matches 10001-10005; more exist, but PubChem reports no match count for a ${mode} search. A ${mode} search pages only to offset 10000, so pass offset=10000 with maxResults=200 to reach matches through 10200; past 10200, narrow it to fewer matches: ${narrowing}.`;
+      expect(page.notice).toBe(notice);
+      expect(textOf(result)).toContain(notice);
+      expect(requested()).toEqual(['window 10006']);
+    },
+  );
+
+  it.each<[string, SearchInput, string]>([
+    ['formula', { searchType: 'formula', formula: 'C6H12O6' }, 'search a more specific formula'],
+    ['substructure', quinoline, 'use a larger, more specific query structure'],
+    [
+      'superstructure',
+      { ...quinoline, searchType: 'superstructure' },
+      'use a smaller query structure',
+    ],
+    ['similarity', { ...quinoline, searchType: 'similarity' }, 'raise threshold above 90'],
+  ])(
+    'rejects a %s search at offset 10001 as offset_ceiling_exceeded before any PubChem request',
+    async (mode, args, narrowing) => {
+      const result = await runToolContract(searchCompounds, { ...args, offset: 10001 });
+
+      const error = errorOf(result) as CeilingEnvelope;
+      expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+      expect(error.data?.reason).toBe('offset_ceiling_exceeded');
+      expect(error.data?.recovery?.hint).toBe(`Pass an offset of 10000 or less, or ${narrowing}.`);
+      const text = textOf(result);
+      expect(text).toContain(`offset 10001 is past the 10000 offset ceiling for a ${mode} search.`);
+      expect(text).toContain(narrowing);
+      expect(text).toContain('offset_ceiling_exceeded');
+      // The stub answers every mode, so a check that ran after the request would show here.
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('pages an assay ListKey past the old ceiling: AID 2551 at offset 10005', async () => {
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'assay',
+      aid: 2551,
+      activeOnly: false,
+      maxResults: 5,
+      offset: 10005,
+    });
+
+    const page = pageOf(result);
+    expect(page.results.map((r) => r.cid)).toEqual(range(10005, 10010).map(assayCid));
+    expect(page.totalFound).toBe(AID_2551_SIZE);
+    expect(page.nextOffset).toBe(10010);
+    expect(page.notice).toBe(
+      'Showing matches 10006-10010 of 305439. Pass offset=10010 for the next page.',
+    );
+    expect(textOf(result)).toContain('Showing matches 10006-10010 of 305439.');
+    expect(requested()).toEqual(['listkey', 'page 10005+5']);
+  });
+
+  it('pages deep into the ListKey and serves its last partial page with no nextOffset', async () => {
+    const deep = pageOf(
+      await runToolContract(searchCompounds, {
+        searchType: 'assay',
+        aid: 2551,
+        activeOnly: false,
+        maxResults: 5,
+        offset: 300000,
+      }),
+    );
+    expect(deep.results.map((r) => r.cid)).toEqual(range(300000, 300005).map(assayCid));
+    expect(deep.nextOffset).toBe(300005);
+
+    const last = pageOf(
+      await runToolContract(searchCompounds, {
+        searchType: 'assay',
+        aid: 2551,
+        activeOnly: false,
+        maxResults: 10,
+        offset: 305434,
+      }),
+    );
+    expect(last.results.map((r) => r.cid)).toEqual(range(305434, AID_2551_SIZE).map(assayCid));
+    expect(last).not.toHaveProperty('nextOffset');
+    expect(last).not.toHaveProperty('truncated');
+    expect(requested()).toEqual(['listkey', 'page 300000+5', 'listkey', 'page 305434+10']);
+  });
+
+  it.each([AID_2551_SIZE, 400000])(
+    'answers assay offset %i, at or past the total, with the past-the-end notice and no page request',
+    async (offset) => {
+      const result = await runToolContract(searchCompounds, {
+        searchType: 'assay',
+        aid: 2551,
+        activeOnly: false,
+        offset,
+      });
+
+      const page = pageOf(result);
+      expect(page.results).toEqual([]);
+      expect(page.totalFound).toBe(AID_2551_SIZE);
+      expect(page).not.toHaveProperty('nextOffset');
+      const notice = `offset ${offset} is past the 305439 match(es) found. Pass an offset below 305439.`;
+      expect(page.notice).toBe(notice);
+      expect(textOf(result)).toContain(notice);
+      expect(requested()).toEqual(['listkey']);
+    },
+  );
+
+  it('answers an identifier search at offset 10001 with an empty page and the past-the-end notice', async () => {
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin'],
+      offset: 10001,
+    });
+
+    const page = pageOf(result);
+    expect(page.results).toEqual([]);
+    expect(page.totalFound).toBe(1);
+    const notice = 'offset 10001 is past the 1 match(es) found. Pass an offset below 1.';
+    expect(page.notice).toBe(notice);
+    expect(textOf(result)).toContain(notice);
+  });
+
+  describe('rejects exactly the offsets the old schema bound rejected, in bounded modes only', () => {
+    const OFFSETS = [-1, 0, 1, 1.5, 9999, 10000, 10001, 10002, 20000, 305434, 2 ** 31, 2 ** 53 - 1];
+    /** Not a whole offset from 0: the schema rejects these in every mode. */
+    const MALFORMED = [-1, 1.5];
+    /** Past the 10000 maximum the offset field once carried: only bounded modes still reject. */
+    const PAST_CEILING = [10001, 10002, 20000, 305434, 2 ** 31, 2 ** 53 - 1];
+    const MODES: Array<[string, SearchInput, boolean]> = [
+      ['formula', { searchType: 'formula', formula: 'C6H12O6' }, true],
+      ['substructure', quinoline, true],
+      ['superstructure', { ...quinoline, searchType: 'superstructure' }, true],
+      ['similarity', { ...quinoline, searchType: 'similarity' }, true],
+      ['assay', { searchType: 'assay', aid: 2551, activeOnly: false }, false],
+      [
+        'identifier',
+        { searchType: 'identifier', identifierType: 'name', identifiers: ['aspirin'] },
+        false,
+      ],
+    ];
+
+    it.each(MODES)('%s', async (_mode, args, bounded) => {
+      const outcomes: Array<[number, string]> = [];
+      for (const offset of OFFSETS) {
+        // A fresh client per row, so the rows don't queue behind one 5-per-second limiter.
+        initPubChemClient();
+        const result = await runToolContract(searchCompounds, { ...args, maxResults: 1, offset });
+        outcomes.push([offset, result.isError ? String(errorOf(result).data?.reason) : 'served']);
+      }
+
+      expect(outcomes).toEqual(
+        OFFSETS.map((offset) => [
+          offset,
+          MALFORMED.includes(offset)
+            ? 'invalid_arguments'
+            : bounded && PAST_CEILING.includes(offset)
+              ? 'offset_ceiling_exceeded'
+              : 'served',
+        ]),
+      );
+    });
+  });
+});

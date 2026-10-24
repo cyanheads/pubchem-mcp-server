@@ -1,5 +1,5 @@
 /**
- * @fileoverview Get drug-drug, drug-food, and chemical-target interactions for a compound.
+ * @fileoverview Get drug-food interactions, assay-summary molecular targets, and (when SDQ answers) drug-drug interactions for a compound.
  * @module mcp-server/tools/definitions/get-compound-interactions
  */
 
@@ -21,7 +21,7 @@ const MAX_ENTRIES_CAP = 50;
 export const getCompoundInteractions = tool('pubchem_get_compound_interactions', {
   title: 'Get Compound Interactions',
   description:
-    "Get a compound's interaction data: drug-drug interactions (DrugBank), drug-food interactions, and chemical-target interactions (binding/activity from BindingDB, ChEMBL, and others). Each entry carries its originating source. Results are paged per kind, with the source-record total and the next offset reported for each. Richest for approved drugs; many compounds have no deposited interaction records. Drug-drug and target interactions come from PubChem's SDQ service, which can refuse automated requests — a refused kind is reported in failedKinds while the others still return; per-target activity is also available from pubchem_get_bioactivity.",
+    "Get a compound's interaction data: drug-food interactions, and the molecular targets its bioassays name — one entry per target as kinds defines it, with its assay counts by outcome and most potent active value, Active targets first, most potent first. Each entry carries its originating source. Results are paged per kind, with the record total and the next offset reported for each. Drug-food coverage is richest for approved drugs; target covers any compound PubChem has assay data for, and pubchem_get_bioactivity lists one target's assays when given the entry's GeneID or accession. Drug-drug interactions (DrugBank) are unavailable while PubChem's SDQ service refuses automated requests: an explicit drug-drug request is reported in failedKinds while the other kinds still return.",
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -37,9 +37,9 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
     kinds: z
       .array(z.enum(['drug-drug', 'drug-food', 'target']))
       .min(1)
-      .default(['drug-drug'])
+      .default(['drug-food'])
       .describe(
-        'Interaction kinds to fetch. "drug-drug" (interactions with other drugs), "drug-food" (dietary interactions), "target" (binding/activity against molecular targets). "drug-drug" and "target" come from PubChem\'s SDQ service, which can refuse automated requests; "drug-food" comes from PUG View. Per-target activity is also available from pubchem_get_bioactivity. Default: ["drug-drug"].',
+        'Interaction kinds to fetch. "drug-food" (dietary interactions, from PUG View), "target" (molecular targets from the compound\'s assay summary: one entry per Gene ID with the accessions the table pairs with it, and one per identifier it never pairs, so a Gene ID and an accession that no row pairs are separate entries even when they name the same protein), "drug-drug" (interactions with other drugs, from PubChem\'s SDQ service, which refuses automated requests, so it is reported in failedKinds). Default: ["drug-food"].',
       ),
     offset: z
       .number()
@@ -51,7 +51,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       .max(2147483646)
       .default(0)
       .describe(
-        "Zero-based start position within each requested kind, counted in source records rather than returned entries. The same offset applies to every kind in the call, and the kinds advance at different rates — when paging past the first page, request one kind per call and pass that kind's nextOffset. Default: 0.",
+        "Zero-based start position within each requested kind, counted in records (molecular targets, for target) rather than returned entries. The same offset applies to every kind in the call, and the kinds advance at different rates — when paging past the first page, request one kind per call and pass that kind's nextOffset. Default: 0.",
       ),
     maxEntries: z
       .number()
@@ -76,9 +76,17 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
             partner: z
               .string()
               .optional()
-              .describe('Interacting compound, food, or target name as the source reports it.'),
-            source: z.string().describe('Originating source (e.g. "DrugBank", "BindingDB").'),
-            text: z.string().describe('The interaction statement.'),
+              .describe(
+                'Interacting compound as the source reports it. For a target: its gene or protein name and organism, then the identifier pubchem_get_bioactivity filters on (GeneID:N → targetGeneId, accession:X → targetAccession); the identifier alone when no name resolves. A target whose identifiers join several Gene IDs is named by the accession they share and says "group of N Gene IDs".',
+              ),
+            source: z
+              .string()
+              .describe('Originating source (e.g. "DrugBank", "PubChem BioAssay").'),
+            text: z
+              .string()
+              .describe(
+                'The interaction statement. For a target: the assays naming it by outcome and its most potent Active value with that AID, in µM.',
+              ),
           })
           .describe('A single interaction entry.'),
       )
@@ -94,7 +102,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
             totalRecords: z
               .number()
               .describe(
-                'Source records available for this kind, across all pages. Entries are derived from these records and can be fewer: a "target" record naming no molecular target and a "drug-drug" record carrying no statement both yield nothing, and duplicate measurements collapse within a page. Pages divide the records, not the entries, so a duplicate split across two pages is reported on both.',
+                'Records available for this kind, across all pages: interaction records for drug-drug and drug-food, molecular targets for target. Entries are derived from these records and can be fewer: a drug-drug record carrying no statement yields nothing. Pages divide the records, not the entries.',
               ),
             nextOffset: z
               .number()
@@ -134,13 +142,13 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       .string()
       .optional()
       .describe(
-        "Interaction kinds that could not be retrieved (comma-separated). The returned entries cover the kinds that succeeded. The notice says, per failed kind, whether a retry can help: a timeout or upstream error can clear, while a refusal from PubChem's SDQ service (drug-drug, target) does not.",
+        "Interaction kinds that could not be retrieved (comma-separated). The returned entries cover the kinds that succeeded. The notice says, per failed kind, whether a retry can help: a timeout or upstream error can clear, while a refusal from PubChem's SDQ service (drug-drug) does not.",
       ),
     notice: z
       .string()
       .optional()
       .describe(
-        'Guidance when a kind failed, when no interaction data was found, when the offset runs past every requested kind, or when further pages remain. Absent when this page is complete and every kind resolved.',
+        'Guidance when a kind failed, when no interaction data was found, when the offset runs past every requested kind, when target names could not be retrieved, or when further pages remain. Absent when this page is complete and every kind resolved.',
       ),
     cappedInputs: cappedInputsField,
   },
@@ -223,11 +231,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       }
       if (refused.length > 0) {
         noticeParts.push(
-          `${couldNot(refused)}: PubChem's SDQ service, the source of drug-drug and target interactions, did not answer with data. It can refuse automated requests, and repeating the call does not change that.${
-            refused.includes('target')
-              ? ` Per-target activity for CID ${input.cid} is available from pubchem_get_bioactivity.`
-              : ''
-          }`,
+          `${couldNot(refused)}: PubChem's SDQ service, the source of drug-drug interactions, did not answer with data. It can refuse automated requests, and repeating the call does not change that.`,
         );
       }
       if (entries.length > 0) noticeParts.push('Returned the kinds that succeeded.');
@@ -236,9 +240,18 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
     const largestTotal = paging.reduce((max, p) => Math.max(max, p.totalRecords), 0);
     if (entries.length === 0 && paging.length > 0) {
       if (largestTotal === 0) {
-        noticeParts.push(
-          `No ${paging.map((p) => p.kind).join('/')} interaction data found for CID ${input.cid}. PubChem has no deposited interaction records for this compound — coverage is richest for approved drugs.`,
-        );
+        const kinds = paging.map((p) => p.kind);
+        noticeParts.push(`No ${kinds.join('/')} interaction data found for CID ${input.cid}.`);
+        if (kinds.some((k) => k !== 'target')) {
+          noticeParts.push(
+            'PubChem has no deposited interaction records for this compound — coverage is richest for approved drugs.',
+          );
+        }
+        if (kinds.includes('target')) {
+          noticeParts.push(
+            'None of its assays names a molecular target, or PubChem holds no assay data for it.',
+          );
+        }
       } else if (input.offset >= largestTotal) {
         noticeParts.push(
           `offset ${input.offset} is past every requested kind — the largest has ${largestTotal} record(s). Pass an offset below ${largestTotal}.`,
@@ -248,6 +261,20 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
           `CID ${input.cid} has ${largestTotal} record(s) for the requested kind(s), but none read on this page carried a reportable interaction.`,
         );
       }
+    }
+
+    // Drug-food answers for approved drugs only; target answers for any assayed compound.
+    const food = paging.find((p) => p.kind === 'drug-food');
+    if (food?.totalRecords === 0 && !input.kinds.includes('target')) {
+      noticeParts.push(
+        `For the molecular targets CID ${input.cid}'s assays name, request kinds: ["target"].`,
+      );
+    }
+
+    if (pages.some((p) => p.namesUnavailable)) {
+      noticeParts.push(
+        'Target names could not be retrieved for this page, so those partners carry their identifier alone. Retry to fetch the names.',
+      );
     }
 
     if (remaining.length > 0) {
@@ -267,7 +294,8 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
     const lines: string[] = [`## Interactions — CID ${result.cid}`, ''];
 
     for (const p of result.paging) {
-      const summary = `${p.returnedCount} entr${p.returnedCount === 1 ? 'y' : 'ies'} from ${p.totalRecords} source record(s)`;
+      const unit = p.kind === 'target' ? 'target(s)' : 'source record(s)';
+      const summary = `${p.returnedCount} entr${p.returnedCount === 1 ? 'y' : 'ies'} from ${p.totalRecords} ${unit}`;
       lines.push(`- **${p.kind}** — ${summary}${p.truncated ? ' — truncated' : ''}`);
       if (p.nextOffset !== undefined) lines.push(`  Next offset: ${p.nextOffset}`);
     }

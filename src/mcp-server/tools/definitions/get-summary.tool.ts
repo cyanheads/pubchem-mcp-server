@@ -6,6 +6,7 @@
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { MAX_INT32 } from '@/services/pubchem/types.js';
 import { normalizeProteinAccession } from './identifier-case.js';
 import {
   type CappedInput,
@@ -15,7 +16,7 @@ import {
   renderUnprocessed,
   splitBatch,
 } from './input-caps.js';
-import { inlineData, quoteData } from './untrusted-text.js';
+import { inlineData, inlineEcho, quoteData } from './untrusted-text.js';
 
 const entityTypeEnum = z.enum(['assay', 'gene', 'protein', 'taxonomy']);
 
@@ -33,10 +34,10 @@ const MAX_ASSAY_TARGETS = 25;
 
 /** What each entityType's identifier is, as notices and errors name it. */
 const ID_FORMS: Record<EntityType, string> = {
-  assay: 'positive integer AID',
-  gene: 'positive integer NCBI Gene ID',
+  assay: `positive integer AID up to ${MAX_INT32}`,
+  gene: `positive integer NCBI Gene ID up to ${MAX_INT32}`,
   protein: 'UniProt accession',
-  taxonomy: 'positive integer NCBI Taxonomy ID',
+  taxonomy: `positive integer NCBI Taxonomy ID up to ${MAX_INT32}`,
 };
 
 /** One identifier piece after splitting: the canonical ID to look up, or the piece as sent
@@ -46,9 +47,10 @@ type Piece = { valid: true; id: string | number } | { valid: false; id: string }
 /**
  * Split every identifier string on commas — PubChem's own list separator on all four summary
  * paths — trim each piece, and drop the empty ones. Numeric types accept a digits-only piece
- * naming a positive safe integer and echo it as that number (`"01000"` → 1000); anything else
- * is invalid and never reaches PubChem, which reads `+`, `;`, spaces, and signs as a 400 and
- * `/`, `?`, `#` as path syntax.
+ * naming an integer from 1 to `MAX_INT32` and echo it as that number (`"01000"` → 1000);
+ * anything else is invalid and never reaches PubChem, which reads `+`, `;`, spaces, and signs
+ * as a 400, `/`, `?`, `#` as path syntax, and an ID past the signed 32-bit range as invalid
+ * (400) or absent (404).
  */
 function splitIdentifiers(entityType: EntityType, identifiers: string[]): Piece[] {
   const pieces: Piece[] = [];
@@ -62,7 +64,7 @@ function splitIdentifiers(entityType: EntityType, identifiers: string[]): Piece[
       }
       const n = Number(trimmed);
       pieces.push(
-        /^\d+$/.test(trimmed) && n > 0 && Number.isSafeInteger(n)
+        /^\d+$/.test(trimmed) && n > 0 && n <= MAX_INT32
           ? { valid: true, id: n }
           : { valid: false, id: trimmed },
       );
@@ -88,7 +90,7 @@ const entitySummaryDataSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Assay method as PubChem labels it, e.g. "confirmatory" (dose-response) or "screening" (assay summaries). Omitted when PubChem records none.',
+      'Assay method as PubChem labels it (assay summaries): "confirmatory" (dose-response), "screening" (primary screen), "summary", or "other". Omitted when PubChem records none.',
     ),
   targets: z
     .array(
@@ -156,7 +158,7 @@ export const getSummary = tool('pubchem_get_summary', {
       .min(1)
       .max(INPUT_CEILING)
       .describe(
-        `Entity identifiers. A comma-joined string is split into one identifier per piece, with whitespace trimmed. The per-call cap is ${MAX_IDENTIFIERS_PER_CALL} pieces: the first ${MAX_IDENTIFIERS_PER_CALL} are looked up, and any past that are returned in unprocessed, in input order, and reported in cappedInputs. More than ${INPUT_CEILING} pieces in all fails the call. ID form depends on entityType:\n- assay: AID, a positive integer, e.g. ["1000"]\n- gene: NCBI Gene ID, a positive integer, e.g. ["1956"]\n- protein: UniProt accession, e.g. ["P00533"]\n- taxonomy: NCBI Taxonomy ID, a positive integer, e.g. ["9606"]\nFor assay, gene, and taxonomy, a piece that is not a positive integer written in digits is marked invalid and not looked up.`,
+        `Entity identifiers. A comma-joined string is split into one identifier per piece, with whitespace trimmed. The per-call cap is ${MAX_IDENTIFIERS_PER_CALL} pieces: the first ${MAX_IDENTIFIERS_PER_CALL} are looked up, and any past that are returned in unprocessed, in input order, and reported in cappedInputs. More than ${INPUT_CEILING} pieces in all fails the call. ID form depends on entityType:\n- assay: AID, a positive integer, e.g. ["1000"]\n- gene: NCBI Gene ID, a positive integer, e.g. ["1956"]\n- protein: UniProt accession, e.g. ["P00533"]\n- taxonomy: NCBI Taxonomy ID, a positive integer, e.g. ["9606"]\nFor assay, gene, and taxonomy, a piece that is not a positive integer up to ${MAX_INT32} written in digits is marked invalid and not looked up.`,
       ),
   }),
   output: z.object({
@@ -219,9 +221,8 @@ export const getSummary = tool('pubchem_get_summary', {
     {
       reason: 'invalid_identifier',
       code: JsonRpcErrorCode.ValidationError,
-      when: 'No identifier piece is usable: every piece is blank, or, for assay, gene, or taxonomy, not a positive integer',
-      recovery:
-        'Pass AIDs, Gene IDs, or Taxonomy IDs as positive integers (e.g. "1000") or protein UniProt accessions (e.g. "P00533"); find AIDs for a target with pubchem_search_assays.',
+      when: `No identifier piece is usable: every piece is blank, or, for assay, gene, or taxonomy, not a positive integer up to ${MAX_INT32}`,
+      recovery: `Pass AIDs, Gene IDs, or Taxonomy IDs as positive integers up to ${MAX_INT32} (e.g. "1000") or protein UniProt accessions (e.g. "P00533"); find AIDs for a target with pubchem_search_assays.`,
     },
   ],
 
@@ -238,7 +239,9 @@ export const getSummary = tool('pubchem_get_summary', {
       );
     }
     if (!pieces.some((p) => p.valid)) {
-      const shown = pieces.slice(0, NAMED_INVALID_PIECES).map((p) => `"${p.id}"`);
+      const shown = pieces
+        .slice(0, NAMED_INVALID_PIECES)
+        .map((p) => `"${inlineEcho(String(p.id))}"`);
       const more = pieces.length - shown.length;
       const named = `${shown.join(', ')}${more > 0 ? `, and ${more} more` : ''}`;
       throw ctx.fail(
@@ -265,7 +268,7 @@ export const getSummary = tool('pubchem_get_summary', {
     );
 
     const foundCount = summaries.filter((s) => s.found).length;
-    const invalidIds = served.filter((p) => !p.valid).map((p) => `"${p.id}"`);
+    const invalidIds = served.filter((p) => !p.valid).map((p) => `"${inlineEcho(String(p.id))}"`);
     const lookedUp = served.length - invalidIds.length;
     const notFound = lookedUp - foundCount;
 

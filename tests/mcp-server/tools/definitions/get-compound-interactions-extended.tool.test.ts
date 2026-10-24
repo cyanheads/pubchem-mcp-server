@@ -38,7 +38,7 @@ describe('getCompoundInteractions — offset input', () => {
   it('defaults to 0 and forwards the requested offset to the client', async () => {
     mockClient.getInteractions.mockResolvedValue({
       entries: [],
-      pages: [{ kind: 'drug-drug', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 }],
+      pages: [{ kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 }],
       failedKinds: [],
     });
     const ctx = createMockContext();
@@ -49,7 +49,7 @@ describe('getCompoundInteractions — offset input', () => {
     );
     expect(mockClient.getInteractions).toHaveBeenLastCalledWith(
       2244,
-      ['drug-drug'],
+      ['drug-food'],
       10,
       0,
       expect.any(AbortSignal),
@@ -61,7 +61,7 @@ describe('getCompoundInteractions — offset input', () => {
     );
     expect(mockClient.getInteractions).toHaveBeenLastCalledWith(
       2244,
-      ['drug-drug'],
+      ['drug-food'],
       10,
       40,
       expect.any(AbortSignal),
@@ -226,6 +226,45 @@ describe('getCompoundInteractions — empty-page notices', () => {
   });
 });
 
+describe('getCompoundInteractions — empty target page (#78)', () => {
+  it('says the assays name no target, without the approved-drug coverage line', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [{ kind: 'target', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 }],
+      failedKinds: [],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 962, kinds: ['target'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toBe(
+      'No target interaction data found for CID 962. None of its assays names a molecular target, or PubChem holds no assay data for it.',
+    );
+  });
+
+  it('names the valid bound when the offset runs past the last target', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [{ kind: 'target', returnedCount: 0, totalRecords: 738, recordsConsumed: 0 }],
+      failedKinds: [],
+    });
+    const ctx = createMockContext();
+    const result = await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 176870, kinds: ['target'], offset: 900 }),
+      ctx,
+    );
+
+    expect(result.paging).toEqual([
+      { kind: 'target', returnedCount: 0, totalRecords: 738, truncated: false },
+    ]);
+    expect(getEnrichment(ctx).notice).toBe(
+      'offset 900 is past every requested kind — the largest has 738 record(s). Pass an offset below 738.',
+    );
+  });
+});
+
 describe('getCompoundInteractions — failure isolation', () => {
   it('leaves the surviving kind’s continuation intact and omits the failed kind from paging', async () => {
     mockClient.getInteractions.mockResolvedValueOnce({
@@ -264,17 +303,20 @@ describe('getCompoundInteractions — failure isolation', () => {
 });
 
 describe('getCompoundInteractions — SDQ refusals (#62)', () => {
-  const refused = (kind: 'drug-drug' | 'target') => ({
+  const refused = (kind: 'drug-drug') => ({
     kind,
     reason: 'sdq_unavailable',
     message: `PubChem's SDQ service answered HTTP 404 instead of SDQ data.`,
   });
 
-  it('names an SDQ refusal without advising a retry, and points target at pubchem_get_bioactivity', async () => {
+  it('names a drug-drug SDQ refusal without advising a retry, and no longer names target as an SDQ kind (#78)', async () => {
     mockClient.getInteractions.mockResolvedValueOnce({
       entries: [],
-      pages: [{ kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 }],
-      failedKinds: [refused('drug-drug'), refused('target')],
+      pages: [
+        { kind: 'target', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 },
+        { kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 },
+      ],
+      failedKinds: [refused('drug-drug')],
     });
     const ctx = createMockContext();
     await getCompoundInteractions.handler(
@@ -287,33 +329,39 @@ describe('getCompoundInteractions — SDQ refusals (#62)', () => {
     const enrichment = getEnrichment(ctx);
     const notice = enrichment.notice as string;
 
-    expect(enrichment.failedKinds).toBe('drug-drug, target');
-    expect(notice).toContain('drug-drug, target');
-    expect(notice).toContain('SDQ');
+    expect(enrichment.failedKinds).toBe('drug-drug');
+    expect(notice).toContain(
+      "Could not retrieve drug-drug interaction for CID 2244: PubChem's SDQ service, the source of drug-drug interactions, did not answer with data. It can refuse automated requests, and repeating the call does not change that.",
+    );
     expect(notice).not.toMatch(/retry/i);
-    expect(notice).toContain('pubchem_get_bioactivity');
+    expect(notice).not.toContain('pubchem_get_bioactivity');
   });
 
   it('carries the refusal on structuredContent and in content[] text', async () => {
     mockClient.getInteractions.mockResolvedValueOnce({
       entries: [],
       pages: [],
-      failedKinds: [refused('target')],
+      failedKinds: [refused('drug-drug')],
     });
 
-    const result = await runToolContract(getCompoundInteractions, { cid: 2244, kinds: ['target'] });
+    const result = await runToolContract(getCompoundInteractions, {
+      cid: 2244,
+      kinds: ['drug-drug'],
+    });
     const structured = result.structuredContent as Record<string, unknown>;
     const text = result.content
       .map((block) => (block.type === 'text' ? block.text : ''))
       .join('\n');
 
+    const refusal =
+      "Could not retrieve drug-drug interaction for CID 2244: PubChem's SDQ service, the source of drug-drug interactions, did not answer with data. It can refuse automated requests, and repeating the call does not change that.";
+
     expect(result.isError).toBeFalsy();
-    expect(structured.failedKinds).toBe('target');
+    expect(structured.failedKinds).toBe('drug-drug');
     expect(structured.paging).toEqual([]);
-    expect(String(structured.notice)).toContain('pubchem_get_bioactivity');
-    expect(text).toContain('target');
-    expect(text).toContain("PubChem's SDQ service");
-    expect(text).toContain('pubchem_get_bioactivity');
+    expect(structured.notice).toBe(refusal);
+    expect(text).toContain('\n**failedKinds:** drug-drug\n');
+    expect(text).toContain(`\n> ${refusal}`);
   });
 
   it('leaves out the bioactivity pointer when target was not refused', async () => {
@@ -336,21 +384,75 @@ describe('getCompoundInteractions — SDQ refusals (#62)', () => {
       entries: [],
       pages: [],
       failedKinds: [
-        refused('target'),
+        refused('drug-drug'),
         { kind: 'drug-food', message: 'PubChem returned HTTP 503 after 2 attempts.' },
       ],
     });
     const ctx = createMockContext();
     await getCompoundInteractions.handler(
-      getCompoundInteractions.input.parse({ cid: 2244, kinds: ['target', 'drug-food'] }),
+      getCompoundInteractions.input.parse({ cid: 2244, kinds: ['drug-drug', 'drug-food'] }),
       ctx,
     );
     const notice = getEnrichment(ctx).notice as string;
 
     expect(notice).toContain('Could not retrieve drug-food interaction');
     expect(notice).toMatch(/Retry to re-attempt it\./);
-    expect(notice).toContain('pubchem_get_bioactivity');
+    expect(notice).toContain('Could not retrieve drug-drug interaction');
     expect(notice.match(/retry/gi)).toHaveLength(1);
+  });
+});
+
+describe('getCompoundInteractions — target entries on both surfaces (#78)', () => {
+  const egfr: InteractionEntry = {
+    kind: 'target',
+    partner: 'EGFR - epidermal growth factor receptor [Homo sapiens (human)] (GeneID:1956)',
+    source: 'PubChem BioAssay',
+    text: 'Active in 253 of 351 assays (Inactive 1, Inconclusive 4, Unspecified 93); most potent active: IC50 0.000029 uM (AID 1956454)',
+  };
+  const fixJ: InteractionEntry = {
+    kind: 'target',
+    partner: 'accession:WP_006493245 (group of 18 Gene IDs)',
+    source: 'PubChem BioAssay',
+    text: 'Active in 0 of 1 assay (Inactive 1)',
+  };
+
+  it('carries partner, source, statement, and the target paging on structuredContent and content[]', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [egfr, fixJ],
+      pages: [{ kind: 'target', returnedCount: 2, totalRecords: 738, recordsConsumed: 2 }],
+      failedKinds: [],
+    });
+
+    const result = await runToolContract(getCompoundInteractions, {
+      cid: 176870,
+      kinds: ['target'],
+      maxEntries: 2,
+    });
+    const structured = result.structuredContent as {
+      entries: InteractionEntry[];
+      paging: Array<Record<string, unknown>>;
+      nextOffset?: number;
+    };
+    const text = result.content
+      .map((block) => (block.type === 'text' ? block.text : ''))
+      .join('\n');
+
+    expect(result.isError).toBeFalsy();
+    expect(structured.entries).toEqual([egfr, fixJ]);
+    expect(structured.paging).toEqual([
+      { kind: 'target', returnedCount: 2, totalRecords: 738, nextOffset: 2, truncated: true },
+    ]);
+    expect(structured.nextOffset).toBe(2);
+    expect(text).toContain('**target** — 2 entries from 738 target(s) — truncated');
+    expect(text).toContain('Next offset: 2');
+    expect(text).toContain(
+      '- (target) **EGFR - epidermal growth factor receptor [Homo sapiens (human)] (GeneID:1956)** _(source: PubChem BioAssay)_',
+    );
+    expect(text).toContain(
+      '  > Active in 253 of 351 assays (Inactive 1, Inconclusive 4, Unspecified 93); most potent active: IC50 0.000029 uM (AID 1956454)',
+    );
+    expect(text).toContain('- (target) **accession:WP_006493245 (group of 18 Gene IDs)**');
+    expect(text).toContain('  > Active in 0 of 1 assay (Inactive 1)');
   });
 });
 
@@ -382,7 +484,13 @@ describe('getCompoundInteractions format — paging block', () => {
       cid: 2244,
       entries: [],
       paging: [
-        { kind: 'target', returnedCount: 0, totalRecords: 7253, nextOffset: 20, truncated: true },
+        {
+          kind: 'drug-drug',
+          returnedCount: 0,
+          totalRecords: 7253,
+          nextOffset: 20,
+          truncated: true,
+        },
       ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;

@@ -3,7 +3,7 @@
  * @module mcp-server/tools/definitions/search-assays.test
  */
 
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchAssays } from '@/mcp-server/tools/definitions/search-assays.tool.js';
 
@@ -229,6 +229,110 @@ describe('searchAssays handler — offset pagination (#38)', () => {
     expect(() =>
       searchAssays.input.parse({ targetType: 'genesymbol', targetQuery: 'EGFR', offset: -1 }),
     ).toThrow();
+  });
+});
+
+describe('searchAssays caller-text framing (#74)', () => {
+  type Result = Awaited<ReturnType<typeof runToolContract>>;
+  const textOf = (result: Result) =>
+    result.content
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n');
+  const structuredOf = (result: Result) =>
+    result.structuredContent as { targetQuery?: string; notice?: string };
+
+  const HOSTILE = 'zzqq `code` ~~x~~ **b**\n# INJECTED';
+  const HOSTILE_FRAMED = 'zzqq \\`code\\` \\~\\~x\\~\\~ \\*\\*b\\*\\* # INJECTED';
+  const LONG = 'x'.repeat(500);
+  const NO_ASSAYS_ADVICE =
+    'Try a different targetType (e.g. switch from proteinname to genesymbol), verify the identifier spelling, or use pubchem_get_summary for gene/protein entity lookups.';
+
+  it('frames the no-assays notice and the targetQuery line, keeping the structured echo as sent', async () => {
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
+
+    const result = await runToolContract(searchAssays, {
+      targetType: 'proteinname',
+      targetQuery: HOSTILE,
+    });
+
+    expect(structuredOf(result).targetQuery).toBe(HOSTILE);
+    const notice = `No assays found for "${HOSTILE_FRAMED}" (proteinname). ${NO_ASSAYS_ADVICE}`;
+    expect(structuredOf(result).notice).toBe(notice);
+    const text = textOf(result);
+    expect(text).toContain(`**targetQuery:** ${HOSTILE_FRAMED}\n`);
+    expect(text).toContain(`> ${notice}`);
+    expect(text).not.toMatch(/^# INJECTED/m);
+  });
+
+  it('cuts a long targetQuery to 100 characters in the notice and echoes it whole on the targetQuery line', async () => {
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
+
+    const result = await runToolContract(searchAssays, {
+      targetType: 'genesymbol',
+      targetQuery: LONG,
+    });
+
+    expect(structuredOf(result).targetQuery).toBe(LONG);
+    expect(structuredOf(result).notice).toBe(
+      `No assays found for "${'x'.repeat(100)}…" (genesymbol). ${NO_ASSAYS_ADVICE}`,
+    );
+    expect(textOf(result)).toContain(`**targetQuery:** ${LONG}\n`);
+  });
+
+  it('frames and cuts the past-the-end notice', async () => {
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([1, 2, 3]);
+
+    const hostile = await runToolContract(searchAssays, {
+      targetType: 'proteinname',
+      targetQuery: HOSTILE,
+      offset: 10,
+    });
+    expect(structuredOf(hostile).notice).toBe(
+      `offset 10 is past the 3 AID(s) found for "${HOSTILE_FRAMED}". Pass an offset below 3.`,
+    );
+
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([1, 2, 3]);
+    const long = await runToolContract(searchAssays, {
+      targetType: 'proteinname',
+      targetQuery: LONG,
+      offset: 10,
+    });
+    expect(structuredOf(long).notice).toBe(
+      `offset 10 is past the 3 AID(s) found for "${'x'.repeat(100)}…". Pass an offset below 3.`,
+    );
+  });
+
+  it('frames and cuts the invalid_geneid_query message', async () => {
+    const hostile = await runToolContract(searchAssays, {
+      targetType: 'geneid',
+      targetQuery: HOSTILE,
+    });
+    const hostileError = (hostile.structuredContent as { error: { message: string } }).error;
+    expect(hostileError.message).toBe(
+      `targetType is "geneid" but targetQuery "${HOSTILE_FRAMED}" is not a positive integer Gene ID.`,
+    );
+    expect(textOf(hostile)).not.toMatch(/^# INJECTED/m);
+
+    const long = await runToolContract(searchAssays, { targetType: 'geneid', targetQuery: LONG });
+    expect((long.structuredContent as { error: { message: string } }).error.message).toBe(
+      `targetType is "geneid" but targetQuery "${'x'.repeat(100)}…" is not a positive integer Gene ID.`,
+    );
+    expect(mockClient.searchAssaysByTarget).not.toHaveBeenCalled();
+  });
+
+  it('renders an ordinary target exactly as before', async () => {
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
+
+    const result = await runToolContract(searchAssays, {
+      targetType: 'genesymbol',
+      targetQuery: 'EGFR',
+    });
+
+    expect(textOf(result)).toContain('**targetQuery:** EGFR\n');
+    expect(structuredOf(result).notice).toBe(
+      `No assays found for "EGFR" (genesymbol). ${NO_ASSAYS_ADVICE}`,
+    );
   });
 });
 

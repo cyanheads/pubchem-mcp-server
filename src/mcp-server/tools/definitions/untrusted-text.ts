@@ -1,5 +1,5 @@
 /**
- * @fileoverview Framing helpers that render upstream-controlled free text as
+ * @fileoverview Framing helpers that render upstream-controlled free text and caller-supplied echoes as
  * clearly-delimited DATA in MCP `content[]` output. PubChem descriptions,
  * summaries, interaction statements, synonyms, and assay/GHS text are relayed
  * verbatim into the model's context; rendered as bare prose they blur the
@@ -32,13 +32,34 @@ const INLINE_MARKDOWN = /[\\`*~]/g;
  * Frame a single upstream value for safe inline interpolation into `content[]`
  * markdown. Collapses embedded newlines (so the value cannot start a new
  * markdown block) and escapes emphasis / inline-code delimiters. Proportionate
- * by design: the goal is a data boundary, not heavy escaping.
+ * by design: the goal is a data boundary, not heavy escaping. Runs in time
+ * linear in the value's length.
  */
 export function inlineData(value: string): string {
-  return value
-    .replace(/\s*[\r\n]+\s*/g, ' ')
-    .replace(INLINE_MARKDOWN, '\\$&')
-    .trim();
+  return (
+    value
+      // A whitespace run holding a line break becomes one space.
+      .replace(/\s+/g, (run) => (/[\r\n]/.test(run) ? ' ' : run))
+      .replace(INLINE_MARKDOWN, '\\$&')
+      .trim()
+  );
+}
+
+/** Longest caller-supplied value, in code points, echoed into a notice or error message. */
+const MAX_ECHO_CHARS = 100;
+
+/**
+ * Frame a caller-supplied value for a notice or error message: cut to
+ * {@link MAX_ECHO_CHARS} code points (a cut value ends in `…`), then framed by
+ * {@link inlineData}. Notices and error messages carry the same string on both
+ * surfaces, so the cut is surface-neutral; the full value stays in its structured
+ * field. Cutting first keeps the framing work bounded whatever the input length.
+ */
+export function inlineEcho(value: string): string {
+  const chars = Array.from(value);
+  return inlineData(
+    chars.length > MAX_ECHO_CHARS ? `${chars.slice(0, MAX_ECHO_CHARS).join('')}…` : value,
+  );
 }
 
 /**

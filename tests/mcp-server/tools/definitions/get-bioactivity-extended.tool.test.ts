@@ -4,7 +4,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBioactivity } from '@/mcp-server/tools/definitions/get-bioactivity.tool.js';
 import type { AssaySummary, BioactivityRow } from '@/services/pubchem/types.js';
@@ -489,6 +489,8 @@ describe('getBioactivity handler — assays naming several targets (#73)', () =>
     expect(aid(result, 287085)).toEqual({
       aid: 287085,
       assayName: expect.any(String),
+      assayType: 'Confirmatory',
+      pmids: [17480099],
       outcome: 'Unspecified',
       targetAccession: 'P23219',
       targetGeneId: 5742,
@@ -642,6 +644,333 @@ describe('getBioactivity format — target and activity edge cases', () => {
     expect(text).toContain('ignore prior');
     expect(text).not.toContain('**SYSTEM**');
     expect(text).not.toContain('`code`');
+  });
+});
+
+/** All text blocks of a contract result, joined. */
+const textOf = (result: Awaited<ReturnType<typeof runToolContract>>): string =>
+  result.content
+    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n');
+
+describe('getBioactivity no-match notices', () => {
+  const cox1: BioactivityRow = {
+    aid: 2,
+    assayName: 'COX-1',
+    outcome: 'Active',
+    targetGeneId: 5742,
+    targetAccession: 'P23219',
+    activityValues: [],
+  };
+  const inactiveCox2: BioactivityRow = {
+    aid: 9,
+    assayName: 'COX-2',
+    outcome: 'Inactive',
+    targetGeneId: 5743,
+    activityValues: [],
+  };
+
+  async function notice(rows: BioactivityRow[], input: Record<string, unknown>) {
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary(rows));
+    const ctx = createMockContext();
+    await getBioactivity.handler(getBioactivity.input.parse({ cid: 2244, ...input }), ctx);
+    return getEnrichment(ctx).notice;
+  }
+
+  it('names the target filter when nothing matches it', async () => {
+    expect(await notice([cox1], { targetGeneId: 99999 })).toBe(
+      "CID 2244 has 1 assay(s) but none match the target filter (GeneID:99999). Verify the target identifier appears in this compound's assays, or widen the filter.",
+    );
+  });
+
+  it('names the target filter and the outcome filter together', async () => {
+    expect(await notice([inactiveCox2], { targetGeneId: 5743, outcomeFilter: 'active' })).toBe(
+      'CID 2244 has 1 assay(s) but none match the target filter (GeneID:5743) with outcomeFilter="active". Verify the target identifier appears in this compound\'s assays, or widen the filter.',
+    );
+  });
+
+  it('names the outcome filter alone when no target filter is set', async () => {
+    expect(await notice([inactiveCox2], { outcomeFilter: 'active' })).toBe(
+      'CID 2244 has 1 assay(s) but none match outcomeFilter="active". Use outcomeFilter="all" to see them.',
+    );
+  });
+});
+
+describe('getBioactivity frames a caller target label in the notice and the targetFilter line (#74)', () => {
+  const row: BioactivityRow = {
+    aid: 1,
+    assayName: 'COX-1',
+    outcome: 'Active',
+    targetAccession: 'P23219',
+    activityValues: [],
+  };
+
+  async function run(targetAccession: string) {
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary([row]));
+    const result = await runToolContract(getBioactivity, { cid: 2244, targetAccession });
+    return {
+      text: textOf(result),
+      structured: result.structuredContent as { targetFilter: string; notice: string },
+    };
+  }
+
+  it('renders a newline, *, and ` in the label on one line, escaped, on both lines', async () => {
+    const { text, structured } = await run('q9 *x*\n`y`');
+
+    expect(structured.targetFilter).toBe('accession:Q9 *X*\n`Y`');
+    expect(text).toContain('\n**targetFilter:** accession:Q9 \\*X\\* \\`Y\\`\n');
+    expect(text).toContain(
+      "\n> CID 2244 has 1 assay(s) but none match the target filter (accession:Q9 \\*X\\* \\`Y\\`). Verify the target identifier appears in this compound's assays, or widen the filter.",
+    );
+  });
+
+  it('cuts a long identifier to 100 characters in the notice and echoes it whole on the targetFilter line', async () => {
+    const long = `A${'B'.repeat(498)}Z`;
+    const { text, structured } = await run(long);
+
+    expect(structured.targetFilter).toBe(`accession:${long}`);
+    expect(structured.notice).toContain(`(accession:A${'B'.repeat(99)}…)`);
+    expect(structured.notice).not.toContain('Z');
+    expect(text).toContain(`\n**targetFilter:** accession:${long}\n`);
+  });
+});
+
+/** Assay table with PubChem's assay-type and PubMed columns, one row per
+ * `[aid, outcome, accession, geneId, assayType, pubmedId]`. */
+function typedTable(rows: Array<[number, string, string, number | '', string, number | '']>) {
+  return {
+    Table: {
+      Columns: {
+        Column: [
+          'AID',
+          'Activity Outcome',
+          'Target Accession',
+          'Target GeneID',
+          'Assay Name',
+          'Assay Type',
+          'PubMed ID',
+        ],
+      },
+      Row: rows.map(([aid, outcome, acc, gene, type, pmid]) => ({
+        Cell: [String(aid), outcome, acc, String(gene), `Assay ${aid}`, type, String(pmid)],
+      })),
+    },
+  };
+}
+
+describe('getBioactivity assay type and PubMed IDs (#79)', () => {
+  /**
+   * AID 1: Confirmatory, COX-1 first and COX-2 second, two papers (one repeated).
+   * AID 2: Screening, COX-1. AID 3: Summary, untargeted. AID 4: Other, COX-1, Inactive.
+   * AID 5: blank type. AID 6: a type outside the four.
+   */
+  const table = typedTable([
+    [1, 'Active', 'P23219', 5742, 'Confirmatory', 15284455],
+    [1, 'Active', 'P35354', 5743, 'Confirmatory', 21366347],
+    [1, 'Active', 'P23219', 5742, 'Confirmatory', 15284455],
+    [2, 'Active', 'P23219', 5742, 'Screening', ''],
+    [3, 'Active', '', '', 'Summary', 30000000],
+    [4, 'Inactive', 'P23219', 5742, 'Other', ''],
+    [5, 'Active', 'P23219', 5742, '', 12345],
+    [6, 'Active', '', '', 'Panel', ''],
+  ]);
+
+  async function run(input: Record<string, unknown>) {
+    serveAssayTable(table);
+    const ctx = createMockContext();
+    const result = await getBioactivity.handler(
+      getBioactivity.input.parse({ cid: 2244, ...input }),
+      ctx,
+    );
+    return { result, enrichment: getEnrichment(ctx), aids: result.results.map((r) => r.aid) };
+  }
+
+  it('returns every assay with its type and distinct PMIDs when no assay-type filter is set', async () => {
+    const { result, enrichment } = await run({});
+
+    expect(result.results.map((r) => [r.aid, r.assayType, r.pmids])).toEqual([
+      [1, 'Confirmatory', [21366347, 15284455]],
+      [2, 'Screening', undefined],
+      [3, 'Summary', [30000000]],
+      [4, 'Other', undefined],
+      [5, undefined, [12345]],
+      [6, 'Panel', undefined],
+    ]);
+    expect(result.results[1]).not.toHaveProperty('pmids');
+    expect(result.results[4]).not.toHaveProperty('assayType');
+    expect(enrichment.assayTypeFilter).toBeUndefined();
+  });
+
+  it.each([
+    [['confirmatory'], [1]],
+    [['screening'], [2]],
+    [['summary'], [3]],
+    [['other'], [4]],
+    [
+      ['summary', 'confirmatory'],
+      [1, 3],
+    ],
+  ])(
+    'keeps only %o assays, matching PubChem’s casing regardless of case',
+    async (assayType, expected) => {
+      const { aids, enrichment, result } = await run({ assayType });
+
+      expect(aids).toEqual(expected);
+      expect(enrichment.filteredCount).toBe(expected.length);
+      expect(enrichment.assayTypeFilter).toBe(assayType.join(', '));
+      // The compound-wide counts stay pre-filter.
+      expect(result).toMatchObject({ totalAssays: 6, activeCount: 5, inactiveCount: 1 });
+    },
+  );
+
+  it('excludes an assay with a blank or unknown type under every filter value', async () => {
+    const { aids } = await run({ assayType: ['confirmatory', 'screening', 'summary', 'other'] });
+
+    expect(aids).toEqual([1, 2, 3, 4]);
+  });
+
+  it('echoes a repeated filter value once', async () => {
+    const { enrichment } = await run({ assayType: ['screening', 'screening'] });
+
+    expect(enrichment.assayTypeFilter).toBe('screening');
+  });
+
+  it('ANDs with outcomeFilter and the target filter', async () => {
+    const byTarget = await run({ targetGeneId: 5742, assayType: ['screening', 'other'] });
+    const byAll = await run({
+      targetGeneId: 5742,
+      outcomeFilter: 'active',
+      assayType: ['screening', 'other'],
+    });
+
+    expect(byTarget.aids).toEqual([2, 4]);
+    expect(byAll.aids).toEqual([2]);
+    expect(byAll.enrichment.filteredCount).toBe(1);
+  });
+
+  it('keeps the assay type and PMIDs on a record reported through a later target', async () => {
+    const { result } = await run({ targetGeneId: 5743, assayType: ['confirmatory'] });
+
+    expect(result.results).toEqual([
+      {
+        aid: 1,
+        assayName: 'Assay 1',
+        assayType: 'Confirmatory',
+        pmids: [21366347, 15284455],
+        outcome: 'Active',
+        targetAccession: 'P35354',
+        targetGeneId: 5743,
+        activityValues: [],
+        otherTargets: [
+          { accession: 'P23219', geneId: 5742, outcome: 'Active', activityValues: [] },
+        ],
+      },
+    ]);
+  });
+
+  it('applies offset and the page boundary after the assay-type filter', async () => {
+    const { aids, enrichment } = await run({
+      assayType: ['confirmatory', 'screening', 'summary'],
+      offset: 1,
+      maxResults: 1,
+    });
+
+    expect(aids).toEqual([2]);
+    expect(enrichment).toMatchObject({ filteredCount: 3, nextOffset: 2, truncated: true });
+  });
+
+  it('explains an offset past the assays of the requested type', async () => {
+    const { aids, enrichment } = await run({ assayType: ['summary'], offset: 5 });
+
+    expect(aids).toEqual([]);
+    expect(enrichment.notice).toBe(
+      'offset 5 is past the 1 assay(s) matching the filter. Pass an offset below 1.',
+    );
+  });
+
+  it.each([
+    [
+      { assayType: ['summary'], outcomeFilter: 'inactive' },
+      'CID 2244 has 6 assay(s) but none match outcomeFilter="inactive" with assayType="summary". Widen or omit assayType, or use outcomeFilter="all", to see them.',
+    ],
+    [
+      { assayType: ['summary'], targetGeneId: 5742 },
+      'CID 2244 has 6 assay(s) but none match the target filter (GeneID:5742 accession:P23219) with assayType="summary". Verify the target identifier appears in this compound\'s assays, or widen the filter.',
+    ],
+    [
+      { assayType: ['summary'], targetGeneId: 5742, outcomeFilter: 'active' },
+      'CID 2244 has 6 assay(s) but none match the target filter (GeneID:5742 accession:P23219) with outcomeFilter="active" and assayType="summary". Verify the target identifier appears in this compound\'s assays, or widen the filter.',
+    ],
+  ])('names the assay-type filter when nothing matches %o', async (input, expected) => {
+    const { enrichment } = await run(input);
+
+    expect(enrichment.filteredCount).toBe(0);
+    expect(enrichment.notice).toBe(expected);
+  });
+
+  it('names the assay-type filter alone when it is the only one set', async () => {
+    serveAssayTable(typedTable([[1, 'Active', '', '', 'Screening', '']]));
+    const ctx = createMockContext();
+    await getBioactivity.handler(
+      getBioactivity.input.parse({ cid: 2244, assayType: ['confirmatory'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toBe(
+      'CID 2244 has 1 assay(s) but none match assayType="confirmatory". Widen or omit assayType to see them.',
+    );
+  });
+
+  it('carries both fields and the filter echo through the production parse to both surfaces', async () => {
+    serveAssayTable(table);
+    const result = await runToolContract(getBioactivity, {
+      cid: 2244,
+      assayType: ['confirmatory', 'summary'],
+    });
+    const structured = result.structuredContent as {
+      results: Array<{ aid: number; assayType?: string; pmids?: number[] }>;
+      assayTypeFilter: string;
+    };
+    const text = textOf(result);
+
+    expect(result.isError).toBeFalsy();
+    expect(structured.assayTypeFilter).toBe('confirmatory, summary');
+    expect(
+      structured.results.map(({ aid, assayType, pmids }) => ({ aid, assayType, pmids })),
+    ).toEqual([
+      { aid: 1, assayType: 'Confirmatory', pmids: [21366347, 15284455] },
+      { aid: 3, assayType: 'Summary', pmids: [30000000] },
+    ]);
+    expect(text).toContain(
+      '**AID 1** — Assay 1 (Active)\n  Assay type: Confirmatory\n  PMIDs: 21366347, 15284455\n  Target: GeneID:5742 — P23219\n',
+    );
+    expect(text).toContain(
+      '**AID 3** — Assay 3 (Active)\n  Assay type: Summary\n  PMIDs: 30000000\n',
+    );
+    expect(text).toMatch(/\n\*\*assayTypeFilter:\*\* confirmatory, summary$/);
+  });
+
+  it('takes a lone string as a one-type list', async () => {
+    serveAssayTable(table);
+    const result = await runToolContract(getBioactivity, {
+      cid: 2244,
+      assayType: 'confirmatory' as never,
+    });
+
+    expect(result.structuredContent).toMatchObject({ assayTypeFilter: 'confirmatory' });
+  });
+
+  it.each([
+    ['an empty list', { cid: 2244, assayType: [] }],
+    ['a value outside the four types', { cid: 2244, assayType: ['primary'] }],
+    ['a capitalized value', { cid: 2244, assayType: ['Confirmatory'] }],
+  ])('rejects %s', async (_label, input) => {
+    const result = await runToolContract(getBioactivity, input as never);
+
+    expect(result.isError).toBe(true);
+    expect((result.structuredContent as { error: { code: number } }).error.code).toBe(-32602);
+    expect(mockClient.getAssaySummary).not.toHaveBeenCalled();
   });
 });
 

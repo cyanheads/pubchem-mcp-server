@@ -1152,6 +1152,28 @@ describe('PubChemClient.getClassification — ATC codes on real PUG View section
     expect(result!.atcCodes.map((a) => a.code)).toEqual(expectedCodes[5743]);
   });
 
+  it('skips a markup-only ATC string entry and still returns the codes beside it', async () => {
+    const record = atcFixture(60823);
+    const who = atcInformation(record).find((i) => i.ReferenceNumber === 143)!;
+    const value = who.Value as { StringWithMarkup: Array<Record<string, unknown>> };
+    value.StringWithMarkup.unshift({ Markup: [] });
+
+    const result = await classify(record, 60823);
+
+    expect(result!.atcCodes).toEqual([
+      {
+        code: 'C10AA05',
+        description: 'Atorvastatin',
+        levels: [
+          { code: 'C', description: 'Cardiovascular system' },
+          { code: 'C10', description: 'Lipid modifying agents' },
+          { code: 'C10A', description: 'Lipid modifying agents, plain' },
+          { code: 'C10AA', description: 'Hmg coa reductase inhibitors' },
+        ],
+      },
+    ]);
+  });
+
   it('returns null for a compound with no ATC section (CID 241)', async () => {
     fetchMock.mockResolvedValueOnce(pugViewFault('No data found'));
 
@@ -1293,6 +1315,216 @@ describe('PubChemClient.getXrefs — numeric ordering on real aspirin xrefs (#69
       expect(ids).toEqual(wireIds(type));
     },
   );
+});
+
+// ── getHeadingXrefs ───────────────────────────────────────────────────
+
+/**
+ * PUG View `heading=CAS` and `heading=European+Community+(EC)+Number` responses captured
+ * 2026-10-24, keyed `<type>/<cid>`. `Record.Reference` is trimmed to ReferenceNumber and
+ * SourceName; `Record.Section` is as served.
+ */
+const headingCaptures = JSON.parse(
+  readFileSync(new URL('../../fixtures/pug-view-cas-ec.json', import.meta.url), 'utf8'),
+) as Record<string, unknown>;
+
+/** Serve the capture for the CID and heading the request names; anything else is unrouted. */
+function routeHeadingCaptures(): void {
+  fetchMock.mockImplementation(async (input) => {
+    const url = new URL(String(input));
+    const cid = url.pathname.match(/^\/rest\/pug_view\/data\/compound\/(\d+)\/JSON$/)?.[1];
+    const heading = url.searchParams.get('heading');
+    const type = heading === 'European Community (EC) Number' ? 'EC' : heading;
+    const capture = headingCaptures[`${type}/${cid}`];
+    if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov' || !capture) {
+      throw new Error(`unrouted fetch: ${url}`);
+    }
+    return jsonResponse(capture);
+  });
+}
+
+/** A PUG View record whose sections are `sections`. */
+const pugViewRecord = (sections: unknown[]) =>
+  jsonResponse({ Record: { RecordType: 'CID', RecordNumber: 1, Section: sections } });
+
+/** One deposit: `values` under ReferenceNumber `ref`. */
+const deposit = (ref: number | undefined, ...values: string[]) => ({
+  ...(ref !== undefined && { ReferenceNumber: ref }),
+  Value: { StringWithMarkup: values.map((value) => ({ String: value })) },
+});
+
+describe('PubChemClient.getHeadingXrefs — CAS and EC from PUG View (#77)', () => {
+  it.each([
+    ['ethanol’s CAS number', 702, 'CAS', [{ id: '64-17-5', sourceCount: 24 }]],
+    ['ethanol’s EC number', 702, 'EC', [{ id: '200-578-6', sourceCount: 1 }]],
+    ['aspirin’s CAS number', 2244, 'CAS', [{ id: '50-78-2', sourceCount: 19 }]],
+    [
+      'every distinct D-glucose CAS value, most-attested first,',
+      5793,
+      'CAS',
+      [
+        { id: '50-99-7', sourceCount: 11 },
+        { id: '2280-44-6', sourceCount: 4 },
+        { id: '54-17-1', sourceCount: 2 },
+        { id: '1227096-09-4', sourceCount: 1 },
+      ],
+    ],
+  ] as const)(
+    'returns %s with its depositing source-record counts',
+    async (_label, cid, type, expected) => {
+      routeHeadingCaptures();
+
+      expect(await new PubChemClient().getHeadingXrefs(cid, type)).toEqual(expected);
+    },
+  );
+
+  it('keeps first-appearance order between values with the same count', async () => {
+    routeHeadingCaptures();
+    const client = new PubChemClient();
+
+    // Sodium chloride: 32343-72-9 is deposited before 8028-77-1, one source each.
+    expect(await client.getHeadingXrefs(5234, 'CAS')).toEqual([
+      { id: '7647-14-5', sourceCount: 14 },
+      { id: '14762-51-7', sourceCount: 4 },
+      { id: '32343-72-9', sourceCount: 1 },
+      { id: '8028-77-1', sourceCount: 1 },
+    ]);
+    expect(await client.getHeadingXrefs(5234, 'EC')).toEqual([
+      { id: '231-598-3', sourceCount: 1 },
+      { id: '617-042-6', sourceCount: 1 },
+    ]);
+  });
+
+  it.each([
+    ['CAS', 'CAS'],
+    ['EC', 'European Community (EC) Number'],
+  ] as const)('requests the %s heading by its exact name', async (type, heading) => {
+    fetchMock.mockResolvedValueOnce(pugViewRecord([]));
+
+    await new PubChemClient().getHeadingXrefs(2244, type);
+
+    const url = new URL(String(fetchMock.mock.calls[0]![0]));
+    expect(url.hostname).toBe('pubchem.ncbi.nlm.nih.gov');
+    expect(url.pathname).toBe('/rest/pug_view/data/compound/2244/JSON');
+    expect(url.searchParams.get('heading')).toBe(heading);
+  });
+
+  it('reads only the section whose TOCHeading matches exactly', async () => {
+    fetchMock.mockResolvedValueOnce(
+      pugViewRecord([
+        {
+          TOCHeading: 'Names and Identifiers',
+          Section: [
+            {
+              TOCHeading: 'Other Identifiers',
+              /* Each decoy sits before the real heading, so a looser match — a substring or a
+               * case-insensitive comparison — reaches the decoy first and fails the test. */
+              Section: [
+                { TOCHeading: 'Deprecated CAS', Information: [deposit(1, '11126-35-5')] },
+                { TOCHeading: 'cas', Information: [deposit(4, '999-99-9')] },
+                {
+                  TOCHeading: 'CAS',
+                  Information: [deposit(2, '50-78-2')],
+                  // A heading nested under CAS is a different heading, not more CAS values.
+                  Section: [
+                    { TOCHeading: 'Related CAS', Information: [deposit(3, '156865-15-5')] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+
+    expect(await new PubChemClient().getHeadingXrefs(2244, 'CAS')).toEqual([
+      { id: '50-78-2', sourceCount: 1 },
+    ]);
+  });
+
+  it('skips a StringWithMarkup entry that carries no String', async () => {
+    fetchMock.mockResolvedValueOnce(
+      pugViewRecord([
+        {
+          TOCHeading: 'CAS',
+          Information: [
+            { ReferenceNumber: 1, Value: { StringWithMarkup: [{ Markup: [] }] } },
+            { ReferenceNumber: 2, Value: { StringWithMarkup: [{}, { String: '50-78-2' }] } },
+          ],
+        },
+      ]),
+    );
+
+    expect(await new PubChemClient().getHeadingXrefs(2244, 'CAS')).toEqual([
+      { id: '50-78-2', sourceCount: 1 },
+    ]);
+  });
+
+  it('counts a source record once per value, and an unattributed entry as a record of its own', async () => {
+    fetchMock.mockResolvedValueOnce(
+      pugViewRecord([
+        {
+          TOCHeading: 'CAS',
+          Information: [
+            deposit(1, '2280-44-6'),
+            deposit(2, '50-99-7'),
+            deposit(1, '2280-44-6', ' 2280-44-6 '),
+            deposit(3, '50-99-7'),
+            deposit(undefined, '50-99-7'),
+            deposit(4, '', '  '),
+          ],
+        },
+      ]),
+    );
+
+    expect(await new PubChemClient().getHeadingXrefs(5793, 'CAS')).toEqual([
+      { id: '50-99-7', sourceCount: 3 },
+      { id: '2280-44-6', sourceCount: 1 },
+    ]);
+  });
+
+  it.each([
+    ['a real CID without the heading', 'No data found'],
+    ['a nonexistent CID', 'No record found'],
+  ])('returns an empty list for %s (404 %s)', async (_label, message) => {
+    fetchMock.mockResolvedValueOnce(pugViewFault(message));
+
+    expect(await new PubChemClient().getHeadingXrefs(170000000, 'CAS')).toEqual([]);
+  });
+
+  it('returns an empty list when the record carries no matching section', async () => {
+    fetchMock.mockResolvedValueOnce(
+      pugViewRecord([{ TOCHeading: 'Names and Identifiers', Section: [] }]),
+    );
+
+    expect(await new PubChemClient().getHeadingXrefs(2244, 'EC')).toEqual([]);
+  });
+
+  it('surfaces a failure other than 404 with its status and fault, without a retry', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          Fault: {
+            Code: 'PUGVIEW.BadRequest',
+            Message: 'Heading is either not found or ambiguous',
+          },
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+
+    const error = await new PubChemClient().getHeadingXrefs(2244, 'CAS').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(McpError);
+    expect(error).toMatchObject({
+      code: JsonRpcErrorCode.InvalidParams,
+      data: {
+        status: 400,
+        fault: 'PUGVIEW.BadRequest: Heading is either not found or ambiguous',
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ── getSynonyms ───────────────────────────────────────────────────────

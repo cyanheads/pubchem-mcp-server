@@ -32,6 +32,11 @@ const target: InteractionEntry = {
   source: 'BindingDB',
   text: 'CDK4 — IC50 (nM): 120',
 };
+const food: InteractionEntry = {
+  kind: 'drug-food',
+  source: 'DrugBank',
+  text: 'Take with food.',
+};
 
 describe('getCompoundInteractions handler', () => {
   it('returns entries and echoes kinds + count', async () => {
@@ -64,10 +69,10 @@ describe('getCompoundInteractions handler', () => {
     expect(e.notice).toBeUndefined();
   });
 
-  it('defaults kinds to drug-drug and maxEntries to 10', async () => {
+  it('defaults kinds to drug-food and maxEntries to 10 (#78)', async () => {
     mockClient.getInteractions.mockResolvedValueOnce({
-      entries: [ddi],
-      pages: [{ kind: 'drug-drug', returnedCount: 1, totalRecords: 1, recordsConsumed: 1 }],
+      entries: [food],
+      pages: [{ kind: 'drug-food', returnedCount: 1, totalRecords: 1, recordsConsumed: 1 }],
       failedKinds: [],
     });
     const ctx = createMockContext();
@@ -76,11 +81,106 @@ describe('getCompoundInteractions handler', () => {
 
     expect(mockClient.getInteractions).toHaveBeenCalledWith(
       2244,
-      ['drug-drug'],
+      ['drug-food'],
       10,
       0,
       expect.any(AbortSignal),
     );
+    expect(getEnrichment(ctx).requestedKinds).toBe('drug-food');
+  });
+
+  it('still accepts an explicit drug-drug request (#78)', () => {
+    expect(getCompoundInteractions.input.parse({ cid: 1, kinds: ['drug-drug'] }).kinds).toEqual([
+      'drug-drug',
+    ]);
+  });
+
+  it('names kinds: ["target"] as the next lever when drug-food comes back empty (#78)', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [{ kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 }],
+      failedKinds: [],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(getCompoundInteractions.input.parse({ cid: 6623 }), ctx);
+
+    expect(getEnrichment(ctx).notice).toBe(
+      'No drug-food interaction data found for CID 6623. PubChem has no deposited interaction records for this compound — coverage is richest for approved drugs. For the molecular targets CID 6623\'s assays name, request kinds: ["target"].',
+    );
+  });
+
+  it('leaves the target lever out when target was requested or drug-food has records (#78)', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [
+        { kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 },
+        { kind: 'target', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 },
+      ],
+      failedKinds: [],
+    });
+    const both = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 6623, kinds: ['drug-food', 'target'] }),
+      both,
+    );
+    expect(getEnrichment(both).notice).toBe(
+      'No drug-food/target interaction data found for CID 6623. PubChem has no deposited interaction records for this compound — coverage is richest for approved drugs. None of its assays names a molecular target, or PubChem holds no assay data for it.',
+    );
+
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [food],
+      pages: [{ kind: 'drug-food', returnedCount: 1, totalRecords: 1, recordsConsumed: 1 }],
+      failedKinds: [],
+    });
+    const found = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 2244 }),
+      found,
+    );
+    expect(getEnrichment(found).notice).toBeUndefined();
+  });
+
+  it('names the target lever beside a failed kind when drug-food is empty (#78)', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [{ kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 }],
+      failedKinds: [{ kind: 'drug-drug', reason: 'sdq_unavailable', message: 'refused' }],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 6623, kinds: ['drug-drug', 'drug-food'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toContain('request kinds: ["target"]');
+  });
+
+  it('says when target names were unavailable and the partners carry identifiers (#78)', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [{ ...target, partner: 'GeneID:1956' }],
+      pages: [
+        {
+          kind: 'target',
+          returnedCount: 1,
+          totalRecords: 1,
+          recordsConsumed: 1,
+          namesUnavailable: true,
+        },
+      ],
+      failedKinds: [],
+    });
+    const ctx = createMockContext();
+    const result = await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 176870, kinds: ['target'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toBe(
+      'Target names could not be retrieved for this page, so those partners carry their identifier alone. Retry to fetch the names.',
+    );
+    expect(getEnrichment(ctx).failedKinds).toBeUndefined();
+    // The flag is the client's; the paging rows keep the declared shape.
+    expect(result.paging[0]).not.toHaveProperty('namesUnavailable');
   });
 
   it('notices when no interactions are found', async () => {
@@ -95,6 +195,23 @@ describe('getCompoundInteractions handler', () => {
 
     expect(result.entries).toEqual([]);
     expect(getEnrichment(ctx).notice).toContain('No drug-drug interaction data');
+  });
+
+  it('words an empty drug-drug page exactly, naming the approved-drug coverage', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [{ kind: 'drug-drug', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 }],
+      failedKinds: [],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 962, kinds: ['drug-drug'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toBe(
+      'No drug-drug interaction data found for CID 962. PubChem has no deposited interaction records for this compound — coverage is richest for approved drugs.',
+    );
   });
 
   it('surfaces failed kinds and returns the kinds that succeeded (#21)', async () => {

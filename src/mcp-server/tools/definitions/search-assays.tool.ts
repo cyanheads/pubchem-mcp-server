@@ -15,6 +15,7 @@ import {
   INPUT_CEILING,
   renderCappedInputs,
 } from './input-caps.js';
+import { inlineData, inlineEcho } from './untrusted-text.js';
 
 /** AIDs served per page; a larger maxResults is clamped to this. */
 const MAX_RESULTS_CAP = 200;
@@ -97,7 +98,11 @@ export const searchAssays = tool('pubchem_search_assays', {
         'Recovery guidance when no assays matched, when the offset runs past the result set, or when further pages remain. Absent when this page is complete and non-empty.',
       ),
   },
-  enrichmentTrailer: { cappedInputs: { render: renderCappedInputs } },
+  enrichmentTrailer: {
+    // Uncut: the same value rides structuredContent, so content[] carries it whole.
+    targetQuery: { render: (value: string) => `**targetQuery:** ${inlineData(value)}` },
+    cappedInputs: { render: renderCappedInputs },
+  },
   errors: [
     {
       reason: 'blank_target_query',
@@ -132,7 +137,7 @@ export const searchAssays = tool('pubchem_search_assays', {
     if (input.targetType === 'geneid' && !/^\d+$/.test(targetQuery)) {
       throw ctx.fail(
         'invalid_geneid_query',
-        `targetType is "geneid" but targetQuery "${input.targetQuery}" is not a positive integer Gene ID.`,
+        `targetType is "geneid" but targetQuery "${inlineEcho(input.targetQuery)}" is not a positive integer Gene ID.`,
       );
     }
 
@@ -161,11 +166,11 @@ export const searchAssays = tool('pubchem_search_assays', {
     if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
     if (totalFound === 0) {
       ctx.enrich.notice(
-        `No assays found for "${targetQuery}" (${input.targetType}). Try a different targetType (e.g. switch from proteinname to genesymbol), verify the identifier spelling, or use pubchem_get_summary for gene/protein entity lookups.`,
+        `No assays found for "${inlineEcho(targetQuery)}" (${input.targetType}). Try a different targetType (e.g. switch from proteinname to genesymbol), verify the identifier spelling, or use pubchem_get_summary for gene/protein entity lookups.`,
       );
     } else if (aids.length === 0) {
       ctx.enrich.notice(
-        `offset ${input.offset} is past the ${totalFound} AID(s) found for "${targetQuery}". Pass an offset below ${totalFound}.`,
+        `offset ${input.offset} is past the ${totalFound} AID(s) found for "${inlineEcho(targetQuery)}". Pass an offset below ${totalFound}.`,
       );
     } else if (hasMore) {
       ctx.enrich.truncated({

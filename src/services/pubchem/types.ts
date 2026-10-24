@@ -61,6 +61,22 @@ export interface AssaySummaryTableResponse {
   };
 }
 
+/** Batched gene summaries (`/gene/geneid/{ids}/summary/JSON`). PubChem leaves out an ID it has
+ * no gene for and does not keep the requested order. `Name` can be blank. */
+export interface GeneSummaryResponse {
+  GeneSummaries: {
+    GeneSummary: Array<{ GeneID: number; Name?: string; Symbol?: string; Taxonomy?: string }>;
+  };
+}
+
+/** Batched protein summaries (`/protein/accession/{ids}/summary/JSON`), with the same omissions
+ * and ordering as {@link GeneSummaryResponse}. */
+export interface ProteinSummaryResponse {
+  ProteinSummaries: {
+    ProteinSummary: Array<{ ProteinAccession: string; Name?: string; Taxonomy?: string }>;
+  };
+}
+
 /** Conformer ID list for a compound */
 export interface ConformerListResponse {
   InformationList: {
@@ -98,7 +114,8 @@ export interface PugViewInformation {
   ReferenceNumber?: number;
   Value: {
     StringWithMarkup?: Array<{
-      String: string;
+      /** Absent on some entries (a markup-only deposit), so every reader guards it. */
+      String?: string;
       Markup?: Array<{
         Start: number;
         Length: number;
@@ -217,13 +234,19 @@ export interface AssayTargetActivity {
 
 /** Parsed bioactivity record for one AID from the assay summary table. The target fields,
  * outcome and values describe the AID's first target; an AID whose rows name more than one
- * target lists the rest, in table order, under `otherTargets`. */
+ * target lists the rest, in table order, under `otherTargets`. `assayType` and `pmids` belong
+ * to the AID itself, whichever target is reported. */
 export interface BioactivityRow {
   activityValues: ActivityValue[];
   aid: number;
   assayName: string;
+  /** PubChem's `Assay Type` as written ("Confirmatory", "Screening", "Summary", "Other");
+   * omitted when blank. */
+  assayType?: string;
   otherTargets?: AssayTargetActivity[];
   outcome: string;
+  /** Distinct PubMed IDs across the AID's rows, highest (newest) first; omitted when none. */
+  pmids?: number[];
   targetAccession?: string;
   targetGeneId?: number;
 }
@@ -248,25 +271,27 @@ export interface AssaySummary {
 export interface InteractionEntry {
   /** Interaction category. */
   kind: 'drug-drug' | 'drug-food' | 'target';
-  /** Interacting compound, food, or target name as the source reports it. Absent for food
-   * interactions and any entry where the source carries no distinct partner. */
+  /** Interacting compound name as DrugBank reports it, or a target's gene or protein name with
+   * its identifier (the identifier alone when no name resolved). Absent for food interactions
+   * and any entry where the source carries no distinct partner. */
   partner?: string;
-  /** Originating source (e.g. "DrugBank", "BindingDB"). */
+  /** Originating source (e.g. "DrugBank", "PubChem BioAssay"). */
   source: string;
-  /** The interaction statement. */
+  /** The interaction statement; for a target, its assay counts and most potent active value. */
   text: string;
 }
 
 /** Where one interaction kind's page landed in that kind's source-record stream.
  *
  * Every kind is backed by an ordered stream of source records, and entries are derived from
- * them: an SDQ row whose `targetname` is blank or whose `descr` is empty produces no entry, and
- * duplicate measurements collapse within a page. So `returnedCount` counts entries while
- * `totalRecords` and `recordsConsumed` count records, and the two are not interchangeable —
- * paging divides the records, so a duplicate split across two pages survives on both. */
+ * them: a drug-drug row whose `descr` is empty produces no entry. So `returnedCount` counts
+ * entries while `totalRecords` and `recordsConsumed` count records. A target record is one
+ * molecular target, so for that kind the two are 1:1. */
 export interface InteractionKindPage {
   /** Interaction category this page covers. */
   kind: 'drug-drug' | 'drug-food' | 'target';
+  /** Set when a target page's name lookup failed: its entries name their identifier alone. */
+  namesUnavailable?: true;
   /** Source records this page read, starting at the requested offset. The next page resumes
    * at the first record it did not read. */
   recordsConsumed: number;
@@ -280,6 +305,8 @@ export interface InteractionKindPage {
  * stream. `getInteractions` turns this into an {@link InteractionKindPage} per kind. */
 export interface InteractionKindFetch {
   entries: InteractionEntry[];
+  /** Set when a target page's name lookup failed: its entries name their identifier alone. */
+  namesUnavailable?: true;
   /** Source records this page read, starting at the requested offset. */
   recordsConsumed: number;
   /** Source records available for this kind, across all pages. */
@@ -426,7 +453,18 @@ export const DEFAULT_PROPERTIES = [
   'Complexity',
 ] as const;
 
-/** Supported cross-reference types */
+/** Cross-reference types read from a PUG View heading rather than PUG REST's xrefs endpoint:
+ * the depositor-attested CAS and EC numbers, one `Information` entry per source. */
+export const HEADING_XREF_TYPES = ['CAS', 'EC'] as const;
+
+export type HeadingXrefType = (typeof HEADING_XREF_TYPES)[number];
+
+/** Supported cross-reference types. Every one but the heading types is a PUG REST xrefs type.
+ *
+ * `ProteinGI` stays although PubChem answers 404 "No xrefs found" for it on every compound
+ * probed: PubChem still recognizes the type (an unknown one answers 400), so a request for it
+ * returns data again without a code change if PubChem resumes serving it, and dropping it would
+ * reject calls that pair it with a type that does return data. */
 export const XREF_TYPES = [
   'RegistryID',
   'RN',
@@ -435,4 +473,7 @@ export const XREF_TYPES = [
   'GeneID',
   'ProteinGI',
   'TaxonomyID',
+  ...HEADING_XREF_TYPES,
 ] as const;
+
+export type XrefType = (typeof XREF_TYPES)[number];

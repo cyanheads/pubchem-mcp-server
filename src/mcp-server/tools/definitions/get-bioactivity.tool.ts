@@ -21,10 +21,14 @@ import {
   INPUT_CEILING,
   renderCappedInputs,
 } from './input-caps.js';
-import { inlineData } from './untrusted-text.js';
+import { inlineData, inlineEcho } from './untrusted-text.js';
 
 /** Assays served per page; a larger maxResults is clamped to this. */
 const MAX_RESULTS_CAP = 100;
+
+/** PubChem's assay types, lowercased — the vocabulary pubchem_get_summary reports as an
+ * assay's method. */
+const ASSAY_TYPES = ['confirmatory', 'screening', 'summary', 'other'] as const;
 
 const activityValueSchema = z
   .object({
@@ -79,13 +83,22 @@ function reportMatchingTarget(row: BioactivityRow, match: TargetMatch): Bioactiv
   };
   if (reported.accession) promoted.targetAccession = reported.accession;
   if (reported.geneId) promoted.targetGeneId = reported.geneId;
+  // The assay type and citations describe the AID, whichever target is reported.
+  if (row.assayType) promoted.assayType = row.assayType;
+  if (row.pmids) promoted.pmids = row.pmids;
   return promoted;
 }
 
-const describeTargetIds = (geneIds: Iterable<number>, accessions: Iterable<string>): string =>
+/** `frame` shapes each accession — a notice passes {@link inlineEcho}, since one may be the
+ * caller's own string. */
+const describeTargetIds = (
+  geneIds: Iterable<number>,
+  accessions: Iterable<string>,
+  frame: (accession: string) => string = (a) => a,
+): string =>
   [
     ...[...geneIds].map((id) => `GeneID:${id}`),
-    ...[...accessions].map((a) => `accession:${a}`),
+    ...[...accessions].map((a) => `accession:${frame(a)}`),
   ].join(' ');
 
 /**
@@ -123,7 +136,7 @@ function resolveTargetFilter(
 export const getBioactivity = tool('pubchem_get_bioactivity', {
   title: 'Get Bioactivity',
   description:
-    'Get a compound\'s bioactivity profile: which assays tested it, activity outcomes (Active/Inactive/Inconclusive), target identifiers (NCBI Gene ID, UniProt/GenBank accession), and quantitative values (IC50, EC50, Ki, etc.). Filter by outcome and/or a specific molecular target (NCBI Gene ID or protein accession) to focus the profile — e.g. "is this compound active against target T?".',
+    'Get a compound\'s bioactivity profile: which assays tested it, activity outcomes (Active/Inactive/Inconclusive), target identifiers (NCBI Gene ID, UniProt/GenBank accession), quantitative values (IC50, EC50, Ki, etc.), each assay\'s type (confirmatory, screening, summary, other), and the PubMed IDs it cites. Filter by outcome, a specific molecular target (NCBI Gene ID or protein accession), and/or assay type to focus the profile — e.g. "is this compound active against target T in confirmatory assays?".',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -156,6 +169,13 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       .optional()
       .describe(
         'Filter to assays against this target protein accession (UniProt/RefSeq/GenBank/PDB chain), e.g. "P35354", including assays recorded only under a Gene ID or another accession this compound\'s assay table pairs with it. Uppercased before matching; a PDB chain ID (the "A" in "1ZHH_A") is kept as given. With targetGeneId, both must name the same target — when the table ties them to different targets, nothing matches. Obtain accessions from pubchem_search_assays or the targetAccession field of an unfiltered result here.',
+      ),
+    assayType: z
+      .array(z.enum(ASSAY_TYPES))
+      .min(1)
+      .optional()
+      .describe(
+        'Keep only assays of these types: "confirmatory" (dose-response and other follow-up assays), "screening" (primary high-throughput screens), "summary" (records summarizing a project\'s assays), "other". Matched against PubChem\'s Assay Type regardless of case; an assay with no recorded type matches none. Combines with outcomeFilter and the target filters — an assay must pass all of them. Omit to keep every type.',
       ),
     offset: z
       .number()
@@ -198,6 +218,18 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
           .object({
             aid: z.number().describe('PubChem Assay ID.'),
             assayName: z.string().describe('Assay name/title.'),
+            assayType: z
+              .string()
+              .optional()
+              .describe(
+                "PubChem's assay type as written: Confirmatory, Screening, Summary, or Other. Omitted when PubChem records none.",
+              ),
+            pmids: z
+              .array(z.number())
+              .optional()
+              .describe(
+                'PubMed IDs of the publications the assay cites, highest (most recently assigned) first. Omitted when it cites none.',
+              ),
             outcome: z
               .string()
               .describe(
@@ -255,10 +287,16 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       .describe(
         "Target identifiers matched, when a target filter is set: those passed plus every Gene ID and accession the compound's assay table pairs with them. When the two inputs name different targets, only the two inputs.",
       ),
+    assayTypeFilter: z
+      .string()
+      .optional()
+      .describe(
+        'Assay types kept, comma-separated (e.g. "confirmatory, summary"), when assayType is set.',
+      ),
     filteredCount: z
       .number()
       .describe(
-        'Exact number of assays matching the outcome and target filters, across all pages.',
+        'Exact number of assays matching the outcome, target, and assay-type filters, across all pages.',
       ),
     returnedCount: z.number().describe('Assays returned on this page.'),
     offset: z.number().describe('Zero-based index of the first assay returned.'),
@@ -284,7 +322,12 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
         'Recovery guidance when the filter yields no results or the compound has no bioactivity data.',
       ),
   },
-  enrichmentTrailer: { cappedInputs: { render: renderCappedInputs } },
+  enrichmentTrailer: {
+    // An accession in the label may be the caller's own string: framed, but never cut, since
+    // structuredContent carries the same value whole. Only called for a populated field.
+    targetFilter: { render: (label) => `**targetFilter:** ${inlineData(label ?? '')}` },
+    cappedInputs: { render: renderCappedInputs },
+  },
 
   async handler(input, ctx) {
     const client = getPubChemClient();
@@ -293,10 +336,10 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     const activeCount = allRows.filter((r) => r.outcome === 'Active').length;
     const inactiveCount = allRows.filter((r) => r.outcome === 'Inactive').length;
 
-    // Filter by target, then by outcome — pure filters on rows already in hand. The target
-    // filter expands each identifier through the pairs the compound's own table records,
-    // matches any target an assay names, and reports the matching one; the outcome filter
-    // then reads the reported target's outcome.
+    // Filter by target, then by outcome, then by assay type — pure filters on rows already in
+    // hand. The target filter expands each identifier through the pairs the compound's own
+    // table records, matches any target an assay names, and reports the matching one; the
+    // outcome filter then reads the reported target's outcome.
     const targetAccession = input.targetAccession
       ? normalizeProteinAccession(input.targetAccession)
       : undefined;
@@ -312,6 +355,12 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     } else if (input.outcomeFilter === 'inactive') {
       filtered = filtered.filter((r) => r.outcome === 'Inactive');
     }
+    const assayTypes = input.assayType ? [...new Set(input.assayType)] : [];
+    if (assayTypes.length > 0) {
+      const kept = new Set<string>(assayTypes);
+      filtered = filtered.filter((r) => r.assayType && kept.has(r.assayType.trim().toLowerCase()));
+    }
+    const assayTypeFilter = assayTypes.join(', ');
     const targetLabel = target.kind === 'none' ? '' : target.label;
 
     // Offset is applied client-side: PubChem's assay summary endpoint accepts no
@@ -338,6 +387,7 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       offset: input.offset,
     });
     if (targetLabel) ctx.enrich({ targetFilter: targetLabel });
+    if (assayTypeFilter) ctx.enrich({ assayTypeFilter });
     if (hasMore) ctx.enrich({ nextOffset });
     if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
     if (allRows.length === 0) {
@@ -349,10 +399,25 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
         `targetGeneId ${input.targetGeneId} and targetAccession ${targetAccession} name different targets in CID ${input.cid}'s assays: GeneID ${input.targetGeneId} belongs to [${describeTargetIds(target.geneGroup.geneIds, target.geneGroup.accessions)}], accession ${targetAccession} belongs to [${describeTargetIds(target.accessionGroup.geneIds, target.accessionGroup.accessions)}]. Pass one of the two, or call once per target.`,
       );
     } else if (filtered.length === 0) {
+      const outcomeSet = input.outcomeFilter !== 'all';
+      const filters = [
+        ...(target.kind === 'match'
+          ? [
+              `the target filter (${describeTargetIds(target.geneIds, target.accessions, inlineEcho)})`,
+            ]
+          : []),
+        ...(outcomeSet ? [`outcomeFilter="${input.outcomeFilter}"`] : []),
+        ...(assayTypeFilter ? [`assayType="${assayTypeFilter}"`] : []),
+      ];
+      const recovery =
+        target.kind === 'match'
+          ? "Verify the target identifier appears in this compound's assays, or widen the filter."
+          : assayTypeFilter
+            ? `Widen or omit assayType${outcomeSet ? ', or use outcomeFilter="all",' : ''} to see them.`
+            : 'Use outcomeFilter="all" to see them.';
+      const [first, ...rest] = filters;
       ctx.enrich.notice(
-        targetLabel
-          ? `CID ${input.cid} has ${allRows.length} assay(s) but none match the target filter (${targetLabel})${input.outcomeFilter !== 'all' ? ` with outcomeFilter="${input.outcomeFilter}"` : ''}. Verify the target identifier appears in this compound's assays, or widen the filter.`
-          : `CID ${input.cid} has ${allRows.length} assay(s) but none match outcomeFilter="${input.outcomeFilter}". Use outcomeFilter="all" to see them.`,
+        `CID ${input.cid} has ${allRows.length} assay(s) but none match ${first}${rest.length > 0 ? ` with ${rest.join(' and ')}` : ''}. ${recovery}`,
       );
     } else if (results.length === 0) {
       ctx.enrich.notice(
@@ -403,6 +468,8 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     for (const r of result.results) {
       const target = targetIds(r.targetGeneId, r.targetAccession);
       lines.push(`**AID ${r.aid}** — ${inlineData(r.assayName)} (${r.outcome})`);
+      if (r.assayType) lines.push(`  Assay type: ${inlineData(r.assayType)}`);
+      if (r.pmids) lines.push(`  PMIDs: ${r.pmids.join(', ')}`);
       if (target) lines.push(`  Target: ${target}`);
       pushValues(r.activityValues, '  ');
       for (const other of r.otherTargets ?? []) {

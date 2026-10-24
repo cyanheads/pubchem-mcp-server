@@ -40,7 +40,7 @@ const COLUMNS = [
   'Activity Name',
 ];
 
-function serveRows(rows: Array<Array<string | number>>): void {
+function serveRows(rows: Array<Array<string | number>>, columns = COLUMNS): void {
   vi.stubGlobal(
     'fetch',
     vi.fn<typeof fetch>(async (request) => {
@@ -50,7 +50,7 @@ function serveRows(rows: Array<Array<string | number>>): void {
         url.pathname.endsWith('/assaysummary/JSON')
       ) {
         return Response.json({
-          Table: { Columns: { Column: COLUMNS }, Row: rows.map((Cell) => ({ Cell })) },
+          Table: { Columns: { Column: columns }, Row: rows.map((Cell) => ({ Cell })) },
         });
       }
       throw new Error('unmocked fetch');
@@ -138,5 +138,32 @@ describe('compoundBioactivityResource', () => {
     expect(result.totalAssays).toBe(30);
     expect(result.activeCount).toBe(30);
     expect(result.results).toHaveLength(25);
+  });
+
+  it('carries each assay’s type and PubMed IDs on its row (#79)', async () => {
+    serveRows(
+      [
+        [287085, 'COX-1 inhibition', 'Unspecified', 'P23219', 5742, 'Confirmatory', '17480099'],
+        [287085, 'COX-1 inhibition', 'Unspecified', 'P23219', 5742, 'Confirmatory', '17480099'],
+        [2000, 'Cytotoxicity', 'Inactive', '', '', '', ''],
+      ],
+      [...COLUMNS.slice(0, 5), 'Assay Type', 'PubMed ID'],
+    );
+
+    const result = await read();
+
+    expect(result.results).toEqual([
+      {
+        aid: 287085,
+        assayName: 'COX-1 inhibition',
+        assayType: 'Confirmatory',
+        pmids: [17480099],
+        outcome: 'Unspecified',
+        targetAccession: 'P23219',
+        targetGeneId: 5742,
+        activityValues: [],
+      },
+      { aid: 2000, assayName: 'Cytotoxicity', outcome: 'Inactive', activityValues: [] },
+    ]);
   });
 });

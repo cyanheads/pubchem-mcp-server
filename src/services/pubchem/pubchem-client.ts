@@ -20,6 +20,12 @@ import {
   requestContextService,
   withRetry,
 } from '@cyanheads/mcp-ts-core/utils';
+import {
+  identifierLabel,
+  rollUpTargets,
+  type TargetIdentifier,
+  targetStatement,
+} from './target-rollup.js';
 import type {
   ActivityValue,
   AidListResponse,
@@ -32,14 +38,17 @@ import type {
   CidListResponse,
   CompoundClassification,
   ConformerListResponse,
+  GeneSummaryResponse,
   GHSClassification,
   GHSSourceClassification,
+  HeadingXrefType,
   InteractionEntry,
   InteractionKindFetch,
   InteractionKindPage,
   InteractionsResult,
   ListKeyResponse,
   PropertyTableResponse,
+  ProteinSummaryResponse,
   PugViewInformation,
   PugViewResponse,
   PugViewSection,
@@ -170,8 +179,13 @@ class RateLimiter {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /** A request's options, with the caller's cancellation signal required at every call site —
- * `undefined` only where no caller signal exists. */
-type FetchInit = Omit<RequestInit, 'signal'> & { signal: AbortSignal | undefined };
+ * `undefined` only where no caller signal exists. `sideLookup` marks a best-effort request
+ * beside the call's main one: it runs under {@link SIDE_LOOKUP_MS} instead of the call's whole
+ * budget, with no retry. */
+type FetchInit = Omit<RequestInit, 'signal'> & {
+  signal: AbortSignal | undefined;
+  sideLookup?: true;
+};
 
 /** Waits `ms`, or rejects with the cancellation as soon as `signal` aborts. */
 const sleep = (ms: number, signal?: AbortSignal) =>
@@ -216,6 +230,11 @@ function callBudgetLeft(signal: AbortSignal | undefined): number {
 
 /** Ceiling on one attempt; the retry gets whatever the call's budget has left. */
 const ATTEMPT_TIMEOUT_MS = 30_000;
+
+/** Ceiling on a side lookup, rate-limit wait included, inside whatever the call's budget has
+ * left. The lookup only labels the call's main answer, which may be ready long before it, so a
+ * hung lookup holds the call this long at most, and is not retried. */
+const SIDE_LOOKUP_MS = 8_000;
 
 /** Every non-2xx status. `fetchWithTimeout` logs a status it is not told to expect at `error`,
  * without the route; this client logs the request's final outcome itself, with the URL. */
@@ -410,6 +429,12 @@ function parseFaultMessage(text: string): string | undefined {
 
 // ── PUG View Parsing ─────────────────────────────────────────────────
 
+/** The exact PUG View `TOCHeading` each heading-backed xref type is read from. */
+const XREF_HEADINGS: Record<HeadingXrefType, string> = {
+  CAS: 'CAS',
+  EC: 'European Community (EC) Number',
+};
+
 /** Recursively search PUG View sections for a heading */
 function findSection(sections: PugViewSection[], heading: string): PugViewSection | undefined {
   for (const section of sections) {
@@ -469,7 +494,9 @@ type AtcCode = CompoundClassification['atcCodes'][number];
 function parseAtcCodes(section: PugViewSection, sources: Map<number, string>): AtcCode[] {
   const byCode = new Map<string, AtcCode>();
   for (const info of section.Information ?? []) {
-    const strings = (info.Value.StringWithMarkup ?? []).map((swm) => swm.String.trim());
+    const strings = (info.Value.StringWithMarkup ?? []).flatMap((swm) =>
+      swm.String ? [swm.String.trim()] : [],
+    );
     const entries = strings.flatMap((s) => {
       const match = s.match(ATC_ENTRY);
       return match?.[1] && match[2] ? [{ code: match[1], description: match[2].trim() }] : [];
@@ -823,7 +850,7 @@ function parseGhsBlock(
 
   for (const info of entries) {
     const name = info.Name?.toLowerCase() ?? '';
-    const strings = info.Value.StringWithMarkup?.map((s) => s.String).filter(Boolean) ?? [];
+    const strings = info.Value.StringWithMarkup?.flatMap((s) => (s.String ? [s.String] : [])) ?? [];
 
     if (name.includes('signal') && strings[0]) {
       signalWord ??= strings[0];
@@ -879,6 +906,20 @@ function parseGhsBlock(
     hazardStatements,
     precautionaryStatements,
   };
+}
+
+/** A gene or protein summary as one display name: the non-blank name parts joined by " - ",
+ * then the organism in brackets. Undefined when every name part is blank. */
+function summaryLabel(
+  parts: Array<string | undefined>,
+  taxonomy: string | undefined,
+): string | undefined {
+  const name = parts
+    .map((p) => p?.trim())
+    .filter(Boolean)
+    .join(' - ');
+  if (!name) return;
+  return taxonomy?.trim() ? `${name} [${taxonomy.trim()}]` : name;
 }
 
 /** Identity key for bioactivity entry dedup within an AID. */
@@ -947,7 +988,9 @@ export class PubChemClient {
    * (except a rejected search query), a network error, an attempt timeout, or a body that could
    * not be read; any other non-2xx fails at once, carrying PubChem's parsed fault on
    * `data.fault` when the body states one. A failure with no HTTP status reaches the caller as
-   * {@link requestFailure} rebuilds it, with nothing of the request in it.
+   * {@link requestFailure} rebuilds it, with nothing of the request in it. A `sideLookup`
+   * request gets the lesser of the call's remaining budget and {@link SIDE_LOOKUP_MS}, and no
+   * retry.
    *
    * `init.signal` is the caller's cancellation, and identifies the call whose budget the request
    * draws on. Once it aborts — queued for a slot, mid-fetch, mid-body, or in the backoff — the
@@ -955,7 +998,7 @@ export class PubChemClient {
    * failed upstream. */
   private async fetchResponse<T>(
     url: string,
-    { signal, ...init }: FetchInit,
+    { signal, sideLookup, ...init }: FetchInit,
     read: (response: Response) => Promise<T>,
   ): Promise<T> {
     const method = init.method ?? 'GET';
@@ -997,8 +1040,8 @@ export class PubChemClient {
           operation: 'PubChem request',
           context,
           ...(signal && { signal }),
-          deadlineMs: budgetLeftMs,
-          maxRetries: 1,
+          deadlineMs: sideLookup ? Math.min(budgetLeftMs, SIDE_LOOKUP_MS) : budgetLeftMs,
+          maxRetries: sideLookup ? 0 : 1,
           baseDelayMs: 1000,
           jitter: 0,
           isTransient: isRetryable,
@@ -1095,8 +1138,9 @@ export class PubChemClient {
   /** Resolve one caller-supplied identifier to its CIDs; [] when PubChem has no match.
    *
    * The identifier is the only variable in these requests, so an HTTP 400 is PubChem rejecting
-   * that identifier — for SMILES, a string it cannot standardize into a structure, including
-   * well-formed SMILES it cannot process such as a "*" wildcard atom. It is re-thrown as a
+   * that identifier — for SMILES or InChI, a string it cannot standardize into a structure,
+   * including well-formed SMILES it cannot process such as a "*" wildcard atom and an InChI
+   * whose case was changed. It is re-thrown as a
    * ValidationError tagged `identifier_rejected`, so a batch caller can set that one input
    * aside. Every other failure — 5xx, rate limit, timeout — keeps its own classification. */
   private async lookupIdentifier(url: string, init: FetchInit): Promise<number[]> {
@@ -1125,6 +1169,17 @@ export class PubChemClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ smiles }).toString(),
+      signal,
+    });
+  }
+
+  /** InChI is case-sensitive and carries `/`, so it is POSTed exactly as given — PubChem's
+   * path form answers an InChI with HTTP 400 "Missing structure string". */
+  searchByInchi(inchi: string, signal?: AbortSignal): Promise<number[]> {
+    return this.lookupIdentifier(`${this.pugBase}/compound/inchi/cids/JSON`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ inchi }).toString(),
       signal,
     });
   }
@@ -1304,7 +1359,7 @@ export class PubChemClient {
       /** PubChem sorts numeric IDs as strings ("10027656" before "1003266"), so its order is
        * neither oldest nor newest. Numeric types are sorted before any caller windows them:
        * PubMed IDs descending, a recency proxy since PMIDs are assigned roughly in time order;
-       * the rest ascending. String types (CAS numbers, registry IDs, patents) keep PubChem's
+       * the rest ascending. String types (registry numbers, registry IDs, patents) keep PubChem's
        * order. */
       if (ids.every((id): id is number => typeof id === 'number')) {
         ids.sort(xrefType === 'PubMedID' ? (a, b) => b - a : (a, b) => a - b);
@@ -1317,6 +1372,51 @@ export class PubChemClient {
   }
 
   // ── PUG View ────────────────────────────────────────────────────
+
+  /** Read a compound's depositor-attested CAS or EC numbers from their PUG View heading.
+   *
+   * Each `Information` entry under the heading is one source record's deposit. Every distinct
+   * value is kept with the number of source records that deposited it — a `ReferenceNumber`
+   * counts once per value, an entry without one as a record of its own — ordered most-attested
+   * first, ties in first-appearance order. One source can deposit several records, so the count
+   * is records, not distinct source names. Records can disagree, so the list is not reduced to
+   * one value.
+   *
+   * Only the section whose `TOCHeading` matches exactly is read, and only its own entries: a
+   * neighbouring or nested heading ("Deprecated CAS", "Related CAS") is a different list. A 404
+   * — a real compound without the heading, or a CID with no record — is an empty list. */
+  async getHeadingXrefs(
+    cid: number,
+    type: HeadingXrefType,
+    signal?: AbortSignal,
+  ): Promise<Array<{ id: string; sourceCount: number }>> {
+    const heading = XREF_HEADINGS[type];
+    try {
+      const data = await this.fetchJson<PugViewResponse>(
+        `${this.viewBase}/data/compound/${cid}/JSON?${new URLSearchParams({ heading })}`,
+        { signal },
+      );
+      const section = findSection(data.Record.Section ?? [], heading);
+      const sources = new Map<string, Set<number | PugViewInformation>>();
+      for (const info of section?.Information ?? []) {
+        for (const swm of info.Value.StringWithMarkup ?? []) {
+          // An entry without a String carries no value; skipped, as extractStrings does.
+          const id = swm.String?.trim();
+          if (!id) continue;
+          const attesting = sources.get(id) ?? new Set();
+          attesting.add(info.ReferenceNumber ?? info);
+          sources.set(id, attesting);
+        }
+      }
+      // Array.prototype.sort is stable, so equal counts keep the Map's first-appearance order.
+      return [...sources]
+        .map(([id, attesting]) => ({ id, sourceCount: attesting.size }))
+        .sort((a, b) => b.sourceCount - a.sourceCount);
+    } catch (error) {
+      if (isNotFound(error)) return [];
+      throw error;
+    }
+  }
 
   async getDescription(
     cid: number,
@@ -1535,6 +1635,8 @@ export class PubChemClient {
     const geneIdIdx = col('Target GeneID');
     const actValueIdx = colPrefix('Activity Value');
     const actNameIdx = col('Activity Name');
+    const assayTypeIdx = col('Assay Type');
+    const pmidIdx = col('PubMed ID');
 
     // Extract unit from column name if present, e.g. "Activity Value [uM]" → "uM"
     const actValueUnit =
@@ -1569,10 +1671,11 @@ export class PubChemClient {
 
     // One record per AID. Its first target fills the record; each further target the AID's
     // rows name joins otherTargets with its own outcome. Every activity value stays with the
-    // target its row names.
+    // target its row names. The assay type and PubMed IDs describe the AID, so every row
+    // contributes to them whichever target it names.
     const byAid = new Map<
       number,
-      { row: BioactivityRow; valuesByTarget: Map<string, ActivityValue[]> }
+      { row: BioactivityRow; valuesByTarget: Map<string, ActivityValue[]>; pmids: Set<number> }
     >();
 
     for (const { Cell: cell } of rows) {
@@ -1593,9 +1696,14 @@ export class PubChemClient {
         };
         if (accession) row.targetAccession = accession;
         if (geneId) row.targetGeneId = geneId;
-        assay = { row, valuesByTarget: new Map([[key, row.activityValues]]) };
+        assay = { row, valuesByTarget: new Map([[key, row.activityValues]]), pmids: new Set() };
         byAid.set(aid, assay);
       }
+      const assayType = assayTypeIdx >= 0 ? String(cell[assayTypeIdx] ?? '') : '';
+      if (assayType.trim()) assay.row.assayType ??= assayType;
+      // A blank cell coerces to 0 and fails the positivity check with any other non-ID.
+      const pmid = pmidIdx >= 0 ? Number(cell[pmidIdx] ?? '') : 0;
+      if (Number.isSafeInteger(pmid) && pmid > 0) assay.pmids.add(pmid);
       let values = assay.valuesByTarget.get(key);
       if (!values) {
         const other: AssayTargetActivity = { outcome, activityValues: [] };
@@ -1629,7 +1737,12 @@ export class PubChemClient {
       }
     }
 
-    return { rows: [...byAid.values()].map(({ row }) => row), targetGroups };
+    // PMIDs highest first — a recency proxy, since PubMed assigns them roughly in time order.
+    const records = [...byAid.values()].map(({ row, pmids }) => {
+      if (pmids.size > 0) row.pmids = [...pmids].sort((a, b) => b - a);
+      return row;
+    });
+    return { rows: records, targetGroups };
   }
 
   // ── Assay Search ────────────────────────────────────────────────
@@ -1737,10 +1850,11 @@ export class PubChemClient {
   // ── Interactions ────────────────────────────────────────────────
 
   /** Fetch drug-drug, drug-food, and/or chemical-target interactions for a compound.
-   * Drug-drug and target data live in PubChem SDQ external tables (drugbankddi, bioactivity);
-   * drug-food is inline PUG View text. Each kind reads a window of `maxEntries` entries
-   * starting at `offset` records into that kind's own stream; absent data for a kind
-   * contributes an empty page rather than erroring. A cancellation fails the whole call. */
+   * Drug-drug data lives in PubChem's SDQ `drugbankddi` external table; drug-food is inline
+   * PUG View text; target entries are rolled up from the compound's assay summary, one per
+   * molecular target. Each kind reads a window of `maxEntries` entries starting at `offset`
+   * records into that kind's own stream; absent data for a kind contributes an empty page
+   * rather than erroring. A cancellation fails the whole call. */
   async getInteractions(
     cid: number,
     kinds: Array<'drug-drug' | 'drug-food' | 'target'>,
@@ -1764,9 +1878,20 @@ export class PubChemClient {
     kinds.forEach((kind, i) => {
       const result = settled[i];
       if (result?.status === 'fulfilled') {
-        const { entries: kindEntries, totalRecords, recordsConsumed } = result.value;
+        const {
+          entries: kindEntries,
+          totalRecords,
+          recordsConsumed,
+          namesUnavailable,
+        } = result.value;
         entries.push(...kindEntries);
-        pages.push({ kind, returnedCount: kindEntries.length, totalRecords, recordsConsumed });
+        pages.push({
+          kind,
+          returnedCount: kindEntries.length,
+          totalRecords,
+          recordsConsumed,
+          ...(namesUnavailable && { namesUnavailable }),
+        });
       } else if (result?.status === 'rejected') {
         const reason = result.reason;
         failedKinds.push({
@@ -1833,76 +1958,109 @@ export class PubChemClient {
     };
   }
 
-  /** Chemical-target binding/activity from PubChem's `bioactivity` SDQ collection (BindingDB,
-   * ChEMBL, and others). That collection is cid-keyed and scopes correctly to the requested
-   * compound; the `consolidatedcompoundtarget` collection used previously is gene-indexed, so
-   * its `cid` filter was silently ignored — every CID returned the same default compound (#20).
-   * Only rows naming a molecular target are returned; untargeted assay outcomes are the domain
-   * of pubchem_get_bioactivity.
+  /** One entry per molecular target the compound's assays name, rolled up from the assay summary
+   * pubchem_get_bioactivity reads (see {@link rollUpTargets}). The page divides the ordered
+   * targets, so a record is a target and records and entries are 1:1. The unit is the table's
+   * own `Activity Value [uM]` column.
    *
-   * Because most rows are dropped, the page position is an index into the activity records, not
-   * into the entries returned — the walk records exactly how many rows it read so the next page
-   * resumes at the first unread one. */
+   * The summary table carries no target names. The page's names come from at most two batched
+   * lookups, one gene summary and one protein summary, run beside each other as side lookups
+   * ({@link SIDE_LOOKUP_MS}, no retry), so a hung lookup never holds the call's other kinds for
+   * the rest of its budget. They only label entries: a lookup that fails or runs out of time
+   * leaves its entries the identifier alone and sets `namesUnavailable`, and an ID PubChem has
+   * no summary for keeps its identifier without one. A cancellation still fails the call. */
   private async getTargetInteractions(
     cid: number,
     maxEntries: number,
     offset: number,
     signal: AbortSignal | undefined,
   ): Promise<InteractionKindFetch> {
-    // `targetname` is sparse (most rows are untargeted assay outcomes), so oversample and keep
-    // the target-bearing rows, most-potent-first.
-    const window = Math.min(Math.max(maxEntries * 4, 20), 100);
-    const { rows, totalCount } = await this.fetchSdq(
-      'bioactivity',
-      cid,
-      ['cid', 'targetname', 'acname', 'acqualifier', 'acvalue', 'aidsrcname'],
-      window,
-      offset,
-      signal,
-      ['acvalue,asc'],
+    const targets = rollUpTargets(await this.getAssaySummary(cid, signal));
+    const page = targets.slice(offset, offset + maxEntries);
+
+    const geneIds = page.flatMap((t) =>
+      t.identifier.kind === 'gene' ? [t.identifier.geneId] : [],
     );
-    const entries: InteractionEntry[] = [];
-    // Collapse duplicate measurements of the same target/value reported across assays.
-    const seen = new Set<string>();
-    let recordsConsumed = 0;
-    for (const row of rows) {
-      if (entries.length === maxEntries) break;
-      recordsConsumed++;
-      const target = typeof row.targetname === 'string' ? row.targetname.trim() : '';
-      if (!target) continue;
-      const acname = typeof row.acname === 'string' ? row.acname : '';
-      const qualifier = typeof row.acqualifier === 'string' ? row.acqualifier : '';
-      const acvalue = row.acvalue == null ? '' : String(row.acvalue).trim();
-      // The bioactivity collection exposes no unit column, but its acvalue is PubChem's
-      // normalized micromolar figure: depositors must submit AC-summary metrics (IC50/EC50/
-      // AC50/Ki/Potency) in µM, and these values cross-validate exactly against the
-      // assaysummary endpoint's "Activity Value [uM]" column. We assert that documented µM
-      // convention here — it is not a per-row unit fetched from SDQ (none exists to fetch).
-      const activity =
-        acname && acvalue ? `${acname} ${qualifier} ${acvalue} uM`.replace(/\s+/g, ' ').trim() : '';
-      const text = activity || 'Activity reported';
-      const key = `${target}|${text}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      entries.push({
-        kind: 'target',
-        source: typeof row.aidsrcname === 'string' && row.aidsrcname ? row.aidsrcname : 'PubChem',
-        partner: target,
-        text,
-      });
-    }
+    const accessions = page.flatMap((t) =>
+      t.identifier.kind === 'accession' ? [t.identifier.accession] : [],
+    );
+    // Each failed request is already in the server log, with its URL, from fetchResponse.
+    const [genes, proteins] = await Promise.allSettled([
+      geneIds.length > 0 ? this.getGeneNames(geneIds, signal) : new Map<number, string>(),
+      accessions.length > 0 ? this.getProteinNames(accessions, signal) : new Map<string, string>(),
+    ]);
+    if (signal?.aborted) throw cancellation(signal.reason);
+    const nameOf = (id: TargetIdentifier): string | undefined => {
+      if (id.kind === 'gene')
+        return genes.status === 'fulfilled' ? genes.value.get(id.geneId) : undefined;
+      return proteins.status === 'fulfilled' ? proteins.value.get(id.accession) : undefined;
+    };
+
+    const entries = page.map((t): InteractionEntry => {
+      const id = identifierLabel(t.identifier);
+      const group = t.groupGeneIdCount ? `group of ${t.groupGeneIdCount} Gene IDs` : undefined;
+      const name = nameOf(t.identifier);
+      const partner = name
+        ? `${name} (${group ? `${id}, ${group}` : id})`
+        : group
+          ? `${id} (${group})`
+          : id;
+      return { kind: 'target', partner, source: 'PubChem BioAssay', text: targetStatement(t) };
+    });
+    const namesUnavailable = genes.status === 'rejected' || proteins.status === 'rejected';
     return {
       entries,
-      totalRecords: await this.resolveSdqTotal(
-        'bioactivity',
-        cid,
-        rows.length,
-        totalCount,
-        offset,
-        signal,
-      ),
-      recordsConsumed,
+      totalRecords: targets.length,
+      recordsConsumed: page.length,
+      ...(namesUnavailable && { namesUnavailable: true as const }),
     };
+  }
+
+  /** Display names for Gene IDs, from one batched gene summary request: `EGFR - epidermal growth
+   * factor receptor [Homo sapiens (human)]`. Keyed by the returned ID — PubChem drops IDs it has
+   * no gene for and reorders the rest; a request it can match nothing in (404) is an empty map. */
+  private async getGeneNames(
+    geneIds: number[],
+    signal: AbortSignal | undefined,
+  ): Promise<Map<number, string>> {
+    try {
+      const data = await this.fetchJson<GeneSummaryResponse>(
+        `${this.pugBase}/gene/geneid/${geneIds.join(',')}/summary/JSON`,
+        { signal, sideLookup: true },
+      );
+      return new Map(
+        data.GeneSummaries.GeneSummary.flatMap((g) => {
+          const label = summaryLabel([g.Symbol, g.Name], g.Taxonomy);
+          return label ? [[g.GeneID, label] as const] : [];
+        }),
+      );
+    } catch (error) {
+      if (isNotFound(error)) return new Map();
+      throw error;
+    }
+  }
+
+  /** Display names for protein accessions, from one batched protein summary request, with the
+   * same keying and omissions as {@link getGeneNames}. */
+  private async getProteinNames(
+    accessions: string[],
+    signal: AbortSignal | undefined,
+  ): Promise<Map<string, string>> {
+    try {
+      const data = await this.fetchJson<ProteinSummaryResponse>(
+        `${this.pugBase}/protein/accession/${accessions.map(encodeURIComponent).join(',')}/summary/JSON`,
+        { signal, sideLookup: true },
+      );
+      return new Map(
+        data.ProteinSummaries.ProteinSummary.flatMap((p) => {
+          const label = summaryLabel([p.Name], p.Taxonomy);
+          return label ? [[p.ProteinAccession, label] as const] : [];
+        }),
+      );
+    } catch (error) {
+      if (isNotFound(error)) return new Map();
+      throw error;
+    }
   }
 
   private async getDrugFoodInteractions(
@@ -1966,13 +2124,11 @@ export class PubChemClient {
     limit: number,
     offset: number,
     signal: AbortSignal | undefined,
-    order?: string[],
   ): Promise<{ rows: Array<Record<string, unknown>>; totalCount: number }> {
     const query = JSON.stringify({
       select: columns,
       collection,
       where: { ands: [{ cid: String(cid) }] },
-      ...(order ? { order } : {}),
       start: offset + 1,
       limit,
     });

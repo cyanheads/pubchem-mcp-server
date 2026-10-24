@@ -400,6 +400,120 @@ describe('PubChemClient.getAssaySummary multi-target assays (#73)', () => {
   });
 });
 
+describe('PubChemClient.getAssaySummary assay type and PubMed IDs (#79)', () => {
+  /** PubChem's full assaysummary column layout, as served for every compound. */
+  const COLUMNS = [
+    'AID',
+    'Panel Member ID',
+    'SID',
+    'CID',
+    'Activity Outcome',
+    'Target Accession',
+    'Target GeneID',
+    'Activity Value [uM]',
+    'Activity Name',
+    'Assay Name',
+    'Assay Type',
+    'PubMed ID',
+    'RNAi',
+  ];
+
+  /** Serve rows of `[aid, outcome, accession, geneId, assayType, pubmedId]` on PubChem's host. */
+  function serve(rows: Array<[number, string, string, number | '', string, string | number]>) {
+    fetchMock.mockImplementation(async (request) => {
+      const url = new URL(request instanceof Request ? request.url : String(request));
+      if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov') throw new Error('unmocked fetch');
+      return jsonResponse({
+        Table: {
+          Columns: { Column: COLUMNS },
+          Row: rows.map(([aid, outcome, accession, geneId, assayType, pmid]) => ({
+            Cell: [
+              String(aid),
+              '',
+              '1',
+              '2244',
+              outcome,
+              accession,
+              String(geneId),
+              '',
+              '',
+              `Assay ${aid}`,
+              assayType,
+              String(pmid),
+              '',
+            ],
+          })),
+        },
+      });
+    });
+  }
+
+  it('reads each AID’s assay type verbatim and its distinct PMIDs, highest first', async () => {
+    serve([
+      [1, 'Active', 'P00533', 1956, 'Confirmatory', '15284455'],
+      [1, 'Active', 'P04626', 2064, 'Confirmatory', '21366347'], // second target, newer paper
+      [1, 'Inactive', 'P00533', 1956, 'Confirmatory', '15284455'], // repeated PMID
+      [2, 'Inactive', '', '', 'Screening', ''],
+    ]);
+
+    const { rows } = await new PubChemClient().getAssaySummary(176870);
+
+    expect(rows[0]).toMatchObject({
+      aid: 1,
+      assayType: 'Confirmatory',
+      pmids: [21366347, 15284455],
+    });
+    expect(rows[1]).toEqual({
+      aid: 2,
+      assayName: 'Assay 2',
+      assayType: 'Screening',
+      outcome: 'Inactive',
+      activityValues: [],
+    });
+  });
+
+  it('omits a blank assay type, and skips a PubMed ID cell that is not a positive integer', async () => {
+    serve([
+      [3, 'Active', '', '', '', '0'],
+      [3, 'Active', '', '', '  ', 'n/a'],
+      [4, 'Active', '', '', 'Other', 31415926],
+    ]);
+
+    const { rows } = await new PubChemClient().getAssaySummary(2244);
+
+    expect(rows[0]).not.toHaveProperty('assayType');
+    expect(rows[0]).not.toHaveProperty('pmids');
+    expect(rows[1]).toMatchObject({ assayType: 'Other', pmids: [31415926] });
+  });
+
+  it('takes the first non-blank assay type an AID’s rows carry', async () => {
+    serve([
+      [5, 'Active', '', '', '', ''],
+      [5, 'Active', 'P23219', 5742, 'Summary', ''],
+      [5, 'Active', 'P35354', 5743, 'Other', ''],
+    ]);
+
+    const { rows } = await new PubChemClient().getAssaySummary(2244);
+
+    expect(rows[0]!.assayType).toBe('Summary');
+  });
+
+  it('adds neither key for a table without the two columns', async () => {
+    fetchMock.mockResolvedValueOnce(targetTable([[6, 'Active', 'P23219', 5742, 1]]));
+
+    const { rows } = await new PubChemClient().getAssaySummary(2244);
+
+    expect(Object.keys(rows[0]!).toSorted()).toEqual([
+      'activityValues',
+      'aid',
+      'assayName',
+      'outcome',
+      'targetAccession',
+      'targetGeneId',
+    ]);
+  });
+});
+
 describe('PubChemClient fast-search record cap (#41)', () => {
   const cidResponse = (cids: number[]) => jsonResponse({ IdentifierList: { CID: cids } });
   const requestedUrl = () => String(fetchMock.mock.calls[0]![0]);
@@ -860,6 +974,62 @@ describe('PubChemClient identifier lookups — CID 0 and rejected identifiers (#
     );
 
     await expect(new PubChemClient().searchBySmiles('not-a-smiles')).rejects.toMatchObject({
+      code: JsonRpcErrorCode.ValidationError,
+      data: {
+        reason: 'identifier_rejected',
+        fault: 'PUGREST.BadRequest: Unable to standardize the given structure',
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('PubChemClient.searchByInchi (#80)', () => {
+  const ASPIRIN = 'InChI=1S/C9H8O4/c1-6(10)13-8-5-3-2-4-7(8)9(11)12/h2-5H,1H3,(H,11,12)';
+  const cidResponse = (cids: number[]) => jsonResponse({ IdentifierList: { CID: cids } });
+
+  it.each([
+    ['a standard InChI', ASPIRIN],
+    ['a non-standard InChI', ASPIRIN.replace('InChI=1S/', 'InChI=1/')],
+    ['a space-padded InChI', `  ${ASPIRIN}  `],
+    ['a lowercased InChI', ASPIRIN.toLowerCase()],
+  ])('POSTs %s to the inchi endpoint exactly as given', async (_label, inchi) => {
+    fetchMock.mockResolvedValueOnce(cidResponse([2244]));
+
+    expect(await new PubChemClient().searchByInchi(inchi)).toEqual([2244]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [input, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(input)).toBe(
+      'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchi/cids/JSON',
+    );
+    expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('Content-Type')).toBe(
+      'application/x-www-form-urlencoded',
+    );
+    expect(new URLSearchParams(String(init?.body)).get('inchi')).toBe(inchi);
+  });
+
+  it('reads CID 0 — a valid InChI with no PubChem record — as no match', async () => {
+    fetchMock.mockResolvedValueOnce(cidResponse([0]));
+
+    expect(await new PubChemClient().searchByInchi('InChI=1S/C123H248/c1-3')).toEqual([]);
+  });
+
+  it('marks a 400 on an InChI lookup as a rejected identifier, keeping the fault', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          Fault: {
+            Code: 'PUGREST.BadRequest',
+            Message: 'Unable to standardize the given structure',
+          },
+        },
+        400,
+      ),
+    );
+
+    await expect(new PubChemClient().searchByInchi(ASPIRIN.toLowerCase())).rejects.toMatchObject({
       code: JsonRpcErrorCode.ValidationError,
       data: {
         reason: 'identifier_rejected',

@@ -466,6 +466,193 @@ describe('PubChem caller cancellation (#54)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  describe('target name lookups (#78)', () => {
+    const summaryTable = () =>
+      jsonResponse({
+        Table: {
+          Columns: { Column: ['AID', 'Activity Outcome', 'Target Accession', 'Target GeneID'] },
+          Row: [{ Cell: [1, 'Active', 'P00533', 1956] }],
+        },
+      });
+    /** The assay summary answers `ms` after it is sent (under the 30 s attempt cap, so on its
+     * first attempt); every name lookup hangs. */
+    const summaryAfterThenHang =
+      (ms: number): typeof fetch =>
+      (input, init) => {
+        if (!new URL(String(input)).pathname.endsWith('/assaysummary/JSON')) {
+          return hangUntilAborted(input, init);
+        }
+        return new Promise<Response>((resolve, reject) => {
+          const timer = setTimeout(() => resolve(summaryTable()), ms);
+          rejectOnAbort(init?.signal, (reason) => {
+            clearTimeout(timer);
+            reject(reason);
+          });
+        });
+      };
+
+    /** The page's one target, by identifier, flagged as unnamed. */
+    const unnamedPage = {
+      entries: [
+        {
+          kind: 'target',
+          partner: 'GeneID:1956',
+          source: 'PubChem BioAssay',
+          text: 'Active in 1 of 1 assay',
+        },
+      ],
+      pages: [
+        {
+          kind: 'target',
+          returnedCount: 1,
+          totalRecords: 1,
+          recordsConsumed: 1,
+          namesUnavailable: true,
+        },
+      ],
+      failedKinds: [],
+    };
+    const requestedPaths = () => fetchMock.mock.calls.map(([u]) => new URL(String(u)).pathname);
+
+    it('ends a hung name lookup 8 s after it is sent, unretried, and returns the targets by identifier', async () => {
+      fetchMock.mockImplementation(summaryAfterThenHang(29_000));
+      const signal = new AbortController().signal;
+
+      const call = track(new PubChemClient().getInteractions(176870, ['target'], 10, 0, signal));
+      await vi.advanceTimersByTimeAsync(29_000 + 7_990);
+      expect(call.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(20);
+
+      // The lookup's own 8 s cap ends it, not the 21 s the call budget still holds.
+      expect(call.value).toEqual(unnamedPage);
+      expect(requestedPaths()).toEqual([
+        '/rest/pug/compound/cid/176870/assaysummary/JSON',
+        '/rest/pug/gene/geneid/1956/summary/JSON',
+      ]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('keeps a hung name lookup inside what the call budget has left when that is under 8 s', async () => {
+      // The summary's first attempt hangs to its 30 s cap; the retry, sent at 31 s, answers at
+      // 46 s, leaving the lookup 4 s of the 50 s budget.
+      let summaries = 0;
+      fetchMock.mockImplementation((input, init) => {
+        if (new URL(String(input)).pathname.endsWith('/assaysummary/JSON')) {
+          summaries += 1;
+          if (summaries === 1) return hangUntilAborted(input, init);
+        }
+        return summaryAfterThenHang(15_000)(input, init);
+      });
+      const signal = new AbortController().signal;
+
+      const call = track(new PubChemClient().getInteractions(176870, ['target'], 10, 0, signal));
+      await vi.advanceTimersByTimeAsync(49_990);
+      expect(call.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(20);
+
+      // Settled inside the budget, under the client's 60 s timeout, as a degraded success.
+      expect(call.value).toEqual(unnamedPage);
+      expect(requestedPaths()).toEqual([
+        '/rest/pug/compound/cid/176870/assaysummary/JSON',
+        '/rest/pug/compound/cid/176870/assaysummary/JSON',
+        '/rest/pug/gene/geneid/1956/summary/JSON',
+      ]);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    /** Drug-food and the assay summary answer at once; every name lookup hangs. */
+    const foodAndSummaryThenHang: typeof fetch = (input, init) => {
+      if (new URL(String(input)).pathname.startsWith('/rest/pug_view/data/compound/')) {
+        return Promise.resolve(
+          jsonResponse({
+            Record: {
+              Reference: [{ ReferenceNumber: 1, SourceName: 'DrugBank' }],
+              Section: [
+                {
+                  TOCHeading: 'Drug-Food Interactions',
+                  Information: [
+                    {
+                      ReferenceNumber: 1,
+                      Value: { StringWithMarkup: [{ String: 'Take with food.' }] },
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+        );
+      }
+      return summaryAfterThenHang(0)(input, init);
+    };
+
+    it('holds a ready drug-food answer no longer than the name lookup’s 8 s cap', async () => {
+      fetchMock.mockImplementation(foodAndSummaryThenHang);
+      const signal = new AbortController().signal;
+
+      const call = track(
+        new PubChemClient().getInteractions(176870, ['drug-food', 'target'], 10, 0, signal),
+      );
+      await vi.advanceTimersByTimeAsync(7_990);
+      expect(call.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(call.value).toEqual({
+        entries: [
+          { kind: 'drug-food', source: 'DrugBank', text: 'Take with food.' },
+          ...unnamedPage.entries,
+        ],
+        pages: [
+          { kind: 'drug-food', returnedCount: 1, totalRecords: 1, recordsConsumed: 1 },
+          ...unnamedPage.pages,
+        ],
+        failedKinds: [],
+      });
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('fails the call, not the names alone, when the caller cancels inside the 8 s cap', async () => {
+      fetchMock.mockImplementation(foodAndSummaryThenHang);
+      const controller = new AbortController();
+
+      const call = track(
+        new PubChemClient().getInteractions(
+          176870,
+          ['drug-food', 'target'],
+          10,
+          0,
+          controller.signal,
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(7_000);
+      expect(call.settled).toBe(false);
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(call.value).toBeUndefined();
+      expect(call.error).toMatchObject(cancelled);
+      await vi.runAllTimersAsync();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('fails the call, never the names alone, when the caller cancels during the lookup', async () => {
+      fetchMock.mockImplementation(summaryAfterThenHang(0));
+      const controller = new AbortController();
+
+      const call = track(
+        new PubChemClient().getInteractions(176870, ['target'], 10, 0, controller.signal),
+      );
+      await vi.advanceTimersByTimeAsync(100);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(call.value).toBeUndefined();
+      expect(call.error).toMatchObject(cancelled);
+      await vi.runAllTimersAsync();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   /** Every public method, including the ones that read a 404 or 400 as "no data" — a
    * cancellation must reach the caller, never an empty result. */
   const calls: Array<[string, (c: PubChemClient, s: AbortSignal) => Promise<unknown>]> = [
@@ -478,6 +665,7 @@ describe('PubChem caller cancellation (#54)', () => {
     ['getSynonyms', (c, s) => c.getSynonyms(2244, s)],
     ['getImage', (c, s) => c.getImage(2244, 'small', s)],
     ['getXrefs', (c, s) => c.getXrefs(2244, 'RN', s)],
+    ['getHeadingXrefs', (c, s) => c.getHeadingXrefs(2244, 'CAS', s)],
     ['getDescription', (c, s) => c.getDescription(2244, s)],
     ['getSafetyData', (c, s) => c.getSafetyData(2244, s)],
     ['getClassification', (c, s) => c.getClassification(2244, s)],

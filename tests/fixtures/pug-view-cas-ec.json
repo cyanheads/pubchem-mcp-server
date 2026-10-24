@@ -1,0 +1,1387 @@
+{
+  "CAS/702": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 702,
+      "RecordTitle": "Ethanol",
+      "Section": [
+        {
+          "TOCHeading": "Names and Identifiers",
+          "Description": "Chemical names, synonyms, identifiers, and descriptors.",
+          "Section": [
+            {
+              "TOCHeading": "Other Identifiers",
+              "Description": "Other identifiers assigned to this chemical.",
+              "Section": [
+                {
+                  "TOCHeading": "CAS",
+                  "Description": "A CAS Registry Number (also called CAS RN or CAS Number) is a proprietary registry number assigned by the Chemical Abstracts Service (CAS) division of the American Chemical Society (ACS).  It is a numeric identifier that can contain up to 10 digits, divided by hyphens into three parts.",
+                  "URL": "https://www.cas.org/cas-data/cas-registry",
+                  "DisplayControls": {
+                    "ShowAtMost": 2
+                  },
+                  "Information": [
+                    {
+                      "ReferenceNumber": 1,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 17,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 18,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 19,
+                      "URL": "https://commonchemistry.cas.org/detail?cas_rn=64-17-5",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 23,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 40,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 46,
+                      "Name": "CAS",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 50,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 55,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 56,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 57,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 65,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 73,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 83,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 84,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 96,
+                      "Name": "",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 98,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 129,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 130,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 140,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 145,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 147,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 162,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 175,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "64-17-5"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Reference": [
+        {
+          "ReferenceNumber": 1,
+          "SourceName": "Australian Industrial Chemicals Introduction Scheme (AICIS)"
+        },
+        {
+          "ReferenceNumber": 17,
+          "SourceName": "CAMEO Chemicals"
+        },
+        {
+          "ReferenceNumber": 18,
+          "SourceName": "CAMEO Chemicals"
+        },
+        {
+          "ReferenceNumber": 19,
+          "SourceName": "CAS Common Chemistry"
+        },
+        {
+          "ReferenceNumber": 23,
+          "SourceName": "ChemIDplus"
+        },
+        {
+          "ReferenceNumber": 40,
+          "SourceName": "DrugBank"
+        },
+        {
+          "ReferenceNumber": 46,
+          "SourceName": "DTP/NCI"
+        },
+        {
+          "ReferenceNumber": 50,
+          "SourceName": "EFSA OpenFoodTox"
+        },
+        {
+          "ReferenceNumber": 55,
+          "SourceName": "EPA Chemical Data Reporting (CDR)"
+        },
+        {
+          "ReferenceNumber": 56,
+          "SourceName": "EPA Chemicals under the TSCA"
+        },
+        {
+          "ReferenceNumber": 57,
+          "SourceName": "EPA DSSTox"
+        },
+        {
+          "ReferenceNumber": 65,
+          "SourceName": "European Chemicals Agency (ECHA)"
+        },
+        {
+          "ReferenceNumber": 73,
+          "SourceName": "FDA Global Substance Registration System (GSRS)"
+        },
+        {
+          "ReferenceNumber": 83,
+          "SourceName": "Hazardous Substances Data Bank (HSDB)"
+        },
+        {
+          "ReferenceNumber": 84,
+          "SourceName": "Human Metabolome Database (HMDB)"
+        },
+        {
+          "ReferenceNumber": 96,
+          "SourceName": "ILO-WHO International Chemical Safety Cards (ICSCs)"
+        },
+        {
+          "ReferenceNumber": 98,
+          "SourceName": "International Fragrance Association (IFRA)"
+        },
+        {
+          "ReferenceNumber": 129,
+          "SourceName": "New Zealand Environmental Protection Authority (EPA)"
+        },
+        {
+          "ReferenceNumber": 130,
+          "SourceName": "NIAID ChemDB"
+        },
+        {
+          "ReferenceNumber": 140,
+          "SourceName": "NJDOH RTK Hazardous Substance List"
+        },
+        {
+          "ReferenceNumber": 145,
+          "SourceName": "Occupational Safety and Health Administration (OSHA)"
+        },
+        {
+          "ReferenceNumber": 147,
+          "SourceName": "PAC Chemical Database, U.S. Department of Energy"
+        },
+        {
+          "ReferenceNumber": 162,
+          "SourceName": "Risk Assessment Information System (RAIS)"
+        },
+        {
+          "ReferenceNumber": 175,
+          "SourceName": "The National Institute for Occupational Safety and Health (NIOSH)"
+        }
+      ]
+    }
+  },
+  "EC/702": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 702,
+      "RecordTitle": "Ethanol",
+      "Section": [
+        {
+          "TOCHeading": "Names and Identifiers",
+          "Description": "Chemical names, synonyms, identifiers, and descriptors.",
+          "Section": [
+            {
+              "TOCHeading": "Other Identifiers",
+              "Description": "Other identifiers assigned to this chemical.",
+              "Section": [
+                {
+                  "TOCHeading": "European Community (EC) Number",
+                  "Description": "The European Community (EC) number is a seven-digit identifier assigned by the European Chemicals Agency (ECHA) to substances for regulatory purposes within the European Union. EC numbers are sometimes referred to as EINECS, ELINCS, or NLP numbers, because the EC Inventory comprises three individual inventories (EINECS, ELINCS, and the NLP list).",
+                  "URL": "https://echa.europa.eu/information-on-chemicals/ec-inventory",
+                  "Information": [
+                    {
+                      "ReferenceNumber": 65,
+                      "URL": "https://chem.echa.europa.eu/100.000.526",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "200-578-6"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Reference": [
+        {
+          "ReferenceNumber": 65,
+          "SourceName": "European Chemicals Agency (ECHA)"
+        }
+      ]
+    }
+  },
+  "CAS/5793": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 5793,
+      "RecordTitle": "D-Glucose",
+      "Section": [
+        {
+          "TOCHeading": "Names and Identifiers",
+          "Description": "Chemical names, synonyms, identifiers, and descriptors.",
+          "Section": [
+            {
+              "TOCHeading": "Other Identifiers",
+              "Description": "Other identifiers assigned to this chemical.",
+              "Section": [
+                {
+                  "TOCHeading": "CAS",
+                  "Description": "A CAS Registry Number (also called CAS RN or CAS Number) is a proprietary registry number assigned by the Chemical Abstracts Service (CAS) division of the American Chemical Society (ACS).  It is a numeric identifier that can contain up to 10 digits, divided by hyphens into three parts.",
+                  "URL": "https://www.cas.org/cas-data/cas-registry",
+                  "DisplayControls": {
+                    "ShowAtMost": 2
+                  },
+                  "Information": [
+                    {
+                      "ReferenceNumber": 1,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 5,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 6,
+                      "URL": "https://commonchemistry.cas.org/detail?cas_rn=2280-44-6",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "2280-44-6"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 7,
+                      "URL": "https://commonchemistry.cas.org/detail?cas_rn=54-17-1",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "54-17-1"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 13,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "2280-44-6"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 26,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 33,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 35,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 36,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 37,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "2280-44-6"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 38,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "54-17-1"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 42,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 43,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "2280-44-6"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 45,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "1227096-09-4"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 63,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 80,
+                      "Name": "",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 81,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 128,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-99-7"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Reference": [
+        {
+          "ReferenceNumber": 1,
+          "SourceName": "Australian Industrial Chemicals Introduction Scheme (AICIS)"
+        },
+        {
+          "ReferenceNumber": 5,
+          "SourceName": "CAMEO Chemicals"
+        },
+        {
+          "ReferenceNumber": 6,
+          "SourceName": "CAS Common Chemistry"
+        },
+        {
+          "ReferenceNumber": 7,
+          "SourceName": "CAS Common Chemistry"
+        },
+        {
+          "ReferenceNumber": 13,
+          "SourceName": "ChemIDplus"
+        },
+        {
+          "ReferenceNumber": 26,
+          "SourceName": "DrugBank"
+        },
+        {
+          "ReferenceNumber": 33,
+          "SourceName": "EFSA OpenFoodTox"
+        },
+        {
+          "ReferenceNumber": 35,
+          "SourceName": "EPA Chemical Data Reporting (CDR)"
+        },
+        {
+          "ReferenceNumber": 36,
+          "SourceName": "EPA Chemicals under the TSCA"
+        },
+        {
+          "ReferenceNumber": 37,
+          "SourceName": "EPA DSSTox"
+        },
+        {
+          "ReferenceNumber": 38,
+          "SourceName": "EPA DSSTox"
+        },
+        {
+          "ReferenceNumber": 42,
+          "SourceName": "European Chemicals Agency (ECHA)"
+        },
+        {
+          "ReferenceNumber": 43,
+          "SourceName": "European Chemicals Agency (ECHA)"
+        },
+        {
+          "ReferenceNumber": 45,
+          "SourceName": "European Chemicals Agency (ECHA)"
+        },
+        {
+          "ReferenceNumber": 63,
+          "SourceName": "Hazardous Substances Data Bank (HSDB)"
+        },
+        {
+          "ReferenceNumber": 80,
+          "SourceName": "ILO-WHO International Chemical Safety Cards (ICSCs)"
+        },
+        {
+          "ReferenceNumber": 81,
+          "SourceName": "International Fragrance Association (IFRA)"
+        },
+        {
+          "ReferenceNumber": 128,
+          "SourceName": "New Zealand Environmental Protection Authority (EPA)"
+        }
+      ]
+    }
+  },
+  "CAS/5234": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 5234,
+      "RecordTitle": "Sodium Chloride",
+      "Section": [
+        {
+          "TOCHeading": "Names and Identifiers",
+          "Description": "Chemical names, synonyms, identifiers, and descriptors.",
+          "Section": [
+            {
+              "TOCHeading": "Other Identifiers",
+              "Description": "Other identifiers assigned to this chemical.",
+              "Section": [
+                {
+                  "TOCHeading": "CAS",
+                  "Description": "A CAS Registry Number (also called CAS RN or CAS Number) is a proprietary registry number assigned by the Chemical Abstracts Service (CAS) division of the American Chemical Society (ACS).  It is a numeric identifier that can contain up to 10 digits, divided by hyphens into three parts.",
+                  "URL": "https://www.cas.org/cas-data/cas-registry",
+                  "DisplayControls": {
+                    "ShowAtMost": 2
+                  },
+                  "Information": [
+                    {
+                      "ReferenceNumber": 2,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 3,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "14762-51-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 6,
+                      "URL": "https://commonchemistry.cas.org/detail?cas_rn=7647-14-5",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 7,
+                      "URL": "https://commonchemistry.cas.org/detail?cas_rn=14762-51-7",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "14762-51-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 10,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 11,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "14762-51-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 12,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "32343-72-9"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 37,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 42,
+                      "Name": "CAS",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 43,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 45,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 46,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 47,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 53,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 54,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "8028-77-1"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 60,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 64,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 66,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 89,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "14762-51-7"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 90,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "7647-14-5"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Reference": [
+        {
+          "ReferenceNumber": 2,
+          "SourceName": "Australian Industrial Chemicals Introduction Scheme (AICIS)"
+        },
+        {
+          "ReferenceNumber": 3,
+          "SourceName": "Australian Industrial Chemicals Introduction Scheme (AICIS)"
+        },
+        {
+          "ReferenceNumber": 6,
+          "SourceName": "CAS Common Chemistry"
+        },
+        {
+          "ReferenceNumber": 7,
+          "SourceName": "CAS Common Chemistry"
+        },
+        {
+          "ReferenceNumber": 10,
+          "SourceName": "ChemIDplus"
+        },
+        {
+          "ReferenceNumber": 11,
+          "SourceName": "ChemIDplus"
+        },
+        {
+          "ReferenceNumber": 12,
+          "SourceName": "ChemIDplus"
+        },
+        {
+          "ReferenceNumber": 37,
+          "SourceName": "DrugBank"
+        },
+        {
+          "ReferenceNumber": 42,
+          "SourceName": "DTP/NCI"
+        },
+        {
+          "ReferenceNumber": 43,
+          "SourceName": "EFSA OpenFoodTox"
+        },
+        {
+          "ReferenceNumber": 45,
+          "SourceName": "EPA Chemical Data Reporting (CDR)"
+        },
+        {
+          "ReferenceNumber": 46,
+          "SourceName": "EPA Chemicals under the TSCA"
+        },
+        {
+          "ReferenceNumber": 47,
+          "SourceName": "EPA DSSTox"
+        },
+        {
+          "ReferenceNumber": 53,
+          "SourceName": "European Chemicals Agency (ECHA)"
+        },
+        {
+          "ReferenceNumber": 54,
+          "SourceName": "European Chemicals Agency (ECHA)"
+        },
+        {
+          "ReferenceNumber": 60,
+          "SourceName": "FDA Global Substance Registration System (GSRS)"
+        },
+        {
+          "ReferenceNumber": 64,
+          "SourceName": "Hazardous Substances Data Bank (HSDB)"
+        },
+        {
+          "ReferenceNumber": 66,
+          "SourceName": "International Fragrance Association (IFRA)"
+        },
+        {
+          "ReferenceNumber": 89,
+          "SourceName": "New Zealand Environmental Protection Authority (EPA)"
+        },
+        {
+          "ReferenceNumber": 90,
+          "SourceName": "New Zealand Environmental Protection Authority (EPA)"
+        }
+      ]
+    }
+  },
+  "EC/5234": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 5234,
+      "RecordTitle": "Sodium Chloride",
+      "Section": [
+        {
+          "TOCHeading": "Names and Identifiers",
+          "Description": "Chemical names, synonyms, identifiers, and descriptors.",
+          "Section": [
+            {
+              "TOCHeading": "Other Identifiers",
+              "Description": "Other identifiers assigned to this chemical.",
+              "Section": [
+                {
+                  "TOCHeading": "European Community (EC) Number",
+                  "Description": "The European Community (EC) number is a seven-digit identifier assigned by the European Chemicals Agency (ECHA) to substances for regulatory purposes within the European Union. EC numbers are sometimes referred to as EINECS, ELINCS, or NLP numbers, because the EC Inventory comprises three individual inventories (EINECS, ELINCS, and the NLP list).",
+                  "URL": "https://echa.europa.eu/information-on-chemicals/ec-inventory",
+                  "Information": [
+                    {
+                      "ReferenceNumber": 53,
+                      "URL": "https://chem.echa.europa.eu/100.028.726",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "231-598-3"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 54,
+                      "URL": "https://chem.echa.europa.eu/100.112.355",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "617-042-6"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Reference": [
+        {
+          "ReferenceNumber": 53,
+          "SourceName": "European Chemicals Agency (ECHA)"
+        },
+        {
+          "ReferenceNumber": 54,
+          "SourceName": "European Chemicals Agency (ECHA)"
+        }
+      ]
+    }
+  },
+  "CAS/2244": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 2244,
+      "RecordTitle": "Aspirin",
+      "Section": [
+        {
+          "TOCHeading": "Names and Identifiers",
+          "Description": "Chemical names, synonyms, identifiers, and descriptors.",
+          "Section": [
+            {
+              "TOCHeading": "Other Identifiers",
+              "Description": "Other identifiers assigned to this chemical.",
+              "Section": [
+                {
+                  "TOCHeading": "CAS",
+                  "Description": "A CAS Registry Number (also called CAS RN or CAS Number) is a proprietary registry number assigned by the Chemical Abstracts Service (CAS) division of the American Chemical Society (ACS).  It is a numeric identifier that can contain up to 10 digits, divided by hyphens into three parts.",
+                  "URL": "https://www.cas.org/cas-data/cas-registry",
+                  "DisplayControls": {
+                    "ShowAtMost": 2
+                  },
+                  "Information": [
+                    {
+                      "ReferenceNumber": 1,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 9,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 10,
+                      "URL": "https://commonchemistry.cas.org/detail?cas_rn=50-78-2",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 15,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 37,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 42,
+                      "Name": "CAS",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 43,
+                      "Name": "CAS",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 44,
+                      "Name": "CAS",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 47,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 48,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 53,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 63,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 69,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 70,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 87,
+                      "Name": "",
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 158,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 159,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 175,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "ReferenceNumber": 227,
+                      "Value": {
+                        "StringWithMarkup": [
+                          {
+                            "String": "50-78-2"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "Reference": [
+        {
+          "ReferenceNumber": 1,
+          "SourceName": "Australian Industrial Chemicals Introduction Scheme (AICIS)"
+        },
+        {
+          "ReferenceNumber": 9,
+          "SourceName": "CAMEO Chemicals"
+        },
+        {
+          "ReferenceNumber": 10,
+          "SourceName": "CAS Common Chemistry"
+        },
+        {
+          "ReferenceNumber": 15,
+          "SourceName": "ChemIDplus"
+        },
+        {
+          "ReferenceNumber": 37,
+          "SourceName": "DrugBank"
+        },
+        {
+          "ReferenceNumber": 42,
+          "SourceName": "DTP/NCI"
+        },
+        {
+          "ReferenceNumber": 43,
+          "SourceName": "DTP/NCI"
+        },
+        {
+          "ReferenceNumber": 44,
+          "SourceName": "DTP/NCI"
+        },
+        {
+          "ReferenceNumber": 47,
+          "SourceName": "EPA Chemicals under the TSCA"
+        },
+        {
+          "ReferenceNumber": 48,
+          "SourceName": "EPA DSSTox"
+        },
+        {
+          "ReferenceNumber": 53,
+          "SourceName": "European Chemicals Agency (ECHA)"
+        },
+        {
+          "ReferenceNumber": 63,
+          "SourceName": "FDA Global Substance Registration System (GSRS)"
+        },
+        {
+          "ReferenceNumber": 69,
+          "SourceName": "Hazardous Substances Data Bank (HSDB)"
+        },
+        {
+          "ReferenceNumber": 70,
+          "SourceName": "Human Metabolome Database (HMDB)"
+        },
+        {
+          "ReferenceNumber": 87,
+          "SourceName": "ILO-WHO International Chemical Safety Cards (ICSCs)"
+        },
+        {
+          "ReferenceNumber": 158,
+          "SourceName": "New Zealand Environmental Protection Authority (EPA)"
+        },
+        {
+          "ReferenceNumber": 159,
+          "SourceName": "NIAID ChemDB"
+        },
+        {
+          "ReferenceNumber": 175,
+          "SourceName": "Occupational Safety and Health Administration (OSHA)"
+        },
+        {
+          "ReferenceNumber": 227,
+          "SourceName": "USDA APHIS Chemical Effects Database"
+        }
+      ]
+    }
+  }
+}

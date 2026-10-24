@@ -172,6 +172,31 @@ describe('AID and Gene ID tool inputs carry the 32-bit upper bound', () => {
   });
 });
 
+describe('search_compounds offset leaves its ceiling to the handler (#76)', () => {
+  const offsetNode = () =>
+    at(advertisedInputSchema(toolByName.get('pubchem_search_compounds')!), '/properties/offset') as
+      | Record<string, unknown>
+      | undefined;
+
+  it('advertises an integer from 0 with no maximum below the safe-integer range', () => {
+    const node = offsetNode();
+    expect(node).toMatchObject({ type: 'integer', minimum: 0 });
+    expect(node?.maximum ?? Number.MAX_SAFE_INTEGER).toBe(Number.MAX_SAFE_INTEGER);
+    expect(node).not.toHaveProperty('exclusiveMaximum');
+  });
+
+  it('scopes the 10000 ceiling to the four bounded modes in its description', () => {
+    expect(String(offsetNode()?.description)).toMatch(
+      /Formula, substructure, superstructure, and similarity searches[^.]*those four accept an offset up to 10000\./,
+    );
+  });
+
+  it.each([10001, 305434, 2 ** 31])('accepts offset %i at the schema', (offset) => {
+    const tool = toolByName.get('pubchem_search_compounds')!;
+    expect(tool.input.safeParse({ searchType: 'assay', aid: 2551, offset }).success).toBe(true);
+  });
+});
+
 /** Read-side workload inputs (#70): each serves up to its per-call cap and advertises only the
  * 1000 ceiling, so a value between the two is clamped by the handler, not rejected. */
 const cappedWorkloadInputs = [

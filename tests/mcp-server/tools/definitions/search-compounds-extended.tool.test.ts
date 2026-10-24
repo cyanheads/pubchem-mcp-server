@@ -274,6 +274,25 @@ describe('searchCompounds handler — cid-query validation (#26)', () => {
     },
   );
 
+  it.each([
+    ['zzqq **b** `c`\n# INJECTED', 'zzqq \\*\\*b\\*\\* \\`c\\` # INJECTED'],
+    ['9'.repeat(500), `${'9'.repeat(100)}…`],
+  ])('frames and cuts the query in the invalid_cid_query message (#74)', async (query, echo) => {
+    const ctx = createMockContext({ errors: searchCompounds.errors });
+    const input = searchCompounds.input.parse({
+      searchType: 'similarity',
+      query,
+      queryType: 'cid',
+    });
+    const error = await Promise.resolve()
+      .then(() => searchCompounds.handler(input, ctx))
+      .catch((e: unknown) => e);
+    expect((error as Error).message).toBe(
+      `queryType is "cid" but query "${echo}" is not a CID from 1 to 2147483647.`,
+    );
+    expect(mockClient.searchByStructure).not.toHaveBeenCalled();
+  });
+
   it('forwards the largest CID, 2147483647, as a CID query (#59)', async () => {
     mockClient.searchByStructure.mockResolvedValueOnce([]);
     const ctx = createMockContext({ errors: searchCompounds.errors });
@@ -737,11 +756,11 @@ describe('searchCompounds handler — offset paging (#38)', () => {
     ).not.toThrow();
   });
 
-  it('rejects a negative, fractional, or out-of-range offset', () => {
+  it('rejects a negative or fractional offset, leaving the 10000 ceiling to the handler (#76)', () => {
     const base = { searchType: 'formula', formula: 'C6H12O6' };
     expect(() => searchCompounds.input.parse({ ...base, offset: -1 })).toThrow();
     expect(() => searchCompounds.input.parse({ ...base, offset: 1.5 })).toThrow();
-    expect(() => searchCompounds.input.parse({ ...base, offset: 10001 })).toThrow();
+    expect(() => searchCompounds.input.parse({ ...base, offset: 10001 })).not.toThrow();
     expect(() => searchCompounds.input.parse({ ...base, offset: 10000 })).not.toThrow();
   });
 });

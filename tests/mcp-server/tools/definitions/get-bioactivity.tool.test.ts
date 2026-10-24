@@ -282,6 +282,64 @@ describe('getBioactivity format', () => {
     );
   });
 
+  it('renders a record that carries no assay type or PMIDs exactly as before', () => {
+    const blocks = getBioactivity.format!({
+      cid: 2244,
+      totalAssays: 2,
+      activeCount: 1,
+      inactiveCount: 1,
+      results: [
+        { ...activeRow, otherTargets: [{ geneId: 5742, outcome: 'Inactive', activityValues: [] }] },
+        inactiveRow,
+      ],
+    });
+
+    expect((blocks[0]! as { type: 'text'; text: string }).text).toBe(
+      [
+        '## Bioactivity — CID 2244',
+        'Total assays: 2 | Active: 1 | Inactive: 1',
+        '',
+        '**AID 1000** — COX-2 inhibition (Active)',
+        '  Target: GeneID:5743 — P35354',
+        '  IC50: 0.35 uM',
+        '  Other target: GeneID:5742 (Inactive)',
+        '',
+        '**AID 2000** — hERG binding (Inactive)',
+        '',
+      ].join('\n'),
+    );
+  });
+
+  it('renders the assay type and PMIDs under the assay line, framing the upstream type (#79)', () => {
+    const blocks = getBioactivity.format!({
+      cid: 2244,
+      totalAssays: 2,
+      activeCount: 1,
+      inactiveCount: 1,
+      results: [
+        { ...activeRow, assayType: 'Confirmatory', pmids: [21366347, 15284455] },
+        { ...inactiveRow, assayType: '**Other**\nnext' },
+      ],
+    });
+
+    expect((blocks[0]! as { type: 'text'; text: string }).text).toBe(
+      [
+        '## Bioactivity — CID 2244',
+        'Total assays: 2 | Active: 1 | Inactive: 1',
+        '',
+        '**AID 1000** — COX-2 inhibition (Active)',
+        '  Assay type: Confirmatory',
+        '  PMIDs: 21366347, 15284455',
+        '  Target: GeneID:5743 — P35354',
+        '  IC50: 0.35 uM',
+        '',
+        '**AID 2000** — hERG binding (Inactive)',
+        '  Assay type: \\*\\*Other\\*\\* next',
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('formats empty results', () => {
     const blocks = getBioactivity.format!({
       cid: 999,

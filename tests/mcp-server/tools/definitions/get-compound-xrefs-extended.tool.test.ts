@@ -4,13 +4,22 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
+import { invalidRequest, serviceUnavailable, timeout } from '@cyanheads/mcp-ts-core/errors';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundXrefs } from '@/mcp-server/tools/definitions/get-compound-xrefs.tool.js';
 
 const mockClient = {
   getXrefs: vi.fn(),
+  getHeadingXrefs: vi.fn(),
 };
+
+/** The text of a contract result's content[]. */
+const contentText = (result: Awaited<ReturnType<typeof runToolContract>>) =>
+  result.content
+    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n');
 
 vi.mock('@/services/pubchem/pubchem-client.js', () => ({
   getPubChemClient: () => mockClient,
@@ -420,6 +429,399 @@ describe('getCompoundXrefs handler — ID order through the real client (#69)', 
     const { xref } = await page(type, 0, 500);
 
     expect(xref.ids).toEqual(wireIds(type));
+  });
+});
+
+/** Aspirin's RN list as PUG REST serves it (CID 2244, 2026-10-24). */
+const ASPIRIN_RN = [
+  '11126-35-5',
+  '156865-15-5',
+  '200-064-1',
+  '50-78-2',
+  '921943-73-9',
+  '97781-16-3',
+  '98201-60-6',
+  '99512-66-0',
+];
+
+describe('getCompoundXrefs handler — ProteinGI is unserved upstream (#72)', () => {
+  const unservedNote = (cid: number) =>
+    `PubChem currently returns no ProteinGI cross-references for any compound, so the empty ProteinGI list says nothing about CID ${cid}. Use GeneID for gene/protein associations.`;
+
+  it('names ProteinGI as unserved instead of telling the caller to verify the CID', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce([]);
+    const ctx = createMockContext();
+    await getCompoundXrefs.handler(
+      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['ProteinGI'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toBe(unservedNote(2244));
+  });
+
+  it('still returns RN beside an empty ProteinGI, and says why ProteinGI is empty', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce([]).mockResolvedValueOnce(ASPIRIN_RN);
+    const ctx = createMockContext();
+    const result = await getCompoundXrefs.handler(
+      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['ProteinGI', 'RN'] }),
+      ctx,
+    );
+    expect(result.xrefs[1]).toEqual({
+      type: 'RN',
+      ids: ASPIRIN_RN,
+      totalAvailable: 8,
+      truncated: false,
+    });
+    expect(getEnrichment(ctx).notice).toBe(unservedNote(2244));
+  });
+
+  it('carries the unserved note alongside the paging notice for the other types', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce([]).mockResolvedValueOnce(ASPIRIN_RN);
+    const ctx = createMockContext();
+    await getCompoundXrefs.handler(
+      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['ProteinGI', 'RN'], maxPerType: 3 }),
+      ctx,
+    );
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.nextOffset).toBe(3);
+    expect(enrichment.notice).toBe(
+      `More IDs remain for: RN (8 total). Pass offset=3 for the next page. ${unservedNote(2244)}`,
+    );
+  });
+
+  it('keeps the verify-the-CID notice for the served types of a CID with nothing at all', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    const ctx = createMockContext();
+    await getCompoundXrefs.handler(
+      getCompoundXrefs.input.parse({ cid: 999999999, xrefTypes: ['RN', 'ProteinGI'] }),
+      ctx,
+    );
+    expect(getEnrichment(ctx).notice).toBe(
+      `No cross-references found for CID 999999999 across the requested type(s): RN. The compound may have none of these xref types, or verify the CID with pubchem_search_compounds. ${unservedNote(999999999)}`,
+    );
+  });
+
+  it('relays ProteinGI IDs without the unserved note if PubChem serves them again', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce([9, 10, 100]);
+    const ctx = createMockContext();
+    const result = await getCompoundXrefs.handler(
+      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['ProteinGI'] }),
+      ctx,
+    );
+
+    expect(result.xrefs[0]!.ids).toEqual([9, 10, 100]);
+    expect(getEnrichment(ctx).notice).toBeUndefined();
+  });
+
+  it('says in the input and output descriptions that ProteinGI returns no data, pointing to GeneID', () => {
+    const inputDescription = getCompoundXrefs.input.shape.xrefTypes.description ?? '';
+    const typeDescription =
+      getCompoundXrefs.output.shape.xrefs.element.shape.type.description ?? '';
+
+    for (const description of [inputDescription, typeDescription]) {
+      expect(description).toMatch(/ProteinGI[^.]*no data|no data[^.]*ProteinGI/);
+      expect(description).toContain('GeneID');
+    }
+  });
+});
+
+describe('getCompoundXrefs — CAS and EC from PUG View (#77)', () => {
+  const glucoseCas = [
+    { id: '50-99-7', sourceCount: 11 },
+    { id: '2280-44-6', sourceCount: 4 },
+    { id: '54-17-1', sourceCount: 2 },
+    { id: '1227096-09-4', sourceCount: 1 },
+  ];
+
+  it('describes RN as the unranked registry-number list, not the CAS number', () => {
+    const description = getCompoundXrefs.input.shape.xrefTypes.description ?? '';
+
+    expect(description).not.toContain('RN (CAS numbers)');
+    expect(description).toMatch(/RN \(every registry number[^)]*unranked[^)]*deprecated/);
+  });
+
+  it('returns CAS and EC with source counts on both surfaces', async () => {
+    mockClient.getHeadingXrefs
+      .mockResolvedValueOnce([{ id: '64-17-5', sourceCount: 24 }])
+      .mockResolvedValueOnce([{ id: '200-578-6', sourceCount: 1 }]);
+
+    const result = await runToolContract(getCompoundXrefs, { cid: 702, xrefTypes: ['CAS', 'EC'] });
+
+    expect(result.isError).toBeFalsy();
+    expect(mockClient.getXrefs).not.toHaveBeenCalled();
+    expect(mockClient.getHeadingXrefs).toHaveBeenNthCalledWith(
+      1,
+      702,
+      'CAS',
+      expect.any(AbortSignal),
+    );
+    expect(mockClient.getHeadingXrefs).toHaveBeenNthCalledWith(
+      2,
+      702,
+      'EC',
+      expect.any(AbortSignal),
+    );
+    expect(result.structuredContent).toMatchObject({
+      cid: 702,
+      xrefs: [
+        { type: 'CAS', ids: ['64-17-5'], sourceCounts: [24], totalAvailable: 1, truncated: false },
+        { type: 'EC', ids: ['200-578-6'], sourceCounts: [1], totalAvailable: 1, truncated: false },
+      ],
+    });
+    const text = contentText(result);
+    expect(text).toContain('64-17-5 (24 source records)');
+    expect(text).toContain('200-578-6 (1 source record)');
+  });
+
+  it('lists every distinct value most-attested first, each with its count', async () => {
+    mockClient.getHeadingXrefs.mockResolvedValueOnce(glucoseCas);
+
+    const result = await runToolContract(getCompoundXrefs, { cid: 5793, xrefTypes: ['CAS'] });
+
+    expect(result.structuredContent).toMatchObject({
+      xrefs: [
+        {
+          type: 'CAS',
+          ids: ['50-99-7', '2280-44-6', '54-17-1', '1227096-09-4'],
+          sourceCounts: [11, 4, 2, 1],
+          totalAvailable: 4,
+        },
+      ],
+    });
+    expect(contentText(result)).toContain(
+      '50-99-7 (11 source records), 2280-44-6 (4 source records), 54-17-1 (2 source records), 1227096-09-4 (1 source record)',
+    );
+  });
+
+  it('describes the counts as source records on every surface, and CAS[0] as the consensus value', () => {
+    const descriptions = [
+      getCompoundXrefs.description,
+      getCompoundXrefs.input.shape.xrefTypes.description ?? '',
+      getCompoundXrefs.output.shape.xrefs.element.shape.ids.description ?? '',
+      getCompoundXrefs.output.shape.xrefs.element.shape.sourceCounts.description ?? '',
+    ];
+
+    for (const description of descriptions) {
+      expect(description).toContain('source records');
+      expect(description).not.toMatch(/\bsources\b/);
+    }
+    const xrefTypes = descriptions[1]!;
+    expect(xrefTypes).not.toContain("the compound's own CAS number");
+    expect(xrefTypes).toContain('the first is the value most source records agree on');
+  });
+
+  it('pages CAS like any other type, keeping each count beside its ID', async () => {
+    mockClient.getHeadingXrefs.mockResolvedValue(glucoseCas);
+    const page = async (offset: number) => {
+      const ctx = createMockContext();
+      const result = await getCompoundXrefs.handler(
+        getCompoundXrefs.input.parse({ cid: 5793, xrefTypes: ['CAS'], offset, maxPerType: 2 }),
+        ctx,
+      );
+      return { xref: result.xrefs[0]!, enrichment: getEnrichment(ctx) };
+    };
+
+    const first = await page(0);
+    expect(first.xref).toEqual({
+      type: 'CAS',
+      ids: ['50-99-7', '2280-44-6'],
+      sourceCounts: [11, 4],
+      totalAvailable: 4,
+      truncated: true,
+    });
+    expect(first.enrichment.nextOffset).toBe(2);
+
+    const second = await page(2);
+    expect(second.xref.ids).toEqual(['54-17-1', '1227096-09-4']);
+    expect(second.xref.sourceCounts).toEqual([2, 1]);
+    expect(second.xref.truncated).toBe(false);
+    expect(second.enrichment.nextOffset).toBeUndefined();
+
+    const past = await page(4);
+    expect(past.xref.ids).toEqual([]);
+    expect(past.xref.sourceCounts).toEqual([]);
+    expect(past.enrichment.notice).toBe(
+      'offset 4 is past every requested type — the largest has 4 ID(s). Pass an offset below 4.',
+    );
+  });
+
+  it('returns an empty CAS group beside RN for a compound without the heading', async () => {
+    mockClient.getHeadingXrefs.mockResolvedValueOnce([]);
+    mockClient.getXrefs.mockResolvedValueOnce(['1234-56-7']);
+    const ctx = createMockContext();
+    const result = await getCompoundXrefs.handler(
+      getCompoundXrefs.input.parse({ cid: 170000000, xrefTypes: ['CAS', 'RN'] }),
+      ctx,
+    );
+
+    expect(result.xrefs[0]).toEqual({
+      type: 'CAS',
+      ids: [],
+      sourceCounts: [],
+      totalAvailable: 0,
+      truncated: false,
+    });
+    expect(getEnrichment(ctx).notice).toBeUndefined();
+  });
+
+  it('keeps the all-empty verify-the-CID notice for a fabricated CID', async () => {
+    mockClient.getHeadingXrefs.mockResolvedValue([]);
+    const ctx = createMockContext();
+    await getCompoundXrefs.handler(
+      getCompoundXrefs.input.parse({ cid: 999999999, xrefTypes: ['CAS', 'EC'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toBe(
+      'No cross-references found for CID 999999999 across the requested type(s): CAS, EC. The compound may have none of these xref types, or verify the CID with pubchem_search_compounds.',
+    );
+  });
+
+  it('leaves sourceCounts off the PUG REST types', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce(ASPIRIN_RN);
+
+    const result = await runToolContract(getCompoundXrefs, { cid: 2244, xrefTypes: ['RN'] });
+    const [rn] = (result.structuredContent as { xrefs: Array<Record<string, unknown>> }).xrefs;
+
+    expect(rn).not.toHaveProperty('sourceCounts');
+    expect(contentText(result)).toContain(ASPIRIN_RN.join(', '));
+  });
+});
+
+describe('getCompoundXrefs handler — a failed type never sinks the types that answered', () => {
+  it('returns the answered types and names the failed one', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce(ASPIRIN_RN);
+    mockClient.getHeadingXrefs.mockRejectedValueOnce(
+      timeout('PubChem did not respond in time; the request timed out. Retry shortly.'),
+    );
+
+    const result = await runToolContract(getCompoundXrefs, {
+      cid: 2244,
+      xrefTypes: ['RN', 'CAS'],
+    });
+    const structured = result.structuredContent as {
+      xrefs: Array<{ type: string }>;
+      failedTypes?: string;
+      notice?: string;
+    };
+
+    expect(result.isError).toBeFalsy();
+    expect(structured.xrefs.map((x) => x.type)).toEqual(['RN']);
+    expect(structured.failedTypes).toBe('CAS');
+    const notice =
+      'Could not retrieve CAS for CID 2244; the other requested types are returned. Retry to re-attempt CAS.';
+    expect(structured.notice).toBe(notice);
+    expect(contentText(result)).toContain(notice);
+  });
+
+  it('fails the call with the first error when every requested type fails', async () => {
+    const first = serviceUnavailable('PubChem returned 503.');
+    mockClient.getXrefs
+      .mockRejectedValueOnce(first)
+      .mockRejectedValueOnce(serviceUnavailable('PubChem returned 502.'));
+
+    await expect(
+      getCompoundXrefs.handler(
+        getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['PubMedID', 'RN'] }),
+        createMockContext(),
+      ),
+    ).rejects.toBe(first);
+  });
+
+  it('says in the description when a failed type fails the call', () => {
+    expect(getCompoundXrefs.description).toContain(
+      'named in failedTypes while the others still return; the call fails only when a type fails and no type other than ProteinGI (which PubChem no longer serves) loads.',
+    );
+  });
+
+  it('stops at a 503, naming the unrequested types as failed beside the ones that answered', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce(ASPIRIN_RN).mockResolvedValue([1]);
+    mockClient.getHeadingXrefs.mockRejectedValueOnce(
+      serviceUnavailable('PubChem returned HTTP 503 after 2 attempts.', { status: 503 }),
+    );
+
+    const result = await runToolContract(getCompoundXrefs, {
+      cid: 2244,
+      xrefTypes: ['RN', 'CAS', 'PubMedID'],
+    });
+    const structured = result.structuredContent as {
+      xrefs: Array<{ type: string }>;
+      failedTypes?: string;
+      notice?: string;
+    };
+
+    expect(mockClient.getXrefs).toHaveBeenCalledTimes(1);
+    expect(mockClient.getHeadingXrefs).toHaveBeenCalledTimes(1);
+    expect(structured.xrefs.map((x) => x.type)).toEqual(['RN']);
+    expect(structured.failedTypes).toBe('CAS, PubMedID');
+    const notice =
+      'Could not retrieve CAS, PubMedID for CID 2244; the other requested types are returned. Retry to re-attempt CAS, PubMedID.';
+    expect(structured.notice).toBe(notice);
+    expect(contentText(result)).toContain(notice);
+  });
+
+  it('offers a retry only for the types that failed transiently', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce(ASPIRIN_RN);
+    mockClient.getHeadingXrefs
+      .mockRejectedValueOnce(
+        invalidRequest('PubChem returned HTTP 400: PUGVIEW.BadRequest', { status: 400 }),
+      )
+      .mockRejectedValueOnce(
+        timeout('PubChem did not respond in time; the request timed out. Retry shortly.'),
+      );
+
+    const result = await runToolContract(getCompoundXrefs, {
+      cid: 2244,
+      xrefTypes: ['RN', 'CAS', 'EC'],
+    });
+    const structured = result.structuredContent as { failedTypes?: string; notice?: string };
+
+    expect(structured.failedTypes).toBe('CAS, EC');
+    expect(structured.notice).toBe(
+      'Could not retrieve CAS, EC for CID 2244; the other requested types are returned. Retry to re-attempt EC.',
+    );
+    expect(contentText(result)).toContain(structured.notice!);
+  });
+
+  it('offers no retry when every failure is one a retry repeats', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce(ASPIRIN_RN);
+    mockClient.getHeadingXrefs.mockRejectedValueOnce(
+      invalidRequest('PubChem returned HTTP 400: PUGVIEW.BadRequest', { status: 400 }),
+    );
+    const ctx = createMockContext();
+
+    await getCompoundXrefs.handler(
+      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['RN', 'CAS'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toBe(
+      'Could not retrieve CAS for CID 2244; the other requested types are returned.',
+    );
+  });
+
+  it('limits the past-the-end notice to the types that loaded when one failed', async () => {
+    mockClient.getXrefs.mockResolvedValueOnce([1, 2, 3]);
+    mockClient.getHeadingXrefs.mockRejectedValueOnce(
+      timeout('PubChem did not respond in time; the request timed out. Retry shortly.'),
+    );
+    const ctx = createMockContext();
+
+    await getCompoundXrefs.handler(
+      getCompoundXrefs.input.parse({ cid: 2244, xrefTypes: ['GeneID', 'CAS'], offset: 50 }),
+      ctx,
+    );
+    expect(getEnrichment(ctx).notice).toBe(
+      'Could not retrieve CAS for CID 2244; the other requested types are returned. Retry to re-attempt CAS. offset 50 is past every type that loaded — the largest has 3 ID(s). Pass an offset below 3.',
+    );
+  });
+
+  it('says the failedTypes retry holds only for transient failures', () => {
+    const description = getCompoundXrefs.enrichment?.failedTypes?.description ?? '';
+
+    expect(description).not.toContain('retrying the call can recover the rest');
+    expect(description).toMatch(/transient/);
   });
 });
 

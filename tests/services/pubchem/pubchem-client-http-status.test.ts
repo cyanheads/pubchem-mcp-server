@@ -317,6 +317,21 @@ describe('data.fault holds only a fault PubChem stated', () => {
     });
     expect((error as { data?: object }).data).not.toHaveProperty('fault');
   });
+
+  it('rejects an InChI PubChem cannot standardize on the first attempt, keeping its fault and no trace of the InChI (#80)', async () => {
+    const message =
+      'Unable to standardize the given structure - perhaps some special characters need to be escaped or data packed in a MIME form?';
+    fetchMock.mockImplementation(async () => pugRestFault('PUGREST.BadRequest', message, 400));
+
+    const { error } = await settle(new PubChemClient().searchByInchi(`InChI=1S/${QUERY_TERM}`));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(error).toMatchObject({
+      code: JsonRpcErrorCode.ValidationError,
+      data: { reason: 'identifier_rejected', fault: `PUGREST.BadRequest: ${message}` },
+    });
+    expectNoRequestTrace(error);
+  });
 });
 
 describe('a 200 whose body cannot be read fails like a network error', () => {

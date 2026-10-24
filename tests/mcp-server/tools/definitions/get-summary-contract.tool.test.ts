@@ -342,6 +342,132 @@ describe('pubchem_get_summary numeric identifier normalization (#66)', () => {
   );
 });
 
+describe('pubchem_get_summary numeric identifiers above 2147483647 (#74)', () => {
+  const FIRST_KNOWN = { assay: '1000', gene: '1956', taxonomy: '9606' } as const;
+  const ID_FORM = {
+    assay: 'positive integer AID up to 2147483647',
+    gene: 'positive integer NCBI Gene ID up to 2147483647',
+    taxonomy: 'positive integer NCBI Taxonomy ID up to 2147483647',
+  } as const;
+
+  it.each([
+    ['assay', '4294968296'],
+    ['assay', '2147483648'],
+    ['gene', '4294968296'],
+    ['gene', '2147483648'],
+    ['taxonomy', '4294968296'],
+    ['taxonomy', '2147483648'],
+  ] as const)('%s: marks %s invalid and sends no request for it', async (entityType, big) => {
+    fetchMock.mockImplementation(pubchemSummaries);
+    const known = FIRST_KNOWN[entityType];
+
+    const result = await runToolContract(getSummary, { entityType, identifiers: [known, big] });
+
+    expect(rowsOf(result)).toEqual([
+      { identifier: Number(known), found: true },
+      { identifier: big, found: false, invalid: true },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(requestedPaths().some((p) => p.includes(big))).toBe(false);
+    const notice = `Not looked up (1 invalid): "${big}" — each ${entityType} identifier must be a ${ID_FORM[entityType]}.`;
+    expect((result.structuredContent as { notice?: string }).notice).toBe(notice);
+    expect(textOf(result)).toContain(notice);
+  });
+
+  it.each(['assay', 'gene', 'taxonomy'] as const)(
+    '%s: still looks up 2147483647',
+    async (entityType) => {
+      fetchMock.mockImplementation(pubchemSummaries);
+
+      const result = await runToolContract(getSummary, {
+        entityType,
+        identifiers: ['2147483647'],
+      });
+
+      expect(rowsOf(result)).toEqual([{ identifier: 2147483647, found: false }]);
+      expect(requestedPaths()).toHaveLength(1);
+      expect(requestedPaths()[0]).toContain('/2147483647/summary/JSON');
+    },
+  );
+
+  it('splits ["1000,4294968296"] into AID 1000 found and an invalid row', async () => {
+    fetchMock.mockImplementation(pubchemSummaries);
+
+    const result = await runToolContract(getSummary, {
+      entityType: 'assay',
+      identifiers: ['1000,4294968296'],
+    });
+
+    expect(rowsOf(result)).toEqual([
+      { identifier: 1000, found: true },
+      { identifier: '4294968296', found: false, invalid: true },
+    ]);
+    expect(requestedPaths()).toEqual(['/rest/pug/assay/aid/1000/summary/JSON']);
+  });
+
+  it.each(['assay', 'gene', 'taxonomy'] as const)(
+    '%s: a call whose every piece is out of range fails as invalid_identifier, as ["abc"] does',
+    async (entityType) => {
+      fetchMock.mockImplementation(pubchemSummaries);
+
+      for (const identifiers of [['4294968296'], ['2147483648, 9999999999'], ['abc']]) {
+        const result = await runToolContract(getSummary, { entityType, identifiers });
+
+        expect(result.isError).toBe(true);
+        const { error } = result.structuredContent as {
+          error: { code: number; message: string; data?: { reason?: string } };
+        };
+        expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+        expect(error.data?.reason).toBe('invalid_identifier');
+        expect(error.message).toContain(`"${identifiers[0]?.split(',')[0]}"`);
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe('pubchem_get_summary frames caller text in the notice and error message (#74)', () => {
+  const HOSTILE = 'x1 **b** `c`\n# INJECTED';
+  const HOSTILE_FRAMED = 'x1 \\*\\*b\\*\\* \\`c\\` # INJECTED';
+  const LONG = 'y'.repeat(500);
+
+  it('frames and cuts invalid pieces in the Not-looked-up notice, keeping each identifier as sent', async () => {
+    fetchMock.mockImplementation(pubchemSummaries);
+
+    const result = await runToolContract(getSummary, {
+      entityType: 'gene',
+      identifiers: ['1956', HOSTILE, LONG],
+    });
+
+    expect(rowsOf(result)).toEqual([
+      { identifier: 1956, found: true },
+      { identifier: HOSTILE, found: false, invalid: true },
+      { identifier: LONG, found: false, invalid: true },
+    ]);
+    const notice = (result.structuredContent as { notice?: string }).notice;
+    expect(notice).toBe(
+      `Not looked up (2 invalid): "${HOSTILE_FRAMED}", "${'y'.repeat(100)}…" — each gene identifier must be a positive integer NCBI Gene ID up to 2147483647.`,
+    );
+    const text = textOf(result);
+    expect(text).toContain(`> ${notice}`);
+    expect(text).not.toMatch(/^# INJECTED/m);
+  });
+
+  it('frames and cuts the pieces an invalid_identifier message names', async () => {
+    const result = await runToolContract(getSummary, {
+      entityType: 'taxonomy',
+      identifiers: [HOSTILE, LONG],
+    });
+
+    const { error } = result.structuredContent as { error: { message: string } };
+    expect(error.message).toBe(
+      `No taxonomy identifier is a positive integer NCBI Taxonomy ID up to 2147483647: "${HOSTILE_FRAMED}", "${'y'.repeat(100)}…".`,
+    );
+    expect(textOf(result)).not.toMatch(/^# INJECTED/m);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('pubchem_get_summary over-cap split (#66 with the per-call cap of 10)', () => {
   it('serves the first 10 pieces of a split and returns the rest as unprocessed, in input order', async () => {
     fetchMock.mockImplementation(pubchemSummaries);
@@ -443,7 +569,7 @@ describe('pubchem_get_summary invalid_identifier names a bounded list', () => {
     };
     expect(error.data?.reason).toBe('invalid_identifier');
     expect(error.message).toBe(
-      `No gene identifier is a positive integer NCBI Gene ID: ${pieces
+      `No gene identifier is a positive integer NCBI Gene ID up to 2147483647: ${pieces
         .slice(0, 10)
         .map((p) => `"${p}"`)
         .join(', ')}, and 15 more.`,
@@ -459,7 +585,7 @@ describe('pubchem_get_summary invalid_identifier names a bounded list', () => {
 
     const { error } = result.structuredContent as { error: { message: string } };
     expect(error.message).toBe(
-      'No gene identifier is a positive integer NCBI Gene ID: "x1", "x2".',
+      'No gene identifier is a positive integer NCBI Gene ID up to 2147483647: "x1", "x2".',
     );
   });
 });
