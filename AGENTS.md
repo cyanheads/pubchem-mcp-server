@@ -5,7 +5,7 @@
 **Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) `^0.13.15`
 **Engines:** Bun ≥1.4.0, Node ≥24.0.0
 **MCP SDK:** `@modelcontextprotocol/server` ^2.3.1
-**Zod:** ^4.6.6
+**Zod:** ^4.6.7
 
 > **Read the framework docs first:** `node_modules/@cyanheads/mcp-ts-core/CLAUDE.md` contains the full API reference — builders, Context, error codes, exports, patterns. This file covers server-specific conventions only.
 
@@ -49,6 +49,7 @@ Tailor suggestions to what's actually missing or stale — don't recite the full
 ```ts
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { inlineEcho } from './untrusted-text.js';
 
 export const searchAssays = tool('pubchem_search_assays', {
   title: 'Search Assays',
@@ -88,7 +89,7 @@ export const searchAssays = tool('pubchem_search_assays', {
 
     ctx.enrich({ targetType: input.targetType, targetQuery: input.targetQuery, totalFound: allAids.length });
     if (aids.length === 0) {
-      ctx.enrich.notice(`No assays found for "${input.targetQuery}" (${input.targetType}). Try a different targetType or verify the identifier.`);
+      ctx.enrich.notice(`No assays found for "${inlineEcho(input.targetQuery)}" (${input.targetType}). Try a different targetType or verify the identifier.`);
     }
 
     return { aids };
@@ -189,20 +190,22 @@ src/
     pubchem/
       pubchem-client.ts                 # PubChem API client (rate limiting, retry, parsing)
       sdf-parser.ts                     # V2000 SDF → atoms and bonds
+      target-rollup.ts                  # Assay summary → one summary per molecular target
       types.ts                          # API response types and constants
+      xref-lookup.ts                    # Per-type xref lookup (PUG REST + PUG View CAS/EC), failure isolation
   mcp-server/
     tools/definitions/
-      search-compounds.tool.ts          # Search by name/SMILES/InChIKey/formula/structure/similarity/assay
+      search-compounds.tool.ts          # Search by name/SMILES/InChI/InChIKey/formula/structure/similarity/assay
       get-compound-details.tool.ts      # Properties, descriptions, synonyms
       get-compound-image.tool.ts        # 2D structure diagram (PNG)
       get-compound-3d-structure.tool.ts # 3D conformer as parsed JSON or raw SDF
       get-compound-safety.tool.ts       # GHS hazard classification
       get-compound-xrefs.tool.ts        # External database cross-references
-      get-compound-interactions.tool.ts # Drug-drug, drug-food, and target interactions
+      get-compound-interactions.tool.ts # Drug-food, assay-summary targets, drug-drug (SDQ)
       get-bioactivity.tool.ts           # Assay results and activity values
       search-assays.tool.ts             # Find assays by biological target
       get-summary.tool.ts               # Entity summaries (assays, genes, proteins, etc.)
-      untrusted-text.ts                 # Framing helpers for upstream free text in content[]
+      untrusted-text.ts                 # Framing helpers for upstream text and caller echoes in content[]
       identifier-case.ts                # Case normalization for InChIKeys and protein accessions
       input-caps.ts                     # Per-call caps on ID batches and page sizes, cappedInputs disclosure
       index.ts                          # Barrel export
@@ -348,6 +351,7 @@ Run the `release-and-publish` skill — it runs the verification gate (`devcheck
 bun publish --access public
 
 docker buildx build --platform linux/amd64,linux/arm64 \
+  --build-arg APP_VERSION=<version> \
   -t ghcr.io/cyanheads/pubchem-mcp-server:<version> \
   -t ghcr.io/cyanheads/pubchem-mcp-server:latest \
   --push .

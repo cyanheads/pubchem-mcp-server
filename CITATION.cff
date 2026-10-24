@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: pubchem-mcp-server
-abstract: "Model Context Protocol (MCP) server for the PubChem chemical database, providing compound search (name, SMILES, InChIKey, formula, substructure, superstructure, 2D similarity, bioassay actives), physicochemical and pharmacological properties, GHS safety data, bioactivity profiles, cross-references, and entity summaries for assays, genes, proteins, and taxa."
+abstract: "Model Context Protocol (MCP) server for the PubChem chemical database, providing compound search (name, SMILES, InChI, InChIKey, formula, substructure, superstructure, 2D similarity, bioassay actives), physicochemical and pharmacological properties, GHS safety data, bioactivity profiles, cross-references, and entity summaries for assays, genes, proteins, and taxa."
 type: software
 authors:
   - family-names: Hand

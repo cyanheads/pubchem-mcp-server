@@ -29,20 +29,20 @@
 
 ## Overview
 
-Chemical compounds and bioassays from PubChem. Search compounds by name, formula, or structure; fetch properties, safety data, bioactivity, drug interactions, and 3D structures; and find bioassays by biological target.
+Chemical compounds and bioassays from PubChem. Search compounds by name, formula, or structure; fetch properties, safety data, bioactivity, drug-food interactions, molecular targets, and 3D structures; and find bioassays by biological target.
 
 ### Tools
 
 | Tool | Description |
 |:---|:---|
-| `pubchem_search_compounds` | Search for compounds by name, SMILES, InChIKey, formula, substructure, superstructure, or 2D similarity, or list the compounds a bioassay found active. |
+| `pubchem_search_compounds` | Search for compounds by name, SMILES, InChI, InChIKey, formula, substructure, superstructure, or 2D similarity, or list the compounds a bioassay found active. |
 | `pubchem_get_compound_details` | Get physicochemical properties, descriptions, synonyms, drug-likeness, and classification for compounds by CID. |
 | `pubchem_get_compound_image` | Fetch a 2D structure diagram (PNG) for a compound by CID. |
 | `pubchem_get_compound_3d_structure` | Fetch a 3D conformer (atomic coordinates and bonds) for a compound by CID, as parsed JSON or raw SDF. |
-| `pubchem_get_compound_xrefs` | Get external database cross-references (PubMed, patents, genes, proteins, etc.). |
+| `pubchem_get_compound_xrefs` | Get external database cross-references (PubMed, patents, genes, CAS and EC numbers, etc.). |
 | `pubchem_get_compound_safety` | Get GHS hazard classification and safety data for one or more compounds by CID (batch). |
-| `pubchem_get_bioactivity` | Get a compound's bioactivity profile: assay results, targets, and activity values; filter by outcome or molecular target. |
-| `pubchem_get_compound_interactions` | Get drug-drug, drug-food, and chemical-target interactions for a compound by CID. |
+| `pubchem_get_bioactivity` | Get a compound's bioactivity profile: assay results, targets, activity values, assay types, and cited PubMed IDs; filter by outcome, molecular target, or assay type. |
+| `pubchem_get_compound_interactions` | Get a compound's drug-food interactions and the molecular targets its assays name, each with assay counts and the most potent active value. |
 | `pubchem_search_assays` | Find bioassays by biological target (gene symbol, protein, Gene ID, UniProt accession). |
 | `pubchem_get_summary` | Get summaries for PubChem entities: assays, genes, proteins, taxonomy. |
 
@@ -63,8 +63,8 @@ Compound and assay records are also exposed as URI-templated resources, backed b
 
 ### `pubchem_search_compounds` <sub>tool</sub>
 
-- Six search strategies: identifier (`identifierType` + `identifiers`; name/SMILES/InChIKey, 25 per call, the rest returned in `unprocessed`), formula (`formula`, Hill notation, optional `allowOtherElements`), substructure/superstructure and 2D similarity (`query` + `queryType`; similarity threshold 70-100, default 90), or assay (`aid`; compounds the bioassay marked active, or every compound tested with `activeOnly: false`)
-- Up to 200 CIDs per page (default 20; a larger `maxResults` is served at 200 and reported in `cappedInputs`); `offset` pages to 10,000. Optional `properties` saves a follow-up `pubchem_get_compound_details` call
+- Six search strategies: identifier (`identifierType` + `identifiers`; name/SMILES/InChI/InChIKey, 25 per call, the rest returned in `unprocessed`), formula (`formula`, Hill notation, optional `allowOtherElements`), substructure/superstructure and 2D similarity (`query` + `queryType`; similarity threshold 70-100, default 90), or assay (`aid`; compounds the bioassay marked active, or every compound tested with `activeOnly: false`)
+- Up to 200 CIDs per page (default 20; a larger `maxResults` is served at 200 and reported in `cappedInputs`); `offset` pages identifier and assay searches to the end of their matches, and formula, substructure, superstructure, and similarity searches to 10,000 (deeper fails with `offset_ceiling_exceeded`). Optional `properties` saves a follow-up `pubchem_get_compound_details` call
 - Reports `totalFound`, or a `totalFoundAtLeast` floor when an upstream search saturated, and `unresolvedIdentifiers` for inputs with no CID. Fails with `aid_not_found` for an unknown AID and `search_query_rejected` (with a hint) for a query PubChem cannot search
 
 ---
@@ -97,9 +97,11 @@ Compound and assay records are also exposed as URI-templated resources, backed b
 
 ### `pubchem_get_compound_xrefs` <sub>tool</sub>
 
-- Single CID; one or more `xrefTypes`: `RegistryID`, `RN` (CAS numbers), `PatentID`, `PubMedID`, `GeneID`, `ProteinGI`, `TaxonomyID`
+- Single CID; one or more `xrefTypes`: `CAS`, `EC`, `RN`, `RegistryID`, `PatentID`, `PubMedID`, `GeneID`, `ProteinGI`, `TaxonomyID`
+- `CAS` and `EC` are the numbers deposited for the compound, every distinct value ordered by how many source records deposited it, with those counts in `sourceCounts`. `RN` is PubChem's unranked registry-number list: the CAS number sits beside deprecated and related CAS RNs and EC numbers
+- `ProteinGI` currently returns no data from PubChem; use `GeneID` for gene/protein associations
 - `maxPerType` up to 500 (default 50), with one `offset` applied to every type; each type reports `totalAvailable` and `truncated`. `PubMedID` comes newest first
-- An empty result says whether the compound has none of the requested types or the CID may be mistyped
+- A type that fails to load is named in `failedTypes` and the others still return; the call fails only when a type fails and no type other than ProteinGI (which PubChem no longer serves) loads. An empty result says whether the compound has none of the requested types or the CID may be mistyped
 
 ---
 
@@ -113,8 +115,9 @@ Compound and assay records are also exposed as URI-templated resources, backed b
 
 ### `pubchem_get_bioactivity` <sub>tool</sub>
 
-- Single CID; filter by `outcomeFilter` (`active`/`inactive`/`all`, default `all`) and/or `targetGeneId`/`targetAccession`
+- Single CID; filter by `outcomeFilter` (`active`/`inactive`/`all`, default `all`), `targetGeneId`/`targetAccession`, and `assayType` (any of `confirmatory`/`screening`/`summary`/`other`); an assay must pass every filter set
 - A target filter matches any identifier tied to the same target, so Gene ID 5742, UniProt P23219, and RefSeq NP_542158 all reach the same COX-1 assays
+- Each result carries the assay's `assayType` and the PubMed IDs it cites (`pmids`, newest first)
 - Up to 100 results per page (default 20); `offset` reaches the rest. A multi-target assay reports the matched target and lists the others under `otherTargets`
 - Reports `totalAssays`/`activeCount`/`inactiveCount` for the whole compound and `filteredCount`/`returnedCount` for the page; notices say whether there is no data, the filter excluded everything, or `offset` is past the end
 
@@ -122,9 +125,10 @@ Compound and assay records are also exposed as URI-templated resources, backed b
 
 ### `pubchem_get_compound_interactions` <sub>tool</sub>
 
-- Single CID; one or more `kinds` — `drug-drug` (DrugBank), `drug-food`, `target` (binding/activity from BindingDB, ChEMBL, and others); default `["drug-drug"]`
-- `maxEntries` per kind per page (max 50, default 10); `offset` counts source records, up to 2,147,483,646. Each kind pages independently, reported in `paging[]` (`totalRecords`/`nextOffset`/`truncated`)
-- A kind that fails is named in `failedKinds` and the others still return. `drug-drug` and `target` can be refused by PubChem's SDQ service, and a retry will not help; `pubchem_get_bioactivity` also covers per-target activity
+- Single CID; one or more `kinds` — `drug-food` (PUG View), `target`, `drug-drug` (DrugBank); default `["drug-food"]`, and an empty drug-food page points at `target`
+- `target` gives one entry per target the compound's assay summary names: a Gene ID with the accessions the table pairs with it, or an identifier it never pairs. A Gene ID and an accession that no row pairs are separate entries even when they name the same protein (erlotinib's ERBB2 appears as `accession:P04626` and as `GeneID:2064`). Each entry names the target from a batched gene or protein summary lookup, plus the `GeneID:` or `accession:` value `pubchem_get_bioactivity` filters on, and states the assay counts by outcome and the most potent Active value with its AID. Active targets come first, most potent first. If a name lookup fails or does not answer within a few seconds, the entries keep their identifier and the notice says so
+- `maxEntries` per kind per page (max 50, default 10); `offset` counts records (targets, for `target`), up to 2,147,483,646. Each kind pages independently, reported in `paging[]` (`totalRecords`/`nextOffset`/`truncated`)
+- A kind that fails is named in `failedKinds` and the others still return. `drug-drug` comes from PubChem's SDQ service, which refuses automated requests, so it lands in `failedKinds` and a retry will not help
 
 ---
 
@@ -141,7 +145,7 @@ Compound and assay records are also exposed as URI-templated resources, backed b
 
 - `entityType`: `assay` (AID), `gene` (NCBI Gene ID), `protein` (UniProt accession), or `taxonomy` (Tax ID); up to 10 identifiers per call
 - A comma-joined string is split into identifiers; any past the first 10 are returned in `unprocessed`, and more than 1000 fails as `too_many_identifiers`
-- AIDs, Gene IDs, and Tax IDs must be positive integers; other pieces get an `invalid: true` row, and the call fails as `invalid_identifier` only when none is usable
+- AIDs, Gene IDs, and Tax IDs must be positive integers up to 2147483647; other pieces get an `invalid: true` row, and the call fails as `invalid_identifier` only when none is usable
 - Per-identifier `found` flag; fields depend on `entityType` (taxonomy: ordered `lineage`; gene: `symbol`/`taxonomy`; assay: `method`, the first 25 `targets` with `targetCount`, tested/active compound counts, `lastDataChange`)
 
 ---
@@ -170,15 +174,15 @@ Compound and assay records are also exposed as URI-templated resources, backed b
 
 ### `pubchem://compound/{cid}/xrefs` <sub>resource</sub>
 
-- Focused default set — `RN` (CAS), `RegistryID`, `PubMedID` — up to 25 IDs per type, as `application/json`; the PubMed IDs are the 25 highest (most recently assigned), highest first
+- Focused default set — `RN`, `RegistryID`, `PubMedID`, `CAS` (with `sourceCounts`) — up to 25 IDs per type, as `application/json`; the PubMed IDs are the 25 highest (most recently assigned), highest first. A type that fails to load is named in `failedTypes`
 - Use `pubchem_get_compound_xrefs` for the full set of xref types, a higher per-type cap, and offset paging
 
 ---
 
 ### `pubchem://compound/{cid}/bioactivity` <sub>resource</sub>
 
-- Up to 25 assays as `application/json`, plus `totalAssays`/`activeCount` for the whole compound; a multi-target assay lists its further targets under `otherTargets`
-- Use `pubchem_get_bioactivity` to filter by outcome or target, raise the cap, or page with offset
+- Up to 25 assays as `application/json`, each with its `assayType` and `pmids`, plus `totalAssays`/`activeCount` for the whole compound; a multi-target assay lists its further targets under `otherTargets`
+- Use `pubchem_get_bioactivity` to filter by outcome, target, or assay type, raise the cap, or page with offset
 
 ---
 
@@ -193,7 +197,7 @@ Built on [`@cyanheads/mcp-ts-core`](https://github.com/cyanheads/mcp-ts-core): s
 
 PubChem-specific:
 
-- Covers PUG REST, PUG View, and SDQ endpoints
+- Covers PUG REST and PUG View endpoints, plus SDQ for drug-drug interactions
 - Rate-limited client (5 req/s) with request queuing and one retry on transient failures
 - A 50 s budget per call fails a slow upstream as `Timeout`, and a cancelled call fails with `RequestCancelled`
 - Built-in V2000 SDF parser for 3D conformers; drug-likeness computed from already-fetched properties
@@ -202,7 +206,7 @@ PubChem-specific:
 Agent-friendly output:
 
 - Per-CID `status` and `found` flags let callers branch on data instead of matching error strings
-- Batch tools return per-item results alongside `unresolvedIdentifiers`, `skippedCids`, and `failedKinds` rather than failing the whole call
+- Batch tools return per-item results alongside `unresolvedIdentifiers`, `skippedCids`, `failedKinds`, and `failedTypes` rather than failing the whole call
 - Capped lists disclose `truncated`, `shown`/`cap`, and `nextOffset`; oversized batches are served up to the cap, with `cappedInputs` and `unprocessed` reporting the rest
 - Failures carry a typed `reason` (e.g. `cid_not_found`, `missing_identifier_args`, `invalid_cid_query`) with recovery text
 
