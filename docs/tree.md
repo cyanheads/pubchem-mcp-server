@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-10-15 02:06:03
+Generated on: 2026-10-24 10:41:45
 
 ```text
 pubchem-mcp-server/
@@ -171,11 +171,14 @@ pubchem-mcp-server/
 │   │   └── pubchem/
 │   │       ├── pubchem-client.ts
 │   │       ├── sdf-parser.ts
-│   │       └── types.ts
+│   │       ├── target-rollup.ts
+│   │       ├── types.ts
+│   │       └── xref-lookup.ts
 │   └── index.ts
 ├── tests/
 │   ├── fixtures/
 │   │   ├── assay-summaries.json
+│   │   ├── assaysummary-176870-targets.json
 │   │   ├── assaysummary-2244-cox.json
 │   │   ├── ghs-135398658.json
 │   │   ├── ghs-2244.json
@@ -186,7 +189,8 @@ pubchem-mcp-server/
 │   │   ├── ghs-8929.json
 │   │   ├── ghs-toplevel-baseline.json
 │   │   ├── pug-rest-xrefs-2244.json
-│   │   └── pug-view-atc.json
+│   │   ├── pug-view-atc.json
+│   │   └── pug-view-cas-ec.json
 │   ├── mcp-server/
 │   │   ├── resources/
 │   │   │   └── definitions/
@@ -233,7 +237,9 @@ pubchem-mcp-server/
 │           ├── pubchem-client-http-status.test.ts
 │           ├── pubchem-client-interactions.test.ts
 │           ├── pubchem-client.test.ts
-│           └── sdf-parser.test.ts
+│           ├── sdf-parser.test.ts
+│           ├── target-rollup.test.ts
+│           └── xref-lookup.test.ts
 ├── .dockerignore
 ├── .env.example
 ├── .gitattributes

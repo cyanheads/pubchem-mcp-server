@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.7.1](changelog/0.7.x/0.7.1.md) — 2026-10-24 · 🛡️ Security
+
+pubchem_get_compound_interactions defaults to drug-food and rebuilds target from the assay summary; pubchem_get_compound_xrefs gains CAS and EC; pubchem_search_compounds resolves InChI strings and pages assay results past offset 10000; pubchem_get_bioactivity reports assay type and PMIDs.
+
 ## [0.7.0](changelog/0.7.x/0.7.0.md) — 2026-10-14 · ⚠️ Breaking
 
 pubchem_search_compounds lists an assay's compounds; safety keeps each source's GHS classification and ECHA Not Classified verdicts; bioactivity reports every target of a multi-target assay; over-cap inputs are served at the cap and every call gets a 50 s time budget. Output contracts change; see Migration.
