@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-10-24 10:41:45
+Generated on: 2026-10-28 14:38:31
 
 ```text
 pubchem-mcp-server/
@@ -31,6 +31,7 @@ pubchem-mcp-server/
 │   ├── 0.5.x/
 │   ├── 0.6.x/
 │   ├── 0.7.x/
+│   ├── 0.8.x/
 │   └── template.md
 ├── claude-plans/
 ├── docs/
@@ -42,6 +43,8 @@ pubchem-mcp-server/
 │   ├── add-resource/
 │   │   └── SKILL.md
 │   ├── add-service/
+│   │   └── SKILL.md
+│   ├── add-skill/
 │   │   └── SKILL.md
 │   ├── add-test/
 │   │   └── SKILL.md
@@ -140,6 +143,9 @@ pubchem-mcp-server/
 │   ├── release-github.ts
 │   ├── split-changelog.ts
 │   └── tree.ts
+├── skills/
+│   └── pubchem-guide/
+│       └── SKILL.md
 ├── src/
 │   ├── mcp-server/
 │   │   ├── resources/
@@ -191,6 +197,8 @@ pubchem-mcp-server/
 │   │   ├── pug-rest-xrefs-2244.json
 │   │   ├── pug-view-atc.json
 │   │   └── pug-view-cas-ec.json
+│   ├── helpers/
+│   │   └── commonmark.ts
 │   ├── mcp-server/
 │   │   ├── resources/
 │   │   │   └── definitions/
@@ -256,7 +264,9 @@ pubchem-mcp-server/
 ├── Dockerfile
 ├── LICENSE
 ├── manifest.json
+├── mcp.json
 ├── package.json
+├── plugin.json
 ├── README.md
 ├── server.json
 ├── tsconfig.build.json

@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.8.0](changelog/0.8.x/0.8.0.md) — 2026-10-28
+
+Publishes the pubchem-guide agent skill over MCP as skill://pubchem-guide/SKILL.md. Control-character queries to pubchem_search_assays and formula searches now fail as typed ValidationErrors, interactions retry advice is per failed kind, and mcp-ts-core ^0.13.18 changes how notices and errors render in content[].
+
 ## [0.7.1](changelog/0.7.x/0.7.1.md) — 2026-10-24 · 🛡️ Security
 
 pubchem_get_compound_interactions defaults to drug-food and rebuilds target from the assay summary; pubchem_get_compound_xrefs gains CAS and EC; pubchem_search_compounds resolves InChI strings and pages assay results past offset 10000; pubchem_get_bioactivity reports assay type and PMIDs.
