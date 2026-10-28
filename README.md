@@ -1,7 +1,7 @@
 <div align="center">
   <h1>@cyanheads/pubchem-mcp-server</h1>
   <p><b>Search the PubChem chemical database for compounds, properties, safety data, bioactivity, cross-references, and entity summaries via MCP. STDIO or Streamable HTTP.</b>
-  <div>10 Tools • 6 Resources</div>
+  <div>10 Tools • 6 Resources • 1 Skill</div>
   </p>
 </div>
 
@@ -141,7 +141,7 @@ The server publishes an agent skill, [`pubchem-guide`](skills/pubchem-guide/SKIL
 - Search by `targetType`: `genesymbol`/`proteinname` (text), `geneid` (NCBI Gene ID), `proteinaccession` (UniProt)
 - A `genesymbol` matches across species. `geneid` and `proteinaccession` each pin one protein but return overlapping, different assay sets for it; union both for a complete list
 - Up to 200 AIDs per page (default 50); `offset` pages through the results
-- Rejects a blank `targetQuery` and a non-numeric `geneid`; a `targetQuery` PubChem refuses (one carrying a line break or other control character) fails as `target_query_rejected`
+- Rejects a blank `targetQuery` and a non-numeric `geneid`; a `targetQuery` PubChem refuses with HTTP 400 (one carrying a line break, another C0 control character other than tab and NUL, or DEL) fails as `target_query_rejected`
 - Reports `totalFound` and distinguishes "no match" from "offset past the end"
 
 ---
