@@ -275,9 +275,9 @@ describe('searchCompounds handler — cid-query validation (#26)', () => {
   );
 
   it.each([
-    ['zzqq **b** `c`\n# INJECTED', 'zzqq \\*\\*b\\*\\* \\`c\\` # INJECTED'],
+    ['zzqq **b** `c`\n# INJECTED', 'zzqq **b** `c`\n# INJECTED'],
     ['9'.repeat(500), `${'9'.repeat(100)}…`],
-  ])('frames and cuts the query in the invalid_cid_query message (#74)', async (query, echo) => {
+  ])('keeps and cuts the query in the invalid_cid_query message (#74)', async (query, echo) => {
     const ctx = createMockContext({ errors: searchCompounds.errors });
     const input = searchCompounds.input.parse({
       searchType: 'similarity',

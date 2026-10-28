@@ -15,7 +15,7 @@ import {
   INPUT_CEILING,
   renderCappedInputs,
 } from './input-caps.js';
-import { inlineData, inlineEcho } from './untrusted-text.js';
+import { clipEcho, renderNotice } from './untrusted-text.js';
 
 /** AIDs served per page; a larger maxResults is clamped to this. */
 const MAX_RESULTS_CAP = 200;
@@ -33,7 +33,7 @@ export const searchAssays = tool('pubchem_search_assays', {
     targetType: z
       .enum(['genesymbol', 'proteinname', 'geneid', 'proteinaccession'])
       .describe(
-        'Target identifier type. "genesymbol" and "proteinname" accept text names. "geneid" accepts NCBI Gene IDs. "proteinaccession" accepts UniProt accessions.',
+        'Target identifier type. "genesymbol" and "proteinname" accept text names; a genesymbol matches the symbol case-insensitively across species, so a human symbol also returns assays on other species\' orthologs. "geneid" accepts NCBI Gene IDs. "proteinaccession" accepts UniProt accessions. "geneid" and "proteinaccession" each pin one protein, but return overlapping, different assay sets for it, since PubChem records some assays under only one of the two identifiers; for a complete list for one protein, union both.',
       ),
     targetQuery: z
       .string()
@@ -99,9 +99,8 @@ export const searchAssays = tool('pubchem_search_assays', {
       ),
   },
   enrichmentTrailer: {
-    // Uncut: the same value rides structuredContent, so content[] carries it whole.
-    targetQuery: { render: (value: string) => `**targetQuery:** ${inlineData(value)}` },
     cappedInputs: { render: renderCappedInputs },
+    notice: { render: renderNotice },
   },
   errors: [
     {
@@ -118,6 +117,15 @@ export const searchAssays = tool('pubchem_search_assays', {
       recovery:
         'Pass a numeric NCBI Gene ID (e.g. "1956"), or switch targetType to genesymbol/proteinname for text queries.',
     },
+    {
+      reason: 'target_query_rejected',
+      code: JsonRpcErrorCode.ValidationError,
+      // Raised by PubChemClient.searchAssaysByTarget when PubChem answers the lookup with 400.
+      thrownBy: 'service',
+      when: 'PubChem refused the target lookup with HTTP 400 — its answer for a targetQuery carrying a line break or other control character',
+      recovery:
+        'Remove line breaks and other control characters from targetQuery, and check that it matches targetType: an official gene symbol for genesymbol (e.g. "EGFR"), a protein name for proteinname, a UniProt accession for proteinaccession.',
+    },
   ],
 
   async handler(input, ctx) {
@@ -132,12 +140,12 @@ export const searchAssays = tool('pubchem_search_assays', {
     if (targetQuery.length === 0) {
       throw ctx.fail('blank_target_query');
     }
-    // geneid targets are numeric NCBI Gene IDs — a non-numeric value otherwise hits a raw
-    // PubChem 400 (searchAssaysByTarget only special-cases 404).
+    // geneid targets are numeric NCBI Gene IDs — a non-numeric value is refused here, with
+    // a geneid-specific hint and no request, rather than as PubChem's 400.
     if (input.targetType === 'geneid' && !/^\d+$/.test(targetQuery)) {
       throw ctx.fail(
         'invalid_geneid_query',
-        `targetType is "geneid" but targetQuery "${inlineEcho(input.targetQuery)}" is not a positive integer Gene ID.`,
+        `targetType is "geneid" but targetQuery "${clipEcho(input.targetQuery)}" is not a positive integer Gene ID.`,
       );
     }
 
@@ -166,11 +174,11 @@ export const searchAssays = tool('pubchem_search_assays', {
     if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
     if (totalFound === 0) {
       ctx.enrich.notice(
-        `No assays found for "${inlineEcho(targetQuery)}" (${input.targetType}). Try a different targetType (e.g. switch from proteinname to genesymbol), verify the identifier spelling, or use pubchem_get_summary for gene/protein entity lookups.`,
+        `No assays found for "${clipEcho(targetQuery)}" (${input.targetType}). Try a different targetType (e.g. switch from proteinname to genesymbol) or verify the identifier spelling. genesymbol takes the official gene symbol, e.g. "PTGS2" rather than "COX-2".`,
       );
     } else if (aids.length === 0) {
       ctx.enrich.notice(
-        `offset ${input.offset} is past the ${totalFound} AID(s) found for "${inlineEcho(targetQuery)}". Pass an offset below ${totalFound}.`,
+        `offset ${input.offset} is past the ${totalFound} AID(s) found for "${clipEcho(targetQuery)}". Pass an offset below ${totalFound}.`,
       );
     } else if (hasMore) {
       ctx.enrich.truncated({

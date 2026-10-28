@@ -144,7 +144,9 @@ describe('getCompoundInteractions handler', () => {
     mockClient.getInteractions.mockResolvedValueOnce({
       entries: [],
       pages: [{ kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 }],
-      failedKinds: [{ kind: 'drug-drug', reason: 'sdq_unavailable', message: 'refused' }],
+      failedKinds: [
+        { kind: 'drug-drug', reason: 'sdq_unavailable', message: 'refused', retryable: false },
+      ],
     });
     const ctx = createMockContext();
     await getCompoundInteractions.handler(
@@ -218,7 +220,9 @@ describe('getCompoundInteractions handler', () => {
     mockClient.getInteractions.mockResolvedValueOnce({
       entries: [ddi],
       pages: [{ kind: 'drug-drug', returnedCount: 1, totalRecords: 1, recordsConsumed: 1 }],
-      failedKinds: [{ kind: 'target', message: 'PubChem SDQ returned unparseable JSON' }],
+      failedKinds: [
+        { kind: 'target', message: 'PubChem returned HTTP 503 after 2 attempts.', retryable: true },
+      ],
     });
     const ctx = createMockContext();
     const input = getCompoundInteractions.input.parse({

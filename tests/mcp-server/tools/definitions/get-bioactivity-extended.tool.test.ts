@@ -8,6 +8,7 @@ import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mc
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBioactivity } from '@/mcp-server/tools/definitions/get-bioactivity.tool.js';
 import type { AssaySummary, BioactivityRow } from '@/services/pubchem/types.js';
+import { readBlockquotes, readTrailerValue } from '../../../helpers/commonmark.js';
 
 const mockClient = {
   getAssaySummary: vi.fn(),
@@ -697,7 +698,7 @@ describe('getBioactivity no-match notices', () => {
   });
 });
 
-describe('getBioactivity frames a caller target label in the notice and the targetFilter line (#74)', () => {
+describe('getBioactivity keeps a caller target label in the notice and the targetFilter line (#74)', () => {
   const row: BioactivityRow = {
     aid: 1,
     assayName: 'COX-1',
@@ -715,14 +716,15 @@ describe('getBioactivity frames a caller target label in the notice and the targ
     };
   }
 
-  it('renders a newline, *, and ` in the label on one line, escaped, on both lines', async () => {
+  it('reads a newline, *, and ` in the label back as written on both lines', async () => {
     const { text, structured } = await run('q9 *x*\n`y`');
 
+    const notice =
+      "CID 2244 has 1 assay(s) but none match the target filter (accession:Q9 *X*\n`Y`). Verify the target identifier appears in this compound's assays, or widen the filter.";
     expect(structured.targetFilter).toBe('accession:Q9 *X*\n`Y`');
-    expect(text).toContain('\n**targetFilter:** accession:Q9 \\*X\\* \\`Y\\`\n');
-    expect(text).toContain(
-      "\n> CID 2244 has 1 assay(s) but none match the target filter (accession:Q9 \\*X\\* \\`Y\\`). Verify the target identifier appears in this compound's assays, or widen the filter.",
-    );
+    expect(structured.notice).toBe(notice);
+    expect(readTrailerValue(text, 'targetFilter')).toBe('accession:Q9 *X*\n`Y`');
+    expect(readBlockquotes(text).at(-1)).toBe(notice);
   });
 
   it('cuts a long identifier to 100 characters in the notice and echoes it whole on the targetFilter line', async () => {
@@ -732,7 +734,7 @@ describe('getBioactivity frames a caller target label in the notice and the targ
     expect(structured.targetFilter).toBe(`accession:${long}`);
     expect(structured.notice).toContain(`(accession:A${'B'.repeat(99)}…)`);
     expect(structured.notice).not.toContain('Z');
-    expect(text).toContain(`\n**targetFilter:** accession:${long}\n`);
+    expect(readTrailerValue(text, 'targetFilter')).toBe(`accession:${long}`);
   });
 });
 
@@ -948,7 +950,7 @@ describe('getBioactivity assay type and PubMed IDs (#79)', () => {
     expect(text).toContain(
       '**AID 3** — Assay 3 (Active)\n  Assay type: Summary\n  PMIDs: 30000000\n',
     );
-    expect(text).toMatch(/\n\*\*assayTypeFilter:\*\* confirmatory, summary$/);
+    expect(readTrailerValue(text, 'assayTypeFilter')).toBe('confirmatory, summary');
   });
 
   it('takes a lone string as a one-type list', async () => {

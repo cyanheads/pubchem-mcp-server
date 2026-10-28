@@ -142,7 +142,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       .string()
       .optional()
       .describe(
-        "Interaction kinds that could not be retrieved (comma-separated). The returned entries cover the kinds that succeeded. The notice says, per failed kind, whether a retry can help: a timeout or upstream error can clear, while a refusal from PubChem's SDQ service (drug-drug) does not.",
+        "Interaction kinds that could not be retrieved (comma-separated). The returned entries cover the kinds that succeeded. The notice says, per failed kind, whether a retry can help: a timeout, rate limit, network error, unreadable response, or upstream 5xx other than 501 can clear, while an HTTP 400, 403, or 501, a response in a shape the server does not expect, or a refusal from PubChem's SDQ service (drug-drug) does not.",
       ),
     notice: z
       .string()
@@ -171,6 +171,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
         cid: input.cid,
         kind: f.kind,
         error: f.message,
+        retryable: f.retryable,
       });
     }
     ctx.log.info('Interactions fetched', {
@@ -216,17 +217,25 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
 
     if (failedKinds.length > 0) {
       ctx.enrich({ failedKinds: failedKinds.map((f) => f.kind).join(', ') });
-      // A refusal from PubChem's SDQ service and a transient failure need opposite advice: a
-      // retry can clear a timeout or 5xx, never a service that is not answering with data.
+      // Retry advice only where a retry can clear the failure (the client's `retryable`): a
+      // timeout, an unreadable body, or a 5xx other than 501 can; a 400, 403, or 501, or a body
+      // in an unexpected shape cannot; a refusal from PubChem's SDQ service gets its own
+      // explanation.
       const refused = failedKinds.filter((f) => f.reason === 'sdq_unavailable').map((f) => f.kind);
-      const transient = failedKinds
-        .filter((f) => f.reason !== 'sdq_unavailable')
+      const retryable = failedKinds.filter((f) => f.retryable).map((f) => f.kind);
+      const permanent = failedKinds
+        .filter((f) => !f.retryable && f.reason !== 'sdq_unavailable')
         .map((f) => f.kind);
       const couldNot = (kinds: string[]) =>
         `Could not retrieve ${kinds.join(', ')} interaction${kinds.length > 1 ? 's' : ''} for CID ${input.cid}`;
-      if (transient.length > 0) {
+      if (retryable.length > 0) {
         noticeParts.push(
-          `${couldNot(transient)}. Retry to re-attempt ${transient.length > 1 ? 'them' : 'it'}.`,
+          `${couldNot(retryable)}. Retry to re-attempt ${retryable.length > 1 ? 'them' : 'it'}.`,
+        );
+      }
+      if (permanent.length > 0) {
+        noticeParts.push(
+          `${couldNot(permanent)}: PubChem rejected the request or answered in a shape this server does not expect, and repeating the call fails the same way.`,
         );
       }
       if (refused.length > 0) {

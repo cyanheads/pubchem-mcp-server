@@ -8,6 +8,7 @@ import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mc
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundInteractions } from '@/mcp-server/tools/definitions/get-compound-interactions.tool.js';
 import type { InteractionEntry } from '@/services/pubchem/types.js';
+import { readBlockquotes, readTrailerValue } from '../../../helpers/commonmark.js';
 
 const mockClient = {
   getInteractions: vi.fn(),
@@ -270,7 +271,9 @@ describe('getCompoundInteractions — failure isolation', () => {
     mockClient.getInteractions.mockResolvedValueOnce({
       entries: [ddi(1)],
       pages: [{ kind: 'drug-drug', returnedCount: 1, totalRecords: 1777, recordsConsumed: 1 }],
-      failedKinds: [{ kind: 'target', message: 'PubChem SDQ returned unparseable JSON' }],
+      failedKinds: [
+        { kind: 'target', message: 'PubChem returned HTTP 503 after 2 attempts.', retryable: true },
+      ],
     });
     const ctx = createMockContext();
     const result = await getCompoundInteractions.handler(
@@ -291,7 +294,7 @@ describe('getCompoundInteractions — failure isolation', () => {
     mockClient.getInteractions.mockResolvedValueOnce({
       entries: [],
       pages: [],
-      failedKinds: [{ kind: 'drug-drug', message: 'timeout' }],
+      failedKinds: [{ kind: 'drug-drug', message: 'timeout', retryable: true }],
     });
     const ctx = createMockContext();
     await getCompoundInteractions.handler(getCompoundInteractions.input.parse({ cid: 2244 }), ctx);
@@ -307,6 +310,7 @@ describe('getCompoundInteractions — SDQ refusals (#62)', () => {
     kind,
     reason: 'sdq_unavailable',
     message: `PubChem's SDQ service answered HTTP 404 instead of SDQ data.`,
+    retryable: false,
   });
 
   it('names a drug-drug SDQ refusal without advising a retry, and no longer names target as an SDQ kind (#78)', async () => {
@@ -360,8 +364,8 @@ describe('getCompoundInteractions — SDQ refusals (#62)', () => {
     expect(structured.failedKinds).toBe('drug-drug');
     expect(structured.paging).toEqual([]);
     expect(structured.notice).toBe(refusal);
-    expect(text).toContain('\n**failedKinds:** drug-drug\n');
-    expect(text).toContain(`\n> ${refusal}`);
+    expect(readTrailerValue(text, 'failedKinds')).toBe('drug-drug');
+    expect(readBlockquotes(text)).toContain(refusal);
   });
 
   it('leaves out the bioactivity pointer when target was not refused', async () => {
@@ -385,7 +389,11 @@ describe('getCompoundInteractions — SDQ refusals (#62)', () => {
       pages: [],
       failedKinds: [
         refused('drug-drug'),
-        { kind: 'drug-food', message: 'PubChem returned HTTP 503 after 2 attempts.' },
+        {
+          kind: 'drug-food',
+          message: 'PubChem returned HTTP 503 after 2 attempts.',
+          retryable: true,
+        },
       ],
     });
     const ctx = createMockContext();
@@ -399,6 +407,110 @@ describe('getCompoundInteractions — SDQ refusals (#62)', () => {
     expect(notice).toMatch(/Retry to re-attempt it\./);
     expect(notice).toContain('Could not retrieve drug-drug interaction');
     expect(notice.match(/retry/gi)).toHaveLength(1);
+  });
+});
+
+describe('getCompoundInteractions — retry advice follows the failure (#82)', () => {
+  const NO_RETRY = (kinds: string) =>
+    `Could not retrieve ${kinds} for CID 2244: PubChem rejected the request or answered in a shape this server does not expect, and repeating the call fails the same way.`;
+
+  it('gives a kind that failed beyond a retry no retry advice', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [],
+      failedKinds: [{ kind: 'target', message: 'PubChem returned HTTP 400.', retryable: false }],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 2244, kinds: ['target'] }),
+      ctx,
+    );
+    const notice = getEnrichment(ctx).notice as string;
+
+    expect(notice).toBe(NO_RETRY('target interaction'));
+    expect(notice).not.toMatch(/retry/i);
+  });
+
+  it('keeps "Retry to re-attempt" for a retryable kind', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [],
+      failedKinds: [{ kind: 'drug-food', message: 'PubChem returned HTTP 503.', retryable: true }],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(getCompoundInteractions.input.parse({ cid: 2244 }), ctx);
+
+    expect(getEnrichment(ctx).notice).toBe(
+      'Could not retrieve drug-food interaction for CID 2244. Retry to re-attempt it.',
+    );
+  });
+
+  it('names each kind of a mixed call under its own advice, refusals included, on both surfaces', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [],
+      failedKinds: [
+        {
+          kind: 'drug-drug',
+          reason: 'sdq_unavailable',
+          message: 'refused',
+          retryable: false,
+        },
+        { kind: 'target', message: 'PubChem returned HTTP 403.', retryable: false },
+        { kind: 'drug-food', message: 'PubChem returned HTTP 503.', retryable: true },
+      ],
+    });
+
+    const result = await runToolContract(getCompoundInteractions, {
+      cid: 2244,
+      kinds: ['drug-drug', 'target', 'drug-food'],
+    });
+    const structured = result.structuredContent as { failedKinds?: string; notice?: string };
+    const text = result.content
+      .map((block) => (block.type === 'text' ? block.text : ''))
+      .join('\n');
+
+    const notice = [
+      'Could not retrieve drug-food interaction for CID 2244. Retry to re-attempt it.',
+      NO_RETRY('target interaction'),
+      "Could not retrieve drug-drug interaction for CID 2244: PubChem's SDQ service, the source of drug-drug interactions, did not answer with data. It can refuse automated requests, and repeating the call does not change that.",
+    ].join(' ');
+    expect(result.isError).toBeFalsy();
+    expect(structured.failedKinds).toBe('drug-drug, target, drug-food');
+    expect(structured.notice).toBe(notice);
+    expect(readTrailerValue(text, 'failedKinds')).toBe('drug-drug, target, drug-food');
+    expect(readBlockquotes(text)).toContain(notice);
+  });
+
+  it('pluralizes two kinds that both failed beyond a retry', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [],
+      failedKinds: [
+        { kind: 'target', message: 'x', retryable: false },
+        { kind: 'drug-food', message: 'y', retryable: false },
+      ],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 2244, kinds: ['target', 'drug-food'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toBe(NO_RETRY('target, drug-food interactions'));
+  });
+
+  it('describes the retry split on the failedKinds enrichment field', () => {
+    const description = getCompoundInteractions.enrichment?.failedKinds?.description ?? '';
+
+    // The split the client's `retryable` records: an unreadable body and a 5xx other than 501
+    // clear; 400, 403, 501, and a body in an unexpected shape do not.
+    const [clears, doesNot] = description.split(' while ');
+    expect(clears).toContain('unreadable response');
+    expect(clears).toContain('5xx other than 501');
+    expect(doesNot).toContain('HTTP 400, 403, or 501');
+    expect(doesNot).toContain('a response in a shape the server does not expect');
+    expect(description).not.toMatch(/cannot read/);
   });
 });
 

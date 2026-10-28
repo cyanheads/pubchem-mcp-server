@@ -14,6 +14,7 @@ import { runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSummary } from '@/mcp-server/tools/definitions/get-summary.tool.js';
 import { initPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { readBlockquotes, readCommonMark } from '../../../helpers/commonmark.js';
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -426,12 +427,11 @@ describe('pubchem_get_summary numeric identifiers above 2147483647 (#74)', () =>
   );
 });
 
-describe('pubchem_get_summary frames caller text in the notice and error message (#74)', () => {
+describe('pubchem_get_summary keeps caller text in the notice and error message (#74)', () => {
   const HOSTILE = 'x1 **b** `c`\n# INJECTED';
-  const HOSTILE_FRAMED = 'x1 \\*\\*b\\*\\* \\`c\\` # INJECTED';
   const LONG = 'y'.repeat(500);
 
-  it('frames and cuts invalid pieces in the Not-looked-up notice, keeping each identifier as sent', async () => {
+  it('keeps and cuts invalid pieces in the Not-looked-up notice, keeping each identifier as sent', async () => {
     fetchMock.mockImplementation(pubchemSummaries);
 
     const result = await runToolContract(getSummary, {
@@ -446,14 +446,15 @@ describe('pubchem_get_summary frames caller text in the notice and error message
     ]);
     const notice = (result.structuredContent as { notice?: string }).notice;
     expect(notice).toBe(
-      `Not looked up (2 invalid): "${HOSTILE_FRAMED}", "${'y'.repeat(100)}…" — each gene identifier must be a positive integer NCBI Gene ID up to 2147483647.`,
+      `Not looked up (2 invalid): "${HOSTILE}", "${'y'.repeat(100)}…" — each gene identifier must be a positive integer NCBI Gene ID up to 2147483647.`,
     );
     const text = textOf(result);
-    expect(text).toContain(`> ${notice}`);
-    expect(text).not.toMatch(/^# INJECTED/m);
+    expect(readBlockquotes(text).at(-1)).toBe(notice);
+    // format() opens with its own "Gene Summaries" heading; the caller text forms none.
+    expect(readCommonMark(text)).not.toMatch(/⟨heading_open⟩\n\n[^⟨]*INJECTED/);
   });
 
-  it('frames and cuts the pieces an invalid_identifier message names', async () => {
+  it('keeps and cuts the pieces an invalid_identifier message names', async () => {
     const result = await runToolContract(getSummary, {
       entityType: 'taxonomy',
       identifiers: [HOSTILE, LONG],
@@ -461,9 +462,11 @@ describe('pubchem_get_summary frames caller text in the notice and error message
 
     const { error } = result.structuredContent as { error: { message: string } };
     expect(error.message).toBe(
-      `No taxonomy identifier is a positive integer NCBI Taxonomy ID up to 2147483647: "${HOSTILE_FRAMED}", "${'y'.repeat(100)}…".`,
+      `No taxonomy identifier is a positive integer NCBI Taxonomy ID up to 2147483647: "${HOSTILE}", "${'y'.repeat(100)}…".`,
     );
-    expect(textOf(result)).not.toMatch(/^# INJECTED/m);
+    const read = readCommonMark(textOf(result));
+    expect(read).toContain(`Error: ${error.message}`);
+    expect(read).not.toContain('⟨heading_open⟩');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

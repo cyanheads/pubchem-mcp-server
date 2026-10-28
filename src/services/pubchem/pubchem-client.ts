@@ -71,6 +71,23 @@ const faultOf = (error: unknown): string | undefined => {
   return typeof fault === 'string' ? fault : undefined;
 };
 
+/** A ValidationError tagged `reason` for a request PubChem refused because of the caller's
+ * query, carrying PubChem's fault when the body stated one. `hint` is for a reason whose
+ * recovery depends on the query form; without it the tool's declared recovery applies. */
+function queryRejected(
+  error: unknown,
+  message: string,
+  reason: 'identifier_rejected' | 'search_query_rejected' | 'target_query_rejected',
+  hint?: string,
+): McpError {
+  const fault = faultOf(error);
+  return validationError(
+    message,
+    { reason, ...(fault && { fault }), ...(hint && { recovery: { hint } }) },
+    { cause: error },
+  );
+}
+
 /** PubChem's answer when a fast search cannot run on the query itself: a malformed SMILES or
  * formula, a SMILES with a "*" wildcard atom, a CID with no record. Every re-send of a
  * faulting request has faulted again, and no valid query has drawn it — a slow search gets
@@ -79,16 +96,14 @@ const faultOf = (error: unknown): string | undefined => {
  * typed `search_query_rejected`. */
 const SEARCH_REJECTED_FAULT = 'PUGREST.ServerError: Search status indicates failure';
 
-/** Re-throws a rejected-query fault from a fast search as `search_query_rejected`, with a
- * hint for the query form the caller sent. Every other failure passes through unchanged. */
+/** Re-throws a fast search PubChem could not run on the query as `search_query_rejected`, with
+ * a hint for the query form the caller sent: the rejected-query fault above, or an HTTP 400 —
+ * PubChem's front end answers a formula carrying a line break or other control character with
+ * one, before PUG REST sees it. Every other failure passes through unchanged. */
 function mapRejectedSearch<T>(search: Promise<T>, message: string, hint: string): Promise<T> {
   return search.catch((error: unknown) => {
-    if (faultOf(error) !== SEARCH_REJECTED_FAULT) throw error;
-    throw validationError(
-      message,
-      { reason: 'search_query_rejected', fault: SEARCH_REJECTED_FAULT, recovery: { hint } },
-      { cause: error },
-    );
+    if (!isBadRequest(error) && faultOf(error) !== SEARCH_REJECTED_FAULT) throw error;
+    throw queryRejected(error, message, 'search_query_rejected', hint);
   });
 }
 
@@ -322,8 +337,8 @@ function bodyReadFailure(error: unknown): unknown {
   );
 }
 
-/** Rebuilds a failure that carries no HTTP status — a timeout, a network error, or a body that
- * could not be read — into what the caller sees: one fixed message per kind, with the request's
+/** Rebuilds a failure that carries no HTTP status — a timeout, a network error, an abort the
+ * caller did not make, or a body that could not be read — into what the caller sees: one fixed message per kind, with the request's
  * host, path, and query left to the server log. The framework names the URL's origin in these
  * messages, and the runtime's own text can quote the host. Any clock can end a request — the
  * call's {@link CALL_BUDGET_MS} budget, running out mid-request or already spent, or one
@@ -347,6 +362,14 @@ function requestFailure(error: unknown): unknown {
       data,
       { cause: error },
     );
+  }
+  // An abort raised outside every signal the request carries — the runtime or the connection
+  // ending it. The framework reports any abort as RequestCancelled, but this one is not the
+  // caller's: fetchResponse rethrows the caller's own cancellation before reaching here.
+  if (error.data?.errorSource === 'FetchAborted') {
+    return serviceUnavailable('PubChem ended the request before answering. Retry shortly.', data, {
+      cause: error,
+    });
   }
   if (error.data?.errorSource === UNREADABLE_BODY) {
     return serviceUnavailable(
@@ -1148,11 +1171,10 @@ export class PubChemClient {
       return await this.fetchCids(url, init);
     } catch (error) {
       if (!isBadRequest(error)) throw error;
-      const fault = faultOf(error);
-      throw validationError(
+      throw queryRejected(
+        error,
         'PubChem could not interpret the identifier.',
-        { reason: 'identifier_rejected', ...(fault && { fault }) },
-        { cause: error },
+        'identifier_rejected',
       );
     }
   }
@@ -1217,7 +1239,7 @@ export class PubChemClient {
         maxRecords,
       ),
       'PubChem could not run the formula search on this formula.',
-      'Write the formula in Hill notation with valid element symbols, for example "C6H12O6" or "CaH2O2".',
+      'Write the formula in Hill notation with valid element symbols and no line breaks or other control characters, for example "C6H12O6" or "CaH2O2".',
     );
   }
 
@@ -1747,6 +1769,13 @@ export class PubChemClient {
 
   // ── Assay Search ────────────────────────────────────────────────
 
+  /** Every AID PubChem lists for a target; [] when it has none.
+   *
+   * The target type is a fixed enum, so an HTTP 400 is PubChem refusing the query itself — its
+   * front end answers a path segment carrying a line break or other control character with one.
+   * It is re-thrown as a ValidationError tagged `target_query_rejected`. Characters PubChem's
+   * front end passes through, such as a tab, reach PUG REST and come back as a 404 match-nothing,
+   * so no local filter stands in for this mapping. */
   async searchAssaysByTarget(
     targetType: string,
     query: string,
@@ -1762,6 +1791,13 @@ export class PubChemClient {
       return data.IdentifierList.AID;
     } catch (error) {
       if (isNotFound(error)) return [];
+      if (isBadRequest(error)) {
+        throw queryRejected(
+          error,
+          'PubChem could not interpret the target identifier.',
+          'target_query_rejected',
+        );
+      }
       throw error;
     }
   }
@@ -1899,6 +1935,9 @@ export class PubChemClient {
           message: reason instanceof Error ? reason.message : String(reason),
           ...(reason instanceof McpError &&
             reason.data?.reason === SDQ_UNAVAILABLE && { reason: SDQ_UNAVAILABLE }),
+          // fetchResponse wraps every transport failure in an McpError, so anything else is a
+          // parse of a fully read body, which a re-send returns unchanged.
+          retryable: reason instanceof McpError && defaultIsTransient(reason),
         });
       }
     });

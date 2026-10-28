@@ -10,6 +10,8 @@
  * @module mcp-server/tools/definitions/untrusted-text
  */
 
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
+
 /**
  * Inline markdown delimiters an upstream value could use to break out of a
  * surrounding emphasis/code span (`**bold**`, `` `code` ``) or inject its own.
@@ -49,17 +51,32 @@ export function inlineData(value: string): string {
 const MAX_ECHO_CHARS = 100;
 
 /**
- * Frame a caller-supplied value for a notice or error message: cut to
- * {@link MAX_ECHO_CHARS} code points (a cut value ends in `…`), then framed by
- * {@link inlineData}. Notices and error messages carry the same string on both
- * surfaces, so the cut is surface-neutral; the full value stays in its structured
- * field. Cutting first keeps the framing work bounded whatever the input length.
+ * Cut a caller-supplied value for a notice or error message to
+ * {@link MAX_ECHO_CHARS} code points (a cut value ends in `…`). The cut is
+ * surface-neutral — `structuredContent` and `content[]` carry the same clipped
+ * string, and the full value stays in its structured field. Nothing is escaped
+ * here: the framework escapes error text when it renders `content[]`, and a
+ * notice that echoes caller text escapes at render time through
+ * {@link renderNotice}, so `structuredContent` keeps the value as written.
  */
-export function inlineEcho(value: string): string {
+export function clipEcho(value: string): string {
   const chars = Array.from(value);
-  return inlineData(
-    chars.length > MAX_ECHO_CHARS ? `${chars.slice(0, MAX_ECHO_CHARS).join('')}…` : value,
-  );
+  return chars.length > MAX_ECHO_CHARS ? `${chars.slice(0, MAX_ECHO_CHARS).join('')}…` : value;
+}
+
+/**
+ * `enrichmentTrailer` renderer for a notice that echoes caller text. The default
+ * notice line is authored Markdown and stays live, so caller text in it could
+ * inject structure; this renders the same blockquote — every line quoted, a
+ * blank one as `>` — with each line through `escapeMarkdownInline`, so a
+ * CommonMark parse of `content[]` reads the notice back as `structuredContent`
+ * carries it.
+ */
+export function renderNotice(notice: string): string {
+  return notice
+    .split(/\r\n?|\n/)
+    .map((line) => (line === '' ? '>' : `> ${escapeMarkdownInline(line)}`))
+    .join('\n');
 }
 
 /**

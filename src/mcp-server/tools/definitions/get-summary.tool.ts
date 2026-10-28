@@ -16,7 +16,7 @@ import {
   renderUnprocessed,
   splitBatch,
 } from './input-caps.js';
-import { inlineData, inlineEcho, quoteData } from './untrusted-text.js';
+import { clipEcho, inlineData, quoteData, renderNotice } from './untrusted-text.js';
 
 const entityTypeEnum = z.enum(['assay', 'gene', 'protein', 'taxonomy']);
 
@@ -210,7 +210,10 @@ export const getSummary = tool('pubchem_get_summary', {
       .describe('Recovery guidance when identifiers were invalid or not found.'),
     cappedInputs: cappedInputsField,
   },
-  enrichmentTrailer: { cappedInputs: { render: renderCappedInputs } },
+  enrichmentTrailer: {
+    cappedInputs: { render: renderCappedInputs },
+    notice: { render: renderNotice },
+  },
   errors: [
     {
       reason: 'too_many_identifiers',
@@ -239,9 +242,7 @@ export const getSummary = tool('pubchem_get_summary', {
       );
     }
     if (!pieces.some((p) => p.valid)) {
-      const shown = pieces
-        .slice(0, NAMED_INVALID_PIECES)
-        .map((p) => `"${inlineEcho(String(p.id))}"`);
+      const shown = pieces.slice(0, NAMED_INVALID_PIECES).map((p) => `"${clipEcho(String(p.id))}"`);
       const more = pieces.length - shown.length;
       const named = `${shown.join(', ')}${more > 0 ? `, and ${more} more` : ''}`;
       throw ctx.fail(
@@ -268,7 +269,7 @@ export const getSummary = tool('pubchem_get_summary', {
     );
 
     const foundCount = summaries.filter((s) => s.found).length;
-    const invalidIds = served.filter((p) => !p.valid).map((p) => `"${inlineEcho(String(p.id))}"`);
+    const invalidIds = served.filter((p) => !p.valid).map((p) => `"${clipEcho(String(p.id))}"`);
     const lookedUp = served.length - invalidIds.length;
     const notFound = lookedUp - foundCount;
 

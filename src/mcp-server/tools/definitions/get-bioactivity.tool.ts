@@ -21,7 +21,7 @@ import {
   INPUT_CEILING,
   renderCappedInputs,
 } from './input-caps.js';
-import { inlineData, inlineEcho } from './untrusted-text.js';
+import { clipEcho, inlineData, renderNotice } from './untrusted-text.js';
 
 /** Assays served per page; a larger maxResults is clamped to this. */
 const MAX_RESULTS_CAP = 100;
@@ -89,7 +89,7 @@ function reportMatchingTarget(row: BioactivityRow, match: TargetMatch): Bioactiv
   return promoted;
 }
 
-/** `frame` shapes each accession — a notice passes {@link inlineEcho}, since one may be the
+/** `frame` shapes each accession — a notice passes {@link clipEcho}, since one may be the
  * caller's own string. */
 const describeTargetIds = (
   geneIds: Iterable<number>,
@@ -162,13 +162,13 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       .max(MAX_INT32)
       .optional()
       .describe(
-        `Filter to assays against this NCBI Gene ID (1 to ${MAX_INT32}), including assays recorded only under a protein accession this compound's assay table pairs with the Gene ID (e.g. 5742 also reaches rows carrying only P23219 when another row pairs the two). Obtain Gene IDs from pubchem_search_assays or the targetGeneId field of an unfiltered result here. Combine with outcomeFilter="active" to answer "is this compound active against target T?".`,
+        `Filter to assays against this NCBI Gene ID (1 to ${MAX_INT32}), including assays recorded only under a protein accession this compound's assay table pairs with the Gene ID (e.g. 5742 also reaches rows carrying only P23219 when another row pairs the two). Obtain Gene IDs from the GeneID:N in a pubchem_get_compound_interactions target entry's partner (kinds: ["target"]) or the targetGeneId field of a result here without a target filter (rows from untargeted screens carry none). Combine with outcomeFilter="active" to answer "is this compound active against target T?".`,
       ),
     targetAccession: z
       .string()
       .optional()
       .describe(
-        'Filter to assays against this target protein accession (UniProt/RefSeq/GenBank/PDB chain), e.g. "P35354", including assays recorded only under a Gene ID or another accession this compound\'s assay table pairs with it. Uppercased before matching; a PDB chain ID (the "A" in "1ZHH_A") is kept as given. With targetGeneId, both must name the same target — when the table ties them to different targets, nothing matches. Obtain accessions from pubchem_search_assays or the targetAccession field of an unfiltered result here.',
+        'Filter to assays against this target protein accession (UniProt/RefSeq/GenBank/PDB chain), e.g. "P35354", including assays recorded only under a Gene ID or another accession this compound\'s assay table pairs with it. Uppercased before matching; a PDB chain ID (the "A" in "1ZHH_A") is kept as given. With targetGeneId, both must name the same target — when the table ties them to different targets, nothing matches. Obtain accessions from an assay\'s targets in pubchem_get_summary (entityType "assay"), the accession:X in a pubchem_get_compound_interactions target entry\'s partner, or the targetAccession field of a result here without a target filter.',
       ),
     assayType: z
       .array(z.enum(ASSAY_TYPES))
@@ -323,10 +323,8 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       ),
   },
   enrichmentTrailer: {
-    // An accession in the label may be the caller's own string: framed, but never cut, since
-    // structuredContent carries the same value whole. Only called for a populated field.
-    targetFilter: { render: (label) => `**targetFilter:** ${inlineData(label ?? '')}` },
     cappedInputs: { render: renderCappedInputs },
+    notice: { render: renderNotice },
   },
 
   async handler(input, ctx) {
@@ -403,7 +401,7 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       const filters = [
         ...(target.kind === 'match'
           ? [
-              `the target filter (${describeTargetIds(target.geneIds, target.accessions, inlineEcho)})`,
+              `the target filter (${describeTargetIds(target.geneIds, target.accessions, clipEcho)})`,
             ]
           : []),
         ...(outcomeSet ? [`outcomeFilter="${input.outcomeFilter}"`] : []),

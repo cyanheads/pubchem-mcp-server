@@ -243,6 +243,27 @@ describe('pubchem_search_compounds rejected search query (#52)', () => {
     );
   });
 
+  it('scopes the HTTP 400 in its when to every formula and structure search (#87)', () => {
+    const when = searchCompounds.errors?.find((e) => e.reason === 'search_query_rejected')?.when;
+
+    expect(when).toMatch(/refused any of these searches with HTTP 400/);
+  });
+
+  it.each([
+    ['substructure', 'smiles', 'C1CC'],
+    ['similarity', 'cid', '2244'],
+  ] as const)(
+    'fails a %s search answered with HTTP 400 as search_query_rejected (#87)',
+    async (searchType, queryType, query) => {
+      fetchMock.mockImplementation(async () => new Response('Bad Request', { status: 400 }));
+
+      const result = await runToolContract(searchCompounds, { searchType, queryType, query });
+
+      expect(rejectionOf(result).data?.reason).toBe('search_query_rejected');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('returns a malformed SMILES substructure query as search_query_rejected after one request', async () => {
     fetchMock.mockImplementation(async () => rejected());
 
@@ -291,6 +312,55 @@ describe('pubchem_search_compounds rejected search query (#52)', () => {
     expect(error.data?.reason).toBe('search_query_rejected');
     expect(textOf(result)).toContain('Hill notation');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails a formula carrying a line break, answered with an HTML 400, as search_query_rejected (#87)', async () => {
+    fetchMock.mockImplementation(
+      async () =>
+        new Response('<!DOCTYPE html><title>400 Bad Request</title>', {
+          status: 400,
+          headers: { 'Content-Type': 'text/html' },
+        }),
+    );
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'formula',
+      formula: 'C6H\n12O6',
+    });
+
+    const error = rejectionOf(result);
+    expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+    expect(error.data?.reason).toBe('search_query_rejected');
+    expect(error.data?.recovery?.hint).toMatch(/Hill notation.*no line breaks/);
+    expect(error.data).not.toHaveProperty('fault');
+    expect(textOf(result)).toMatch(/Recovery: .*Hill notation/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a formula carrying a NUL, answered with an HTML 404, an empty-match success (#87)', async () => {
+    fetchMock.mockImplementation(async () => new Response('404: Not Found', { status: 404 }));
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'formula',
+      formula: 'C6H\u000012O6',
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect((result.structuredContent as { results: unknown[] }).results).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('still returns CIDs for C6H12O6', async () => {
+    fetchMock.mockImplementation(async () => cidList([5793, 107526]));
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'formula',
+      formula: 'C6H12O6',
+    });
+
+    expect(result.isError).toBeFalsy();
+    const { results } = result.structuredContent as { results: Array<{ cid: number }> };
+    expect(results.map((r) => r.cid)).toEqual([5793, 107526]);
   });
 });
 

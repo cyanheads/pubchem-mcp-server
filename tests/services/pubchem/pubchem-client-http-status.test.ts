@@ -503,6 +503,115 @@ describe('PubChem fast-search failures other than a rejected query (#52 regressi
   });
 });
 
+describe('an HTTP 400 on a caller-built query is a typed rejection (#81, #87)', () => {
+  /** PubChem's front-end answer to a path segment carrying a line break or other control
+   * character: an HTML page, no PUG-REST fault. */
+  const html400 = () =>
+    new Response('<!DOCTYPE html><title>400 Bad Request</title>', {
+      status: 400,
+      headers: { 'Content-Type': 'text/html' },
+    });
+
+  type Rejecting = [string, (c: PubChemClient) => Promise<unknown>, string, RegExp | undefined];
+  const routes: Rejecting[] = [
+    [
+      'a target lookup',
+      (c) => c.searchAssaysByTarget('genesymbol', `${QUERY_TERM}\nFR`),
+      'target_query_rejected',
+      undefined,
+    ],
+    [
+      'a formula search',
+      (c) => c.searchByFormula(`C6H\n${QUERY_TERM}`, false, 21),
+      'search_query_rejected',
+      /Hill notation/,
+    ],
+    [
+      'a SMILES structure search',
+      (c) => c.searchByStructure('substructure', `C${QUERY_TERM}`, 'smiles', 90, 21),
+      'search_query_rejected',
+      /SMILES syntax/,
+    ],
+    [
+      'a CID structure search',
+      (c) => c.searchByStructure('similarity', '2244', 'cid', 90, 21),
+      'search_query_rejected',
+      /CID 2244/,
+    ],
+    // Pins the existing identifier mapping the other routes now share.
+    ['an identifier lookup', (c) => c.searchByName(QUERY_TERM), 'identifier_rejected', undefined],
+  ];
+
+  it.each(routes)(
+    'fails %s answered with an unparsed 400 as a ValidationError with its reason and no fault, after one request',
+    async (_label, call, reason, hint) => {
+      fetchMock.mockImplementation(async () => html400());
+
+      const { error } = await settle(call(new PubChemClient()));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(error).toMatchObject({ code: JsonRpcErrorCode.ValidationError, data: { reason } });
+      const data = (error as { data?: { recovery?: { hint?: string } } }).data;
+      expect(data).not.toHaveProperty('fault');
+      if (hint) expect(data?.recovery?.hint).toMatch(hint);
+      expectNoRequestTrace(error);
+    },
+  );
+
+  it.each(routes)(
+    'carries the fault PubChem stated on a 400 from %s',
+    async (_label, call, reason) => {
+      fetchMock.mockImplementation(async () =>
+        pugRestFault('PUGREST.BadRequest', 'Unable to parse the input', 400),
+      );
+
+      const { error } = await settle(call(new PubChemClient()));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(error).toMatchObject({
+        code: JsonRpcErrorCode.ValidationError,
+        data: { reason, fault: 'PUGREST.BadRequest: Unable to parse the input' },
+      });
+    },
+  );
+
+  it.each([
+    ['an HTML 404 (NUL in the path)', () => new Response('404: Not Found', { status: 404 })],
+    ['a PUG-REST 404 (tab in the path)', () => pugRestFault('PUGREST.NotFound', 'No data', 404)],
+  ])('reads a target lookup answered with %s as no assays', async (_label, respond) => {
+    fetchMock.mockImplementation(async () => respond());
+
+    const { value } = await settle(
+      new PubChemClient().searchAssaysByTarget('genesymbol', 'EG\u0000FR'),
+    );
+
+    expect(value).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['a 503', () => new Response('busy', { status: 503 }), JsonRpcErrorCode.ServiceUnavailable],
+    [
+      'a 504',
+      () => pugRestFault('PUGREST.Timeout', 'Request timed out', 504),
+      JsonRpcErrorCode.Timeout,
+    ],
+  ])(
+    'retries a target lookup answered with %s once and keeps its classification',
+    async (_label, respond, code) => {
+      fetchMock.mockImplementation(async () => respond());
+
+      const { error } = await settle(
+        new PubChemClient().searchAssaysByTarget('genesymbol', 'EGFR'),
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(error).toMatchObject({ code });
+      expect((error as { data?: object }).data).not.toHaveProperty('reason');
+    },
+  );
+});
+
 describe('PubChem failed-request logging (#50)', () => {
   it('logs nothing from the client for a successful request', async () => {
     const warning = vi.spyOn(logger, 'warning');
@@ -657,7 +766,7 @@ describe('PubChem failed-request logging (#50)', () => {
     const { value } = await settle(new PubChemClient().getInteractions(2244, ['drug-drug'], 5, 0));
 
     expect(value?.failedKinds).toEqual([
-      { kind: 'drug-drug', message: expect.stringMatching(message) },
+      { kind: 'drug-drug', message: expect.stringMatching(message), retryable: true },
     ]);
     expect(warning).toHaveBeenCalledTimes(1);
     const extra = extrasOf(warning)[0];

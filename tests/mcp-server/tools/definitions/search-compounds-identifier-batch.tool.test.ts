@@ -12,6 +12,7 @@ import { runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchCompounds } from '@/mcp-server/tools/definitions/search-compounds.tool.js';
 import { initPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { readBlockquotes, readCommonMark } from '../../../helpers/commonmark.js';
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -373,7 +374,6 @@ describe('identifier batch — mixed outcomes across pages (#29, #55, #56)', () 
 
 describe('identifier batch — caller text in notices and error messages (#74)', () => {
   const HOSTILE = 'zzqq **bold** `c`\n# INJECTED';
-  const HOSTILE_FRAMED = 'zzqq \\*\\*bold\\*\\* \\`c\\` # INJECTED';
   const LONG = 'n'.repeat(500);
   const LONG_ECHO = `${'n'.repeat(100)}…`;
 
@@ -385,35 +385,37 @@ describe('identifier batch — caller text in notices and error messages (#74)',
     return { searchType: 'identifier' as const, identifierType: 'name' as const, identifiers };
   }
 
-  it('frames and cuts not-found identifiers in the notice, keeping unresolvedIdentifiers as sent', async () => {
+  /** The notice as content[] reads back under a CommonMark parse; the trailer quote is the last. */
+  const renderedNoticeOf = (result: Awaited<ReturnType<typeof runToolContract>>) =>
+    readBlockquotes(textOf(result)).at(-1);
+
+  it('keeps and cuts not-found identifiers in the notice, keeping unresolvedIdentifiers as sent', async () => {
     routeIdentifiers({ aspirin: [2244], [HOSTILE]: noCid, [LONG]: noCid });
 
     const result = await runToolContract(searchCompounds, nameBatch(['aspirin', HOSTILE, LONG]));
 
     expect(result.structuredContent).toMatchObject({ unresolvedIdentifiers: [HOSTILE, LONG] });
     expect(noticeOf(result)).toBe(
-      `2 of 3 identifier(s) did not resolve to a CID: ${HOSTILE_FRAMED}, ${LONG_ECHO}. Verify spelling and that identifierType="name" matches the identifier form (name/smiles/inchi/inchikey).`,
+      `2 of 3 identifier(s) did not resolve to a CID: ${HOSTILE}, ${LONG_ECHO}. Verify spelling and that identifierType="name" matches the identifier form (name/smiles/inchi/inchikey).`,
     );
-    const text = textOf(result);
-    expect(text).toContain(`> ${noticeOf(result)}`);
-    expect(text).not.toMatch(/^# INJECTED/m);
+    expect(renderedNoticeOf(result)).toBe(noticeOf(result));
+    expect(readCommonMark(textOf(result))).not.toContain('⟨heading_open⟩');
   });
 
-  it('frames and cuts rejected identifiers in the notice', async () => {
+  it('keeps and cuts rejected identifiers in the notice', async () => {
     routeIdentifiers({ CCO: [702], [HOSTILE]: unreadable, [LONG]: unreadable });
 
     const result = await runToolContract(searchCompounds, smilesBatch(['CCO', HOSTILE, LONG]));
 
     expect(result.structuredContent).toMatchObject({ unresolvedIdentifiers: [HOSTILE, LONG] });
     expect(noticeOf(result)).toBe(
-      `PubChem could not interpret 2 of 3 identifier(s) as SMILES: ${HOSTILE_FRAMED}, ${LONG_ECHO}. Check the SMILES syntax (balanced ring closures and parentheses, valid element symbols) and remove any "*" wildcard atoms.`,
+      `PubChem could not interpret 2 of 3 identifier(s) as SMILES: ${HOSTILE}, ${LONG_ECHO}. Check the SMILES syntax (balanced ring closures and parentheses, valid element symbols) and remove any "*" wildcard atoms.`,
     );
-    const text = textOf(result);
-    expect(text).toContain(`> ${noticeOf(result)}`);
-    expect(text).not.toMatch(/^# INJECTED/m);
+    expect(renderedNoticeOf(result)).toBe(noticeOf(result));
+    expect(readCommonMark(textOf(result))).not.toContain('⟨heading_open⟩');
   });
 
-  it('frames and cuts identifiers in the identifier_rejected message', async () => {
+  it('keeps and cuts identifiers in the identifier_rejected message', async () => {
     routeIdentifiers({ [HOSTILE]: unreadable, [LONG]: unreadable });
 
     const result = await runToolContract(searchCompounds, smilesBatch([HOSTILE, LONG]));
@@ -421,12 +423,14 @@ describe('identifier batch — caller text in notices and error messages (#74)',
     const error = errorOf(result);
     expect(error.data?.reason).toBe('identifier_rejected');
     expect(error.message).toBe(
-      `PubChem could not interpret any of the 2 identifier(s) as SMILES: ${HOSTILE_FRAMED}, ${LONG_ECHO}.`,
+      `PubChem could not interpret any of the 2 identifier(s) as SMILES: ${HOSTILE}, ${LONG_ECHO}.`,
     );
-    expect(textOf(result)).not.toMatch(/^# INJECTED/m);
+    const read = readCommonMark(textOf(result));
+    expect(read).toContain(`Error: ${error.message}`);
+    expect(read).not.toContain('⟨heading_open⟩');
   });
 
-  it('frames and cuts every identifier the collision notice names, keeping the row echo as sent', async () => {
+  it('keeps and cuts every identifier the collision notice names, keeping the row echo as sent', async () => {
     routeIdentifiers({ [HOSTILE]: [702], [LONG]: [702], plain: [702] });
 
     const result = await runToolContract(searchCompounds, nameBatch([HOSTILE, LONG, 'plain']));
@@ -435,9 +439,10 @@ describe('identifier batch — caller text in notices and error messages (#74)',
       results: [{ cid: 702, identifier: HOSTILE }],
     });
     expect(noticeOf(result)).toBe(
-      `identifiers[0] "${HOSTILE_FRAMED}", identifiers[1] "${LONG_ECHO}", identifiers[2] "plain" all resolved to CID 702; the result row echoes only identifiers[0] for it.`,
+      `identifiers[0] "${HOSTILE}", identifiers[1] "${LONG_ECHO}", identifiers[2] "plain" all resolved to CID 702; the result row echoes only identifiers[0] for it.`,
     );
-    expect(textOf(result)).not.toMatch(/^# INJECTED/m);
+    expect(renderedNoticeOf(result)).toBe(noticeOf(result));
+    expect(readCommonMark(textOf(result))).not.toContain('⟨heading_open⟩');
   });
 
   it('names an ordinary collision by input position, skipping inputs that went elsewhere', async () => {
@@ -451,7 +456,7 @@ describe('identifier batch — caller text in notices and error messages (#74)',
     expect(noticeOf(result)).toBe(
       'identifiers[0] "ethanol", identifiers[2] "alcohol" all resolved to CID 702; the result row echoes only identifiers[0] for it.',
     );
-    expect(textOf(result)).toContain(noticeOf(result));
+    expect(renderedNoticeOf(result)).toBe(noticeOf(result));
   });
 
   it('tells apart two long colliders whose cut echoes are identical by their positions', async () => {
@@ -472,7 +477,7 @@ describe('identifier batch — caller text in notices and error messages (#74)',
     });
     const notice = `identifiers[1] "${LONG_ECHO}", identifiers[2] "${LONG_ECHO}" all resolved to CID 702; the result row echoes only identifiers[1] for it.`;
     expect(noticeOf(result)).toBe(notice);
-    expect(textOf(result)).toContain(notice);
+    expect(renderedNoticeOf(result)).toBe(notice);
   });
 });
 
@@ -532,7 +537,7 @@ describe('identifier batch — full InChI strings (#80)', () => {
     });
     expect(result.structuredContent).not.toHaveProperty('unresolvedIdentifiers');
     expect((result.structuredContent as { notice?: string }).notice).toBe(
-      `identifiers[0] "${ASPIRIN_NONSTANDARD}", identifiers[1] "${ASPIRIN}" all resolved to CID 2244; the result row echoes only identifiers[0] for it.`,
+      `identifiers[0] "${ASPIRIN_NONSTANDARD}", identifiers[1] "${ASPIRIN_PADDED}" all resolved to CID 2244; the result row echoes only identifiers[0] for it.`,
     );
     expect(inchiBodies()).toEqual([ASPIRIN_NONSTANDARD, ASPIRIN_PADDED]);
   });

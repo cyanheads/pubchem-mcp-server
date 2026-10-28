@@ -5,11 +5,13 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  clipEcho,
   fencedData,
   inlineData,
-  inlineEcho,
   quoteData,
+  renderNotice,
 } from '@/mcp-server/tools/definitions/untrusted-text.js';
+import { readBlockquotes, readCommonMark } from '../../../helpers/commonmark.js';
 
 describe('inlineData', () => {
   it('escapes emphasis and inline-code delimiters so a value cannot break out of a span', () => {
@@ -42,21 +44,43 @@ describe('inlineData', () => {
   });
 });
 
-describe('inlineEcho', () => {
-  it('passes a 100-code-point value through framed and uncut', () => {
-    expect(inlineEcho(`${'a'.repeat(98)}*b`)).toBe(`${'a'.repeat(98)}\\*b`);
+describe('clipEcho', () => {
+  it('passes a 100-code-point value through as written', () => {
+    expect(clipEcho(`${'a'.repeat(98)}*b`)).toBe(`${'a'.repeat(98)}*b`);
   });
 
   it('cuts a value past the bound to its first 100 code points plus an ellipsis', () => {
-    expect(inlineEcho(`${'x'.repeat(100)}TAIL`)).toBe(`${'x'.repeat(100)}…`);
+    expect(clipEcho(`${'x'.repeat(100)}TAIL`)).toBe(`${'x'.repeat(100)}…`);
   });
 
   it('counts code points, so a 101-code-point value cuts without splitting a surrogate pair', () => {
-    expect(inlineEcho('😀'.repeat(101))).toBe(`${'😀'.repeat(100)}…`);
+    expect(clipEcho('😀'.repeat(101))).toBe(`${'😀'.repeat(100)}…`);
   });
 
-  it('frames as inlineData does: newlines collapse and delimiters are escaped', () => {
-    expect(inlineEcho('zzqq **bold**\n# INJECTED')).toBe('zzqq \\*\\*bold\\*\\* # INJECTED');
+  it('leaves newlines and Markdown delimiters for the renderer to escape', () => {
+    expect(clipEcho('zzqq **bold**\n# INJECTED')).toBe('zzqq **bold**\n# INJECTED');
+  });
+});
+
+describe('renderNotice', () => {
+  it('quotes every line so a CommonMark parse reads the notice back as written', () => {
+    const notice =
+      'No match for "zzqq `code` ~~x~~ **b** [l](https://x.test)\n# INJECTED\n- item".';
+    const rendered = renderNotice(notice);
+
+    expect(rendered.split('\n').every((line) => line.startsWith('>'))).toBe(true);
+    expect(readBlockquotes(rendered)).toEqual([notice]);
+    expect(readCommonMark(rendered)).not.toMatch(/⟨(heading_open|bullet_list_open|strong|s|a)⟩/);
+  });
+
+  it('keeps a blank line inside the quote', () => {
+    expect(renderNotice('first\n\nsecond')).toBe('> first\n>\n> second');
+  });
+
+  it('renders an ordinary notice unescaped', () => {
+    expect(renderNotice('No assays found for "EGFR" (genesymbol).')).toBe(
+      '> No assays found for "EGFR" (genesymbol).',
+    );
   });
 });
 
@@ -124,8 +148,8 @@ describe('linear time over caller-sized input', () => {
     expectLinearTime(inlineData, build);
   });
 
-  it.each(INPUT_SHAPES.slice(0, 3))('inlineEcho: %s', (_label, build) => {
-    expectLinearTime(inlineEcho, build);
+  it.each(INPUT_SHAPES.slice(0, 3))('clipEcho: %s', (_label, build) => {
+    expectLinearTime(clipEcho, build);
   });
 });
 

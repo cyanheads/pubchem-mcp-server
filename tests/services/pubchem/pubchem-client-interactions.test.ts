@@ -6,6 +6,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PubChemClient } from '@/services/pubchem/pubchem-client.js';
 
@@ -218,7 +219,12 @@ describe('PubChemClient.getInteractions — SDQ answers that are not SDQ data (#
     expect(entries).toEqual([]);
     expect(pages).toEqual([]);
     expect(failedKinds).toEqual([
-      { kind: 'drug-drug', reason: 'sdq_unavailable', message: expect.any(String) },
+      {
+        kind: 'drug-drug',
+        reason: 'sdq_unavailable',
+        message: expect.any(String),
+        retryable: false,
+      },
     ]);
     for (const { message } of failedKinds) {
       expect(message).toContain('SDQ');
@@ -248,7 +254,12 @@ describe('PubChemClient.getInteractions — SDQ answers that are not SDQ data (#
     );
 
     expect(failedKinds).toEqual([
-      { kind: 'drug-drug', reason: 'sdq_unavailable', message: expect.any(String) },
+      {
+        kind: 'drug-drug',
+        reason: 'sdq_unavailable',
+        message: expect.any(String),
+        retryable: false,
+      },
     ]);
     expect(entries).toEqual([
       {
@@ -676,7 +687,9 @@ describe('PubChemClient.getInteractions — target from the assay summary (#78)'
     );
 
     expect(pages).toEqual([]);
-    expect(failedKinds).toEqual([{ kind: 'target', message: expect.stringContaining('503') }]);
+    expect(failedKinds).toEqual([
+      { kind: 'target', message: expect.stringContaining('503'), retryable: true },
+    ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -705,6 +718,161 @@ describe('PubChemClient.getInteractions — target from the assay summary (#78)'
     // Entries are fixed-size: one partner and one statement each, whatever the group size.
     for (const e of entries)
       expect(Object.keys(e).sort()).toEqual(['kind', 'partner', 'source', 'text']);
+  });
+});
+
+describe('PubChemClient.getInteractions records whether a retry can clear a failed kind (#82)', () => {
+  /** A fetch PubChem never answers: rejects with the signal's reason once it aborts. */
+  const hangUntilAborted: typeof fetch = (_input, init) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+  const fault400 = () =>
+    jsonResponse({ Fault: { Code: 'PUGREST.BadRequest', Message: 'Bad request' } }, 400);
+
+  /** Runs a call under fake timers, so retry backoff and attempt timeouts never wait in real
+   * time. */
+  async function settled<T>(call: () => Promise<T>): Promise<T> {
+    vi.useFakeTimers();
+    try {
+      const pending = call();
+      await vi.runAllTimersAsync();
+      return await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  const kinds = ['target', 'drug-food'] as const;
+  const permanent: Array<[string, typeof fetch]> = [
+    ['an HTTP 400 fault', async () => fault400()],
+    [
+      'an HTTP 400 HTML page',
+      async () => textResponse('<html>Bad Request</html>', 400, 'text/html'),
+    ],
+    ['an HTTP 403', async () => textResponse('Forbidden', 403)],
+    ['an HTTP 501', async () => textResponse('Not Implemented', 501)],
+    // A fully read body in a shape the parser does not expect throws a plain TypeError.
+    ['a 200 body of {}', async () => jsonResponse({})],
+  ];
+  const transient: Array<[string, typeof fetch]> = [
+    ['an HTTP 503', async () => textResponse('busy', 503)],
+    ['a timeout', hangUntilAborted],
+    // Unreadable (not JSON) rather than an unexpected shape: possibly cut off in transit.
+    ['a 200 HTML body', async () => textResponse('<html>busy</html>', 200, 'text/html')],
+  ];
+
+  it.each(
+    kinds.flatMap((kind) => permanent.map(([label, respond]) => [kind, label, respond] as const)),
+  )('marks %s failing with %s not retryable', async (kind, _label, respond) => {
+    fetchMock.mockImplementation(respond);
+
+    const { failedKinds } = await settled(() =>
+      new PubChemClient().getInteractions(2244, [kind], 10, 0),
+    );
+
+    expect(failedKinds).toEqual([{ kind, message: expect.any(String), retryable: false }]);
+  });
+
+  it.each(
+    kinds.flatMap((kind) => transient.map(([label, respond]) => [kind, label, respond] as const)),
+  )('marks %s failing with %s retryable, after its one retry', async (kind, _label, respond) => {
+    fetchMock.mockImplementation(respond);
+
+    const { failedKinds } = await settled(() =>
+      new PubChemClient().getInteractions(2244, [kind], 10, 0),
+    );
+
+    expect(failedKinds).toEqual([{ kind, message: expect.any(String), retryable: true }]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('marks a drug-drug SDQ refusal not retryable beside its reason', async () => {
+    fetchMock.mockImplementation(async () => textResponse('<html>404</html>', 404, 'text/html'));
+
+    const { failedKinds } = await new PubChemClient().getInteractions(2244, ['drug-drug'], 10, 0);
+
+    expect(failedKinds).toEqual([
+      {
+        kind: 'drug-drug',
+        reason: 'sdq_unavailable',
+        message: expect.any(String),
+        retryable: false,
+      },
+    ]);
+  });
+
+  it.each(kinds)(
+    'marks %s retryable when fetch rejects with an abort the caller did not make',
+    async (kind) => {
+      // An AbortError raised outside the caller's signal: fetchWithTimeout reports it as
+      // RequestCancelled (FetchAborted), though nobody withdrew the call.
+      fetchMock.mockImplementation(async () => {
+        throw new DOMException('The operation was aborted.', 'AbortError');
+      });
+      const caller = new AbortController();
+
+      const { failedKinds } = await settled(() =>
+        new PubChemClient().getInteractions(2244, [kind], 10, 0, caller.signal),
+      );
+
+      expect(caller.signal.aborted).toBe(false);
+      expect(failedKinds).toEqual([
+        {
+          kind,
+          message: 'PubChem ended the request before answering. Retry shortly.',
+          retryable: true,
+        },
+      ]);
+    },
+  );
+
+  it.each(kinds)(
+    'still fails the whole call as cancelled when the caller aborts %s mid-request',
+    async (kind) => {
+      const caller = new AbortController();
+      fetchMock.mockImplementation((_input, init) => {
+        const pending = new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), {
+            once: true,
+          });
+        });
+        // The request is in flight: the caller withdraws now.
+        caller.abort();
+        return pending;
+      });
+
+      const error = await new PubChemClient()
+        .getInteractions(2244, [kind], 10, 0, caller.signal)
+        .then(
+          () => undefined,
+          (e: unknown) => e,
+        );
+
+      expect(error).toMatchObject({
+        code: JsonRpcErrorCode.RequestCancelled,
+        message: 'PubChem request cancelled by the caller.',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('records each kind of a mixed call on its own', async () => {
+    fetchMock.mockImplementation(async (input) =>
+      new URL(String(input)).pathname.endsWith('/assaysummary/JSON')
+        ? fault400()
+        : textResponse('busy', 503),
+    );
+
+    const { failedKinds } = await settled(() =>
+      new PubChemClient().getInteractions(2244, ['target', 'drug-food'], 10, 0),
+    );
+
+    expect(failedKinds).toEqual([
+      { kind: 'target', message: expect.any(String), retryable: false },
+      { kind: 'drug-food', message: expect.any(String), retryable: true },
+    ]);
   });
 });
 

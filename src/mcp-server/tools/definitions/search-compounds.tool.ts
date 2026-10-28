@@ -18,7 +18,7 @@ import {
   renderUnprocessed,
   splitBatch,
 } from './input-caps.js';
-import { inlineData, inlineEcho } from './untrusted-text.js';
+import { clipEcho, inlineData, renderNotice } from './untrusted-text.js';
 
 /** Identifiers looked up per call; identifiers past this are returned in unprocessed. */
 const IDENTIFIERS_CAP = 25;
@@ -99,8 +99,8 @@ const IDENTIFIER_FORMS: Record<
   },
 };
 
-/** Caller identifiers as a notice or error message lists them, each framed and cut. */
-const echoList = (identifiers: readonly string[]): string => identifiers.map(inlineEcho).join(', ');
+/** Caller identifiers as a notice or error message lists them, each cut. */
+const echoList = (identifiers: readonly string[]): string => identifiers.map(clipEcho).join(', ');
 
 export const searchCompounds = tool('pubchem_search_compounds', {
   title: 'Search Compounds',
@@ -291,7 +291,10 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         'Recovery guidance when no compounds matched (for an assay search, when the assay recorded none of the requested kind), when the offset runs past the matches observed, when identifiers had no match or could not be interpreted, when identifiers collided on one CID, when further pages remain, or when a bounded search reached the offset ceiling. Absent when this page is complete and every identifier resolved to its own CID.',
       ),
   },
-  enrichmentTrailer: { cappedInputs: { render: renderCappedInputs } },
+  enrichmentTrailer: {
+    cappedInputs: { render: renderCappedInputs },
+    notice: { render: renderNotice },
+  },
   errors: [
     {
       reason: 'missing_identifier_args',
@@ -352,9 +355,9 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       // Raised by PubChemClient.searchByFormula / searchByStructure, which know the query form
       // the runtime hint names.
       thrownBy: 'service',
-      when: 'PubChem failed a formula, substructure, superstructure, or similarity search with HTTP 500 "Search status indicates failure" — its answer for a malformed SMILES or formula, a SMILES with a "*" wildcard atom, or a CID with no record',
+      when: 'PubChem failed a formula, substructure, superstructure, or similarity search with HTTP 500 "Search status indicates failure" — its answer for a malformed SMILES or formula, a SMILES with a "*" wildcard atom, or a CID with no record — or refused any of these searches with HTTP 400, as it does a formula carrying a line break or other control character',
       recovery:
-        'Fix the SMILES syntax or remove "*" atoms, write the formula in Hill notation (e.g. "C6H12O6"), or confirm the CID exists with pubchem_get_compound_details.',
+        'Fix the SMILES syntax or remove "*" atoms, write the formula in Hill notation (e.g. "C6H12O6") with no line breaks or other control characters, or confirm the CID exists with pubchem_get_compound_details.',
     },
   ],
 
@@ -501,7 +504,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
           const [echoed, ...others] = owners;
           if (echoed !== undefined && others.length > 0) {
             const named = owners
-              .map(({ position, id }) => `identifiers[${position}] "${inlineEcho(id)}"`)
+              .map(({ position, id }) => `identifiers[${position}] "${clipEcho(id)}"`)
               .join(', ');
             noticeParts.push(
               `${named} all resolved to CID ${cid}; the result row echoes only identifiers[${echoed.position}] for it.`,
@@ -541,7 +544,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         ) {
           throw ctx.fail(
             'invalid_cid_query',
-            `queryType is "cid" but query "${inlineEcho(input.query)}" is not a CID from 1 to ${MAX_CID}.`,
+            `queryType is "cid" but query "${clipEcho(input.query)}" is not a CID from 1 to ${MAX_CID}.`,
           );
         }
         boundedSearch = true;

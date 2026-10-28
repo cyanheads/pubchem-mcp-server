@@ -374,3 +374,26 @@ describe('getBioactivity format', () => {
     expect(text).not.toContain('0 uM');
   });
 });
+
+describe('getBioactivity target filter descriptions name sources that yield the identifier (#85)', () => {
+  const describeOf = (field: 'targetGeneId' | 'targetAccession') =>
+    getBioactivity.input.shape[field].description ?? '';
+
+  it('sends a caller for Gene IDs to the interactions target partner, not to pubchem_search_assays', () => {
+    const text = describeOf('targetGeneId');
+
+    expect(text).not.toContain('pubchem_search_assays');
+    expect(text).toContain('pubchem_get_compound_interactions');
+    expect(text).toContain('GeneID:N');
+    expect(text).toContain('targetGeneId field of a result here without a target filter');
+  });
+
+  it('sends a caller for accessions to assay summaries and the interactions partner, not to pubchem_search_assays', () => {
+    const text = describeOf('targetAccession');
+
+    expect(text).not.toContain('pubchem_search_assays');
+    expect(text).toContain('pubchem_get_summary');
+    expect(text).toContain('accession:X');
+    expect(text).toContain('targetAccession field of a result here without a target filter');
+  });
+});
