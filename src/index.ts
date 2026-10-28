@@ -19,6 +19,7 @@ await createApp({
   sessionMode: 'stateless',
   tools: allToolDefinitions,
   resources: allResourceDefinitions,
+  skills: 'skills',
   instructions:
     'Use the pubchem_* tools to query PubChem\'s chemical database. Compounds are addressed by CID, assays by AID. Most flows start at `pubchem_search_compounds` (name, SMILES, InChI, InChIKey, formula, substructure, superstructure, 2D similarity, or an assay\'s compounds by AID → CIDs), then call per-CID tools for details, safety, image, cross-references, bioactivity, interactions (drug-food, or `kinds: ["target"]` for the targets its assays name), or 3D structure. To find assays for a biological target, chain `pubchem_search_assays` (gene/protein → AIDs) into `pubchem_get_summary` (`entityType: assay`) for each AID\'s method, targets, and compound counts, then list an assay\'s active compounds with `pubchem_search_compounds` (`searchType: assay`, `aid`); to see which targets a compound is active against, call `pubchem_get_compound_interactions` with `kinds: ["target"]`; to check one target, call `pubchem_get_bioactivity` with a `cid` plus `targetGeneId`/`targetAccession`. `pubchem_get_summary` covers assay/gene/protein/taxonomy entity lookups. Compound and assay records are also exposed as URI-addressable resources (e.g. `pubchem://compound/{cid}`, `pubchem://assay/{aid}`).',
   landing: {

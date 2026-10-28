@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.7.1-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/pubchem-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.3.1-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/pubchem-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/pubchem-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.4.0-f472b6.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.7.1-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/pubchem-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.4.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/pubchem-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/pubchem-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.4.0-f472b6.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -58,6 +58,10 @@ Compound and assay records are also exposed as URI-templated resources, backed b
 | `pubchem://compound/{cid}/xrefs` | External cross-references (JSON). |
 | `pubchem://compound/{cid}/bioactivity` | Bioassay activity profile (JSON). |
 | `pubchem://assay/{aid}` | BioAssay summary (JSON). |
+
+### Skills
+
+The server publishes an agent skill, [`pubchem-guide`](skills/pubchem-guide/SKILL.md), covering gates and identifier chains the tool descriptions don't carry: salt vs parent CIDs, where Gene IDs and accessions come from, why gene-symbol, Gene ID, and accession searches disagree, and how to read activity labels, potency values, and GHS data. Plugin installs (Claude Code, Codex) and the `.mcpb` bundle pick it up from `skills/`, and the server also serves it over MCP as `skill://pubchem-guide/SKILL.md`.
 
 ## Capability reference
 
@@ -128,15 +132,16 @@ Compound and assay records are also exposed as URI-templated resources, backed b
 - Single CID; one or more `kinds` — `drug-food` (PUG View), `target`, `drug-drug` (DrugBank); default `["drug-food"]`, and an empty drug-food page points at `target`
 - `target` gives one entry per target the compound's assay summary names: a Gene ID with the accessions the table pairs with it, or an identifier it never pairs. A Gene ID and an accession that no row pairs are separate entries even when they name the same protein (erlotinib's ERBB2 appears as `accession:P04626` and as `GeneID:2064`). Each entry names the target from a batched gene or protein summary lookup, plus the `GeneID:` or `accession:` value `pubchem_get_bioactivity` filters on, and states the assay counts by outcome and the most potent Active value with its AID. Active targets come first, most potent first. If a name lookup fails or does not answer within a few seconds, the entries keep their identifier and the notice says so
 - `maxEntries` per kind per page (max 50, default 10); `offset` counts records (targets, for `target`), up to 2,147,483,646. Each kind pages independently, reported in `paging[]` (`totalRecords`/`nextOffset`/`truncated`)
-- A kind that fails is named in `failedKinds` and the others still return. `drug-drug` comes from PubChem's SDQ service, which refuses automated requests, so it lands in `failedKinds` and a retry will not help
+- A kind that fails is named in `failedKinds` and the others still return. The notice offers a retry only for a failure a retry can clear (timeout, rate limit, network error, unreadable response, 5xx other than 501); an HTTP 400, 403, or 501, or a response in a shape the server does not expect, fails the same way on every call. `drug-drug` comes from PubChem's SDQ service, which refuses automated requests, so it lands in `failedKinds` and a retry will not help
 
 ---
 
 ### `pubchem_search_assays` <sub>tool</sub>
 
 - Search by `targetType`: `genesymbol`/`proteinname` (text), `geneid` (NCBI Gene ID), `proteinaccession` (UniProt)
+- A `genesymbol` matches across species. `geneid` and `proteinaccession` each pin one protein but return overlapping, different assay sets for it; union both for a complete list
 - Up to 200 AIDs per page (default 50); `offset` pages through the results
-- Rejects a blank `targetQuery` and a non-numeric `geneid`
+- Rejects a blank `targetQuery` and a non-numeric `geneid`; a `targetQuery` PubChem refuses (one carrying a line break or other control character) fails as `target_query_rejected`
 - Reports `totalFound` and distinguishes "no match" from "offset past the end"
 
 ---
