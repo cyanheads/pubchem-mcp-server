@@ -321,8 +321,8 @@ export interface InteractionsResult {
   /** Kinds whose fetch failed, with the failure message. Empty when every kind resolved.
    * `retryable` is true when a retry can clear the failure: a rate limit, a 5xx other than
    * 501, a timeout, a network error, an abort the caller did not make, or an unreadable body.
-   * A rejected request (400, 403, 501)
-   * or a body in a shape the parser does not expect fails the same way on every re-send.
+   * A rejected request (400, 403, 501) or a body in a shape the parser does not expect fails
+   * the same way on every re-send.
    * `reason` is set when the failure is typed: `sdq_unavailable` means PubChem's SDQ service
    * answered with something other than SDQ data — a refusal a retry does not clear. */
   failedKinds: Array<{

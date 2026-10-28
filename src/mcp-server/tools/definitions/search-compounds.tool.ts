@@ -355,7 +355,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       // Raised by PubChemClient.searchByFormula / searchByStructure, which know the query form
       // the runtime hint names.
       thrownBy: 'service',
-      when: 'PubChem failed a formula, substructure, superstructure, or similarity search with HTTP 500 "Search status indicates failure" — its answer for a malformed SMILES or formula, a SMILES with a "*" wildcard atom, or a CID with no record — or refused any of these searches with HTTP 400, as it does a formula carrying a line break or other control character',
+      when: 'PubChem failed a formula, substructure, superstructure, or similarity search with HTTP 500 "Search status indicates failure" — its answer for a malformed SMILES or formula, a SMILES with a "*" wildcard atom, or a CID with no record — or refused any of these searches with HTTP 400, as it does a formula carrying a line break, another C0 control character other than tab and NUL, or DEL',
       recovery:
         'Fix the SMILES syntax or remove "*" atoms, write the formula in Hill notation (e.g. "C6H12O6") with no line breaks or other control characters, or confirm the CID exists with pubchem_get_compound_details.',
     },

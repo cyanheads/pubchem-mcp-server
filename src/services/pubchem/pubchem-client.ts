@@ -98,8 +98,9 @@ const SEARCH_REJECTED_FAULT = 'PUGREST.ServerError: Search status indicates fail
 
 /** Re-throws a fast search PubChem could not run on the query as `search_query_rejected`, with
  * a hint for the query form the caller sent: the rejected-query fault above, or an HTTP 400 —
- * PubChem's front end answers a formula carrying a line break or other control character with
- * one, before PUG REST sees it. Every other failure passes through unchanged. */
+ * PubChem's front end answers a formula carrying a line break, another C0 control other than
+ * tab and NUL, or DEL with one, before PUG REST sees it. Every other failure passes through
+ * unchanged. */
 function mapRejectedSearch<T>(search: Promise<T>, message: string, hint: string): Promise<T> {
   return search.catch((error: unknown) => {
     if (!isBadRequest(error) && faultOf(error) !== SEARCH_REJECTED_FAULT) throw error;
@@ -338,12 +339,12 @@ function bodyReadFailure(error: unknown): unknown {
 }
 
 /** Rebuilds a failure that carries no HTTP status — a timeout, a network error, an abort the
- * caller did not make, or a body that could not be read — into what the caller sees: one fixed message per kind, with the request's
- * host, path, and query left to the server log. The framework names the URL's origin in these
- * messages, and the runtime's own text can quote the host. Any clock can end a request — the
- * call's {@link CALL_BUDGET_MS} budget, running out mid-request or already spent, or one
- * attempt's timer — and all read the same. The code and the retry count carry over; the
- * original stays on `cause`, which never reaches the wire. */
+ * caller did not make, or a body that could not be read — into what the caller sees: one fixed
+ * message per kind, with the request's host, path, and query left to the server log. The
+ * framework names the URL's origin in these messages, and the runtime's own text can quote the
+ * host. Any clock can end a request — the call's {@link CALL_BUDGET_MS} budget, running out
+ * mid-request or already spent, or one attempt's timer — and all read the same. The code and
+ * the retry count carry over; the original stays on `cause`, which never reaches the wire. */
 function requestFailure(error: unknown): unknown {
   if (!(error instanceof McpError)) return error;
   const data =
@@ -1772,10 +1773,11 @@ export class PubChemClient {
   /** Every AID PubChem lists for a target; [] when it has none.
    *
    * The target type is a fixed enum, so an HTTP 400 is PubChem refusing the query itself — its
-   * front end answers a path segment carrying a line break or other control character with one.
-   * It is re-thrown as a ValidationError tagged `target_query_rejected`. Characters PubChem's
-   * front end passes through, such as a tab, reach PUG REST and come back as a 404 match-nothing,
-   * so no local filter stands in for this mapping. */
+   * front end answers a path segment carrying a line break, another C0 control other than tab
+   * and NUL, or DEL with one. It is re-thrown as a ValidationError tagged
+   * `target_query_rejected`. NUL draws the front end's 404, and a tab, a C1 control, U+2028, or
+   * U+2029 reaches PUG REST and comes back as its 404 — both a match-nothing — so no local
+   * filter stands in for this mapping. */
   async searchAssaysByTarget(
     targetType: string,
     query: string,

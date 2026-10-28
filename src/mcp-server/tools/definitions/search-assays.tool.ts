@@ -122,7 +122,7 @@ export const searchAssays = tool('pubchem_search_assays', {
       code: JsonRpcErrorCode.ValidationError,
       // Raised by PubChemClient.searchAssaysByTarget when PubChem answers the lookup with 400.
       thrownBy: 'service',
-      when: 'PubChem refused the target lookup with HTTP 400 — its answer for a targetQuery carrying a line break or other control character',
+      when: 'PubChem refused the target lookup with HTTP 400 — its answer for a targetQuery carrying a line break, another C0 control character other than tab and NUL, or DEL',
       recovery:
         'Remove line breaks and other control characters from targetQuery, and check that it matches targetType: an official gene symbol for genesymbol (e.g. "EGFR"), a protein name for proteinname, a UniProt accession for proteinaccession.',
     },
