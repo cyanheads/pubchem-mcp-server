@@ -4,7 +4,7 @@ All notable changes to this project. Each entry links to its full per-version fi
 
 ## [0.8.0](changelog/0.8.x/0.8.0.md) — 2026-10-28
 
-Publishes the pubchem-guide agent skill over MCP as skill://pubchem-guide/SKILL.md. Control-character queries to pubchem_search_assays and formula searches now fail as typed ValidationErrors, interactions retry advice is per failed kind, and mcp-ts-core ^0.13.18 changes how notices and errors render in content[].
+Publishes the pubchem-guide agent skill over MCP as skill://pubchem-guide/SKILL.md. Assay-target and formula queries PubChem refuses with HTTP 400 (a C0 control other than tab or NUL, or DEL) now fail as typed ValidationErrors, interactions retry advice is per failed kind, and mcp-ts-core ^0.13.18 changes how notices and errors render in content[].
 
 ## [0.7.1](changelog/0.7.x/0.7.1.md) — 2026-10-24 · 🛡️ Security
 
