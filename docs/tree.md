@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-10-28 14:38:31
+Generated on: 2026-11-11 06:34:59
 
 ```text
 pubchem-mcp-server/
@@ -170,6 +170,7 @@ pubchem-mcp-server/
 │   │           ├── identifier-case.ts
 │   │           ├── index.ts
 │   │           ├── input-caps.ts
+│   │           ├── property-names.ts
 │   │           ├── search-assays.tool.ts
 │   │           ├── search-compounds.tool.ts
 │   │           └── untrusted-text.ts
@@ -198,7 +199,8 @@ pubchem-mcp-server/
 │   │   ├── pug-view-atc.json
 │   │   └── pug-view-cas-ec.json
 │   ├── helpers/
-│   │   └── commonmark.ts
+│   │   ├── commonmark.ts
+│   │   └── read-back.ts
 │   ├── mcp-server/
 │   │   ├── resources/
 │   │   │   └── definitions/
@@ -229,6 +231,7 @@ pubchem-mcp-server/
 │   │           ├── get-summary.tool.test.ts
 │   │           ├── identifier-case.test.ts
 │   │           ├── input-caps.test.ts
+│   │           ├── property-names.test.ts
 │   │           ├── search-assays-extended.tool.test.ts
 │   │           ├── search-assays.tool.test.ts
 │   │           ├── search-compounds-contract.tool.test.ts

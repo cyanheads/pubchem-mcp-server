@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.8.1](changelog/0.8.x/0.8.1.md) — 2026-11-10
+
+Every tool's content[] now reads back through a CommonMark parse exactly as structuredContent carries it. Identifier search reads a lone query, the details and safety tools take cid, and properties accepts PubChem's SMILES and ConnectivitySMILES names.
+
 ## [0.8.0](changelog/0.8.x/0.8.0.md) — 2026-10-28
 
 Publishes the pubchem-guide agent skill over MCP as skill://pubchem-guide/SKILL.md. Assay-target and formula queries PubChem refuses with HTTP 400 (a C0 control other than tab or NUL, or DEL) now fail as typed ValidationErrors, interactions retry advice is per failed kind, and mcp-ts-core ^0.13.18 changes how notices and errors render in content[].
