@@ -335,13 +335,14 @@ describe('data.fault holds only a fault PubChem stated', () => {
 });
 
 describe('a 200 whose body cannot be read fails like a network error', () => {
-  /** A 200 whose connection drops partway through the body. */
-  const cutMidBody = () =>
+  /** A 200 whose body fails partway through with neither the request's clocks nor the caller
+   * behind it: the connection drops, or the runtime aborts the stream on its own. */
+  const failsMidBody = (failure: () => Error) => () =>
     new Response(
       new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(new TextEncoder().encode('{"IdentifierList":'));
-          controller.error(new TypeError('The socket connection was closed unexpectedly.'));
+          controller.error(failure());
         },
       }),
       { status: 200 },
@@ -349,7 +350,14 @@ describe('a 200 whose body cannot be read fails like a network error', () => {
 
   it.each([
     ['a body that is not JSON', () => new Response('<!doctype html><title>Busy</title>')],
-    ['a body cut off mid-stream', cutMidBody],
+    [
+      'a body cut off mid-stream',
+      failsMidBody(() => new TypeError('The socket connection was closed unexpectedly.')),
+    ],
+    [
+      'a body whose stream aborts on its own',
+      failsMidBody(() => new DOMException('The operation was aborted.', 'AbortError')),
+    ],
   ])(
     'fails %s as ServiceUnavailable after one retry, with nothing of the request',
     async (_label, respond) => {
@@ -412,6 +420,25 @@ describe('a network failure reaches the caller with nothing of the request', () 
     expect(warning).toHaveBeenCalledTimes(1);
     expect(String(extrasOf(warning)[0]?.url)).toContain(QUERY_TERM);
     expect(String(extrasOf(warning)[0]?.error)).toContain(failure().message);
+  });
+
+  it('reads a fetch that rejects with an abort neither signal raised as PubChem ending the request, retried once', async () => {
+    const warning = vi.spyOn(logger, 'warning');
+    fetchMock.mockImplementation(async () => {
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    });
+
+    const { error } = await settle(new PubChemClient().searchByName(QUERY_TERM));
+
+    expect(error).toMatchObject({
+      code: JsonRpcErrorCode.ServiceUnavailable,
+      message: 'PubChem ended the request before answering. Retry shortly.',
+    });
+    expect((error as { data?: unknown }).data).toEqual({ retryAttempts: 2 });
+    expectNoRequestTrace(error);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(String(extrasOf(warning)[0]?.url)).toContain(QUERY_TERM);
   });
 });
 

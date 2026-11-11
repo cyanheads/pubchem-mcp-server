@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs';
 import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSummary } from '@/mcp-server/tools/definitions/get-summary.tool.js';
+import { readBlockquotes, readCommonMark } from '../../../helpers/commonmark.js';
+import { expectReadBack, formatBlock, READ_BACK_FUZZ } from '../../../helpers/read-back.js';
 
 const mockClient = {
   getEntitySummary: vi.fn(),
@@ -115,7 +117,7 @@ describe('getSummary handler', () => {
     );
     expect(result.summaries[0]!.identifier).toBe('P00533');
     expect(result.summaries[0]!.found).toBe(true);
-    expect(text).toContain('identifier: P00533');
+    expect(text).toContain('**Identifier found:** `P00533`');
   });
 
   it('keeps a PDB chain ID as given and leaves numeric identifiers alone (#67)', async () => {
@@ -225,7 +227,7 @@ describe('getSummary assay method, targets, compound counts, and data date (#68)
     });
     const text = textOf(result);
     expect(text).toContain('Method: confirmatory');
-    expect(text).toContain('Targets: YP_815859 — mevalonate kinase');
+    expect(text).toContain('Targets: `YP_815859` — `mevalonate kinase`');
     expect(text).toContain('Target Count: 1');
     expect(text).toContain('Num Compounds: 57');
     expect(text).toContain('Num Active Compounds: 36');
@@ -252,7 +254,7 @@ describe('getSummary assay method, targets, compound counts, and data date (#68)
       .split('\n')
       .find((l) => l.trimStart().startsWith('Targets: '))!;
     expect(targetsLine.split(' | ')).toHaveLength(25);
-    expect(targetsLine).toContain(`${upstream[24]!.Accession} — `);
+    expect(targetsLine).toContain(`\`${upstream[24]!.Accession}\` — `);
     expect(targetsLine).not.toContain(upstream[25]!.Accession);
     expect(targetsLine).not.toContain('[object Object]');
   });
@@ -374,7 +376,7 @@ describe('getSummary format', () => {
     expect(text).toContain('not found');
   });
 
-  it('marks an invalid identifier row and keeps a newline in it from starting a block (#66)', () => {
+  it('marks an invalid identifier row, keeping a newline in it inside a code block (#66, #88)', () => {
     const result = getSummary.output.parse({
       entityType: 'assay',
       summaries: [
@@ -384,10 +386,11 @@ describe('getSummary format', () => {
     });
     const text = (getSummary.format!(result)[0] as { type: 'text'; text: string }).text;
 
-    expect(text).toContain(
-      '**Identifier AID # 1000** — invalid for this entityType, not looked up',
+    const read = readCommonMark(text);
+    expect(read).toContain(
+      '⟨strong⟩Identifier invalid for this entityType, not looked up:⟨/strong⟩\n\n⟨fence:AID\n# 1000⟩',
     );
-    expect(text.split('\n').some((l) => l.startsWith('# 1000'))).toBe(false);
+    expect(read.match(/⟨heading_open⟩/g)).toHaveLength(1);
   });
 
   it('lists unprocessed identifiers past the per-call cap (#66)', () => {
@@ -399,7 +402,7 @@ describe('getSummary format', () => {
     const text = (getSummary.format!(result)[0] as { type: 'text'; text: string }).text;
 
     expect(result.unprocessed).toEqual(['2010', '2011']);
-    expect(text).toContain('**Unprocessed (2, past the per-call cap):** 2010, 2011');
+    expect(text).toContain('**Unprocessed (2, past the per-call cap):** `2010`, `2011`');
   });
 
   it('renders every array element structuredContent carries (#37)', () => {
@@ -417,5 +420,181 @@ describe('getSummary format', () => {
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     for (const synonym of synonyms) expect(text).toContain(synonym);
     expect(text).not.toContain('more)');
+  });
+});
+
+describe('getSummary content[] reads caller and upstream values back (#88)', () => {
+  type Content = {
+    summaries: Array<{ identifier: string | number; data?: Record<string, unknown> }>;
+    unprocessed?: string[];
+  };
+
+  it.each(READ_BACK_FUZZ)(
+    'reads an invalid and an unprocessed identifier holding %s back as the piece sent',
+    async (_l, value) => {
+      mockClient.getEntitySummary.mockResolvedValue(null);
+      const valid = Array.from({ length: 8 }, (_, i) => String(1001 + i));
+      await expectReadBack(
+        async (v) => {
+          const result = await runToolContract(getSummary, {
+            entityType: 'assay',
+            identifiers: ['1000', v, ...valid, v],
+          });
+          const content = result.structuredContent as Content;
+          expect(content.summaries[1]!.identifier).toBe(v.trim());
+          expect(content.unprocessed).toEqual([v.trim()]);
+          return formatBlock(result);
+        },
+        value,
+        { expected: value.trim() },
+      );
+    },
+  );
+
+  it.each(READ_BACK_FUZZ)(
+    'reads a not-found protein identifier holding %s back as looked up',
+    async (_l, value) => {
+      mockClient.getEntitySummary.mockResolvedValue(null);
+      await expectReadBack(
+        async (v) => {
+          const result = await runToolContract(getSummary, {
+            entityType: 'protein',
+            identifiers: [v],
+          });
+          expect((result.structuredContent as Content).summaries[0]!.identifier).toBe(
+            v.trim().toUpperCase(),
+          );
+          return formatBlock(result);
+        },
+        value,
+        { expected: value.trim().toUpperCase() },
+      );
+    },
+  );
+
+  /** Per entityType: an identifier, the upstream record with `v` in every string field, and the
+   * summary data structuredContent carries for it. Copy-back fields read back as code literals,
+   * labels as escaped text (`isCopyBack` in the tool). */
+  const FOUND: [
+    'assay' | 'gene' | 'protein' | 'taxonomy',
+    string,
+    (v: string) => Record<string, unknown>,
+    (v: string) => Record<string, unknown>,
+  ][] = [
+    [
+      'assay',
+      '1000',
+      (v) => ({
+        AID: 1000,
+        Name: v,
+        SourceName: v,
+        Method: v,
+        Target: [{ Accession: v, Name: v }],
+      }),
+      (v) => ({
+        aid: 1000,
+        name: v,
+        sourceName: v,
+        method: v,
+        targets: [{ accession: v, name: v }],
+        targetCount: 1,
+      }),
+    ],
+    [
+      'gene',
+      '1956',
+      (v) => ({ GeneID: 1956, Symbol: v, Name: v, Taxonomy: v, Synonym: [v] }),
+      (v) => ({ geneId: 1956, symbol: v, name: v, taxonomy: v, synonyms: [v] }),
+    ],
+    [
+      'protein',
+      'P00533',
+      (v) => ({ ProteinAccession: v, Name: v, Taxonomy: v, Synonym: [v] }),
+      (v) => ({ proteinAccession: v, name: v, taxonomy: v, synonyms: [v] }),
+    ],
+    [
+      'taxonomy',
+      '9606',
+      (v) => ({
+        TaxonomyID: 9606,
+        ScientificName: v,
+        CommonName: v,
+        Rank: v,
+        RankedLineage: { Superkingdom: v, Species: v },
+        Synonym: [v],
+      }),
+      (v) => ({
+        taxonomyId: 9606,
+        scientificName: v,
+        commonName: v,
+        rank: v,
+        lineage: [v, v],
+        synonyms: [v],
+      }),
+    ],
+  ];
+
+  describe.each(FOUND)('a found %s summary', (entityType, identifier, record, data) => {
+    it.each(READ_BACK_FUZZ)(
+      'reads every string field holding %s back as PubChem sent it',
+      async (_l, value) => {
+        await expectReadBack(
+          async (v) => {
+            mockClient.getEntitySummary.mockResolvedValueOnce(record(v));
+            const result = await runToolContract(getSummary, {
+              entityType,
+              identifiers: [identifier],
+            });
+            expect((result.structuredContent as Content).summaries[0]!.data).toEqual(data(v));
+            return formatBlock(result);
+          },
+          value,
+          { allowEscapedText: true },
+        );
+      },
+    );
+  });
+
+  it('reads gene and protein names, symbols, and accessions as code literals, assay and taxonomy names as text', async () => {
+    mockClient.getEntitySummary
+      .mockResolvedValueOnce({ GeneID: 1956, Symbol: 'EGFR', Name: 'egfr gene', Taxonomy: 'Hs' })
+      .mockResolvedValueOnce({ AID: 1000, Name: 'An assay', SourceName: 'NCGC' })
+      .mockResolvedValueOnce({ ProteinAccession: 'P00533', Name: 'EGFR protein', Taxonomy: 'Hs' });
+    const gene = formatBlock(
+      await runToolContract(getSummary, { entityType: 'gene', identifiers: ['1956'] }),
+    );
+    const assay = formatBlock(
+      await runToolContract(getSummary, { entityType: 'assay', identifiers: ['1000'] }),
+    );
+    const protein = formatBlock(
+      await runToolContract(getSummary, { entityType: 'protein', identifiers: ['P00533'] }),
+    );
+
+    expect(gene).toContain(
+      '**Identifier found:** 1956\n  Name: `egfr gene`\n  Gene Id: 1956\n  Symbol: `EGFR`\n  Taxonomy: Hs\n',
+    );
+    expect(protein).toContain(
+      '**Identifier found:** `P00533`\n  Name: `EGFR protein`\n  Taxonomy: Hs\n  Protein Accession: `P00533`\n',
+    );
+    expect(assay).toContain(
+      '**Identifier found:** 1000\n  Aid: 1000\n  Name: An assay\n  Source Name: NCGC\n',
+    );
+  });
+
+  it('closes the description quote before the next field, so the field is not read into it', async () => {
+    const description = 'Measures X.\n\n# INJECTED';
+    mockClient.getEntitySummary.mockResolvedValueOnce({
+      AID: 1000,
+      Name: 'n',
+      Description: description,
+      SourceName: 'NCGC',
+    });
+
+    const text = formatBlock(
+      await runToolContract(getSummary, { entityType: 'assay', identifiers: ['1000'] }),
+    );
+
+    expect(readBlockquotes(text)).toEqual([description]);
+    expect(readCommonMark(text)).toContain('⟨blockquote_close⟩\n\nSource Name: NCGC');
   });
 });

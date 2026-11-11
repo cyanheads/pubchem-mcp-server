@@ -444,6 +444,20 @@ export const COMPOUND_PROPERTIES = [
   'Volume3D',
 ] as const;
 
+/** A compound property name this server accepts and keys its output by. */
+export type CompoundProperty = (typeof COMPOUND_PROPERTIES)[number];
+
+/**
+ * PubChem's current names for two properties, mapped to this server's names. PUG REST answers
+ * a request for `IsomericSMILES` under the key `SMILES` (with stereochemistry) and one for
+ * `CanonicalSMILES` under `ConnectivitySMILES` (connectivity only), and accepts either name in a
+ * request. The server keeps one name per property, the older one, on input and output alike.
+ */
+export const PROPERTY_NAME_MAP: ReadonlyMap<string, CompoundProperty> = new Map([
+  ['SMILES', 'IsomericSMILES'],
+  ['ConnectivitySMILES', 'CanonicalSMILES'],
+]);
+
 /** Default properties when none specified */
 export const DEFAULT_PROPERTIES = [
   'MolecularFormula',

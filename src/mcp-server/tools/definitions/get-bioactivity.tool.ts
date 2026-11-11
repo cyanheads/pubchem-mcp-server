@@ -5,6 +5,7 @@
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import {
   type AssayTargetActivity,
@@ -21,7 +22,7 @@ import {
   INPUT_CEILING,
   renderCappedInputs,
 } from './input-caps.js';
-import { clipEcho, inlineData, renderNotice } from './untrusted-text.js';
+import { clipEcho, literalData, renderNotice } from './untrusted-text.js';
 
 /** Assays served per page; a larger maxResults is clamped to this. */
 const MAX_RESULTS_CAP = 100;
@@ -450,29 +451,35 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       return [{ type: 'text', text: lines.join('\n') }];
     }
 
+    // An accession is one an agent passes back as targetAccession, so it renders as a code
+    // literal; assay names, types, outcomes, and measurement labels are PubChem's text, escaped.
     const targetIds = (geneId?: number, accession?: string) =>
-      [geneId ? `GeneID:${geneId}` : undefined, accession].filter(Boolean).join(' — ');
+      [geneId ? `GeneID:${geneId}` : undefined, accession && literalData(accession)]
+        .filter(Boolean)
+        .join(' — ');
     const pushValues = (
       values: (typeof result.results)[number]['activityValues'],
       indent: string,
     ) => {
       for (const av of values) {
-        const label = av.name ?? 'Value';
-        const unit = av.unit ?? '';
-        lines.push(`${indent}${label}: ${av.value}${unit ? ` ${unit}` : ''}`);
+        const label = av.name === undefined ? 'Value' : escapeMarkdownInline(av.name);
+        const unit = av.unit ? ` ${escapeMarkdownInline(av.unit)}` : '';
+        lines.push(`${indent}${label}: ${av.value}${unit}`);
       }
     };
 
     for (const r of result.results) {
       const target = targetIds(r.targetGeneId, r.targetAccession);
-      lines.push(`**AID ${r.aid}** — ${inlineData(r.assayName)} (${r.outcome})`);
-      if (r.assayType) lines.push(`  Assay type: ${inlineData(r.assayType)}`);
+      lines.push(
+        `**AID ${r.aid}** — ${escapeMarkdownInline(r.assayName)} (${escapeMarkdownInline(r.outcome)})`,
+      );
+      if (r.assayType) lines.push(`  Assay type: ${escapeMarkdownInline(r.assayType)}`);
       if (r.pmids) lines.push(`  PMIDs: ${r.pmids.join(', ')}`);
       if (target) lines.push(`  Target: ${target}`);
       pushValues(r.activityValues, '  ');
       for (const other of r.otherTargets ?? []) {
         const ids = targetIds(other.geneId, other.accession) || 'not identified';
-        lines.push(`  Other target: ${ids} (${other.outcome})`);
+        lines.push(`  Other target: ${ids} (${escapeMarkdownInline(other.outcome)})`);
         pushValues(other.activityValues, '    ');
       }
       lines.push('');

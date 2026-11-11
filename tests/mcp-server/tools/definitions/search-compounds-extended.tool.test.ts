@@ -7,6 +7,7 @@ import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchCompounds } from '@/mcp-server/tools/definitions/search-compounds.tool.js';
+import { readCommonMark } from '../../../helpers/commonmark.js';
 
 const mockClient = {
   searchByName: vi.fn(),
@@ -471,6 +472,47 @@ describe('searchCompounds handler — properties hydration edge cases', () => {
     // CID must not appear in properties
     expect(result.results[0]!.properties).not.toHaveProperty('CID');
   });
+
+  it('reads an empty properties list as no hydration: no request, no properties on the rows', async () => {
+    mockClient.searchByName.mockResolvedValueOnce([2244]);
+    const ctx = createMockContext({ errors: searchCompounds.errors });
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin'],
+      properties: [],
+    });
+    const result = await searchCompounds.handler(input, ctx);
+
+    expect(mockClient.getProperties).not.toHaveBeenCalled();
+    expect(result.results).toEqual([{ cid: 2244, identifier: 'aspirin' }]);
+    expect(getEnrichment(ctx).notice).toBeUndefined();
+  });
+
+  it('asks PubChem for a property named twice, under either name, once (#92)', async () => {
+    mockClient.searchByName.mockResolvedValueOnce([2244]);
+    mockClient.getProperties.mockResolvedValueOnce([
+      { CID: 2244, IsomericSMILES: 'CC(=O)OC1=CC=CC=C1C(=O)O', MolecularWeight: '180.16' },
+    ]);
+    const ctx = createMockContext({ errors: searchCompounds.errors });
+    const input = searchCompounds.input.parse({
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin'],
+      properties: ['SMILES', 'MolecularWeight', 'IsomericSMILES', 'MolecularWeight'],
+    });
+    const result = await searchCompounds.handler(input, ctx);
+
+    expect(mockClient.getProperties).toHaveBeenCalledWith(
+      [2244],
+      ['IsomericSMILES', 'MolecularWeight'],
+      expect.any(AbortSignal),
+    );
+    expect(result.results[0]!.properties).toEqual({
+      IsomericSMILES: 'CC(=O)OC1=CC=CC=C1C(=O)O',
+      MolecularWeight: '180.16',
+    });
+  });
 });
 
 describe('searchCompounds format — additional cases', () => {
@@ -516,10 +558,30 @@ describe('searchCompounds format — additional cases', () => {
       ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('MolecularFormula: C9H8O4');
-    expect(text).toContain('MolecularWeight: 180.16');
-    expect(text).toContain('CID 2244');
-    expect(text).toContain('aspirin');
+    // String values are code literals; numbers render as themselves.
+    expect(text).toBe(
+      '**CID 2244** — `aspirin`\n**Properties:**\nMolecularFormula: `C9H8O4`\nMolecularWeight: 180.16\n',
+    );
+  });
+
+  it('starts each property on an unindented line, so the line after a multi-line value is not read as code (#88)', () => {
+    const blocks = searchCompounds.format!({
+      results: [
+        {
+          cid: 2244,
+          identifier: 'aspirin',
+          properties: { Title: 'acetyl\nsalicylic acid', MolecularWeight: 180.16 },
+        },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(readCommonMark(text)).toBe(
+      [
+        '⟨strong⟩CID 2244⟨/strong⟩ — ⟨code_inline:aspirin⟩\n⟨strong⟩Properties:⟨/strong⟩\nTitle:',
+        '⟨fence:acetyl\nsalicylic acid⟩',
+        'MolecularWeight: 180.16',
+      ].join('\n\n'),
+    );
   });
 });
 

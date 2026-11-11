@@ -6,6 +6,7 @@
 import { createMockContext, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundDetails } from '@/mcp-server/tools/definitions/get-compound-details.tool.js';
+import { readCommonMark, readTrailerValue } from '../../../helpers/commonmark.js';
 
 const mockClient = {
   getProperties: vi.fn(),
@@ -433,11 +434,21 @@ describe('getCompoundDetails — ATC hierarchy on both surfaces (#64)', () => {
       .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
       .map((b) => b.text)
       .join('\n');
-    expect(text).toContain(
-      '    - N02BA01: N Nervous system > N02 Analgesics > N02B Other analgesics and antipyretics > N02BA Salicylic acid and derivatives > N02BA01 Acetylsalicylic acid',
+    // One nested list item per code; a bare-only code renders alone — no empty description
+    // or "> " path behind it.
+    expect(readCommonMark(text)).toContain(
+      [
+        'ATC:',
+        '⟨bullet_list_open⟩',
+        '⟨list_item_open⟩',
+        'N02BA01: N Nervous system > N02 Analgesics > N02B Other analgesics and antipyretics > N02BA Salicylic acid and derivatives > N02BA01 Acetylsalicylic acid',
+        '⟨list_item_close⟩',
+        '⟨list_item_open⟩',
+        'C10AA05',
+        '⟨list_item_close⟩',
+        '⟨bullet_list_close⟩',
+      ].join('\n\n'),
     );
-    // A bare-only code renders alone — no empty description or "> " path behind it.
-    expect(text).toMatch(/^ {4}- C10AA05$/m);
   });
 
   it('rejects an ATC entry without levels at the output schema', () => {
@@ -501,7 +512,7 @@ describe('getCompoundDetails format', () => {
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).toContain('non-steroidal');
     expect(text).toContain('Description (DrugBank)');
-    expect(text).toContain('Aspirin | ASA');
+    expect(text).toContain('`Aspirin` | `ASA`');
   });
 
   it('renders truncation marker when descriptions exceed cap (#7 regression)', () => {
@@ -614,4 +625,346 @@ describe('getCompoundDetails format', () => {
     expect(text).toContain('N02BA01');
     expect(text).toContain('Cyclooxygenase Inhibitors');
   });
+
+  it('labels CanonicalSMILES as Canonical SMILES, keeping the isomeric line beside it', () => {
+    const textOf = (properties: Record<string, unknown>) =>
+      (
+        getCompoundDetails.format!({ compounds: [{ cid: 1, found: true, properties }] })[0] as {
+          text: string;
+        }
+      ).text;
+
+    const both = textOf({ CanonicalSMILES: 'CC(N)O', IsomericSMILES: 'C[C@@H](N)O' });
+    expect(readTrailerValue(both, 'Canonical SMILES')).toBe('CC(N)O');
+    expect(readTrailerValue(both, 'Isomeric SMILES')).toBe('C[C@@H](N)O');
+    // PubChem now calls the stereo form "SMILES", so no line carries that bare label.
+    expect(readTrailerValue(both, 'SMILES')).toBeUndefined();
+
+    const same = textOf({ CanonicalSMILES: 'CCC', IsomericSMILES: 'CCC' });
+    expect(readTrailerValue(same, 'Canonical SMILES')).toBe('CCC');
+    expect(readTrailerValue(same, 'Isomeric SMILES')).toBeUndefined();
+  });
+});
+
+type Result = Awaited<ReturnType<typeof runToolContract>>;
+
+type Rejection = {
+  error: { code: number; message: string; data: { recovery: { hint: string } } };
+};
+
+/** The rejection a schema failure returns, asserted as -32602 before the handler ran. */
+function rejectionOf(result: Result): Rejection['error'] {
+  expect(result.isError).toBe(true);
+  const { error } = result.structuredContent as Rejection;
+  expect(error.code).toBe(-32602);
+  expect(mockClient.getProperties).not.toHaveBeenCalled();
+  return error;
+}
+
+const MESSAGE_PREFIX =
+  'Input validation error: Invalid arguments for tool pubchem_get_compound_details: ';
+
+type Structured = {
+  compounds: Array<{ cid: number; found: boolean; properties: Record<string, unknown> }>;
+  unprocessed?: number[];
+  cappedInputs?: unknown[];
+};
+
+// ── cid and a lone CID read as cids (#91) ─────────────────────────────
+
+describe('getCompoundDetails reads cid and a lone CID as cids (#91)', () => {
+  beforeEach(() => {
+    mockClient.getProperties.mockImplementation(async (cids: number[]) =>
+      cids.map((CID) => ({ CID, MolecularFormula: 'C8H10N4O2' })),
+    );
+  });
+
+  it.each<[string, unknown]>([
+    ['cid as a number', { cid: 2519 }],
+    ['cid as a numeric string', { cid: '2519' }],
+    ['a lone CID', { cids: 2519 }],
+    ['a lone numeric-string CID', { cids: '2519' }],
+  ])('answers %s as it answers cids: [2519]', async (_label, input) => {
+    const expected = await runToolContract(getCompoundDetails, { cids: [2519] });
+    const result = await runToolContract(getCompoundDetails, input as never);
+
+    expect(result.isError).toBeFalsy();
+    expect(result).toEqual(expected);
+    expect(mockClient.getProperties.mock.calls.map(([cids]) => cids)).toEqual([[2519], [2519]]);
+  });
+
+  it('rejects a cid that spells no CID, naming the key it validated', async () => {
+    const error = rejectionOf(
+      await runToolContract(getCompoundDetails, { cid: 'caffeine' } as never),
+    );
+
+    expect(error.message).toBe(
+      `${MESSAGE_PREFIX}cids: Invalid input: expected array, received string`,
+    );
+    expect(error.data.recovery.hint).toMatch(/ Validated cid as cids\.$/);
+  });
+
+  it('rejects cid sent beside cids', async () => {
+    const error = rejectionOf(
+      await runToolContract(getCompoundDetails, { cid: 2519, cids: [702] } as never),
+    );
+
+    expect(error.data.recovery.hint).toContain(
+      'cid is an alias of cids; send one of them, not both.',
+    );
+  });
+
+  it.each<[unknown[], number[]]>([
+    [['2519'], [2519]],
+    [
+      [2519, '702'],
+      [2519, 702],
+    ],
+  ])('validates cids %j as %j on the first parse, with no argument repair', (sent, parsed) => {
+    const result = getCompoundDetails.input.safeParse({ cids: sent });
+    expect(result.success).toBe(true);
+    expect(result.data?.cids).toEqual(parsed);
+  });
+
+  const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
+  const notANumber = [
+    'cids.0: Invalid input: expected number, received string',
+    'Send cids.0 as a number, not a string.',
+  ] as const;
+
+  it.each<[string, unknown[], string, string]>([
+    [
+      'an empty list',
+      [],
+      'cids: Too small: expected array to have >=1 items',
+      'cids: Too small: expected array to have >=1 items',
+    ],
+    [
+      '1,001 CIDs',
+      range(1001),
+      'cids: Too big: expected array to have <=1000 items',
+      'cids: Too big: expected array to have <=1000 items',
+    ],
+    [
+      'a zero',
+      [0],
+      'cids.0: Too small: expected number to be >=1',
+      'cids.0: Too small: expected number to be >=1',
+    ],
+    [
+      'a fraction',
+      [2519.5],
+      'cids.0: Invalid input: expected int, received number',
+      'Send cids.0 as an integer, not a fractional number.',
+    ],
+    ['a decimal string', ['1.0'], ...notANumber],
+    ['a zero-padded string', ['01'], ...notANumber],
+    ['a negative-zero string', ['-0'], ...notANumber],
+    ['an empty string', [''], ...notANumber],
+  ])('rejects %s with the message and hint it got before', async (_label, cids, issue, hint) => {
+    const error = rejectionOf(await runToolContract(getCompoundDetails, { cids } as never));
+
+    expect(error.message).toBe(`${MESSAGE_PREFIX}${issue}`);
+    expect(error.data.recovery.hint).toBe(hint);
+  });
+
+  it('still serves a list past the per-call cap up to the cap, the rest unprocessed', async () => {
+    const result = await runToolContract(getCompoundDetails, { cids: range(101) });
+    expect(result.isError).toBeFalsy();
+    const sc = result.structuredContent as Structured;
+
+    expect(sc.compounds.map((c) => c.cid)).toEqual(range(100));
+    expect(sc.unprocessed).toEqual([101]);
+    expect(sc.cappedInputs).toEqual([
+      { input: 'cids', requested: 101, served: 100, unprocessed: 1 },
+    ]);
+  });
+});
+
+// ── PubChem's current property names (#92) ────────────────────────────
+
+/** CID 5793 (glucose) as the client returns it: keyed by this server's names, which
+ * `normalizePropertyNames` maps PubChem's `SMILES` / `ConnectivitySMILES` response keys to. */
+const GLUCOSE: Record<string, unknown> = {
+  IsomericSMILES: 'C([C@@H]1[C@H]([C@@H]([C@H](C(O1)O)O)O)O)O',
+  CanonicalSMILES: 'C(C1C(C(C(C(O1)O)O)O)O)O',
+  MolecularWeight: '180.16',
+  XLogP: -2.6,
+  HBondDonorCount: 5,
+  HBondAcceptorCount: 6,
+  TPSA: 110,
+  RotatableBondCount: 1,
+};
+
+/** The properties each getProperties call asked PubChem for. */
+const requestedProperties = () => mockClient.getProperties.mock.calls.map(([, props]) => props);
+
+describe('getCompoundDetails reads PubChem current property names (#92)', () => {
+  beforeEach(() => {
+    mockClient.getProperties.mockImplementation(async (cids: number[], props: string[]) =>
+      cids.map((CID) => ({ CID, ...Object.fromEntries(props.map((p) => [p, GLUCOSE[p]])) })),
+    );
+  });
+
+  it.each<[string, unknown, string[]]>([
+    ['SMILES', ['SMILES'], ['IsomericSMILES']],
+    ['ConnectivitySMILES', ['ConnectivitySMILES'], ['CanonicalSMILES']],
+    ['both forms of the stereo SMILES', ['SMILES', 'IsomericSMILES'], ['IsomericSMILES']],
+    ['the lone string SMILES', 'SMILES', ['IsomericSMILES']],
+    [
+      'a repeated older name',
+      ['IsomericSMILES', 'MolecularWeight', 'IsomericSMILES'],
+      ['IsomericSMILES', 'MolecularWeight'],
+    ],
+  ])(
+    'answers %s under this server’s name, naming each property once',
+    async (_label, properties, read) => {
+      const result = await runToolContract(getCompoundDetails, {
+        cids: [5793],
+        properties,
+      } as never);
+
+      expect(result.isError).toBeFalsy();
+      expect(requestedProperties()).toEqual([read]);
+      const sc = result.structuredContent as Structured;
+      expect(sc.compounds[0]!.properties).toEqual(
+        Object.fromEntries(read.map((p) => [p, GLUCOSE[p]])),
+      );
+    },
+  );
+
+  it('answers the current names exactly as it answers the older ones', async () => {
+    const older = await runToolContract(getCompoundDetails, {
+      cids: [5793],
+      properties: ['IsomericSMILES', 'CanonicalSMILES'],
+    });
+    const current = await runToolContract(getCompoundDetails, {
+      cids: [5793],
+      properties: ['SMILES', 'ConnectivitySMILES'],
+    } as never);
+
+    expect(older.isError).toBeFalsy();
+    expect(current).toEqual(older);
+    expect(requestedProperties()).toEqual([
+      ['IsomericSMILES', 'CanonicalSMILES'],
+      ['IsomericSMILES', 'CanonicalSMILES'],
+    ]);
+  });
+
+  it('still wraps the lone string MolecularWeight', async () => {
+    const result = await runToolContract(getCompoundDetails, {
+      cids: [5793],
+      properties: 'MolecularWeight',
+    } as never);
+
+    expect(result.isError).toBeFalsy();
+    expect(requestedProperties()).toEqual([['MolecularWeight']]);
+  });
+
+  it.each(['smiles', 'AbsoluteSMILES'])('still rejects %s', async (name) => {
+    const error = rejectionOf(
+      await runToolContract(getCompoundDetails, { cids: [5793], properties: [name] } as never),
+    );
+    expect(error.message).toContain('properties.0: Invalid option');
+  });
+
+  it.each<[string, string[], string[]]>([
+    [
+      'older names',
+      ['MolecularWeight', 'TPSA'],
+      [
+        'MolecularWeight',
+        'TPSA',
+        'XLogP',
+        'HBondDonorCount',
+        'HBondAcceptorCount',
+        'RotatableBondCount',
+      ],
+    ],
+    [
+      'a current name beside its older one',
+      ['SMILES', 'IsomericSMILES', 'MolecularWeight'],
+      [
+        'IsomericSMILES',
+        'MolecularWeight',
+        'XLogP',
+        'HBondDonorCount',
+        'HBondAcceptorCount',
+        'TPSA',
+        'RotatableBondCount',
+      ],
+    ],
+  ])(
+    'appends the drug-likeness inputs to %s, naming each property once',
+    async (_label, properties, read) => {
+      const result = await runToolContract(getCompoundDetails, {
+        cids: [5793],
+        properties,
+        includeDrugLikeness: true,
+      } as never);
+
+      expect(result.isError).toBeFalsy();
+      expect(requestedProperties()).toEqual([read]);
+    },
+  );
+
+  it('states the name pairing in the output properties description', () => {
+    const schema = getCompoundDetails.output['~standard'].jsonSchema.output({
+      target: 'draft-2020-12',
+    }) as {
+      properties: {
+        compounds: { items: { properties: { properties: { description: string } } } };
+      };
+    };
+    const { description } = schema.properties.compounds.items.properties.properties;
+    expect(description).toMatch(/\bSMILES\b[^.]*\bIsomericSMILES\b/);
+    expect(description).toMatch(/\bConnectivitySMILES\b[^.]*\bCanonicalSMILES\b/);
+  });
+});
+
+// ── properties: [] reads as unset (fold-in) ───────────────────────────
+
+/** The core set `properties` defaults to, as its description lists it. */
+const CORE_SET = [
+  'MolecularFormula',
+  'MolecularWeight',
+  'IUPACName',
+  'CanonicalSMILES',
+  'IsomericSMILES',
+  'InChIKey',
+  'XLogP',
+  'TPSA',
+  'HBondDonorCount',
+  'HBondAcceptorCount',
+  'RotatableBondCount',
+  'HeavyAtomCount',
+  'Charge',
+  'Complexity',
+];
+
+describe('getCompoundDetails reads an empty properties list as the default core set', () => {
+  beforeEach(() => {
+    // As the real client does: no properties, no request, no rows.
+    mockClient.getProperties.mockImplementation(async (cids: number[], props: string[]) =>
+      props.length === 0 ? [] : cids.map((CID) => ({ CID, MolecularFormula: 'C9H8O4' })),
+    );
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ['omitted', {}],
+    ['empty', { properties: [] }],
+  ])(
+    'fetches the core set when properties is %s, and finds the compound',
+    async (_label, extra) => {
+      const result = await runToolContract(getCompoundDetails, { cids: [2244], ...extra });
+
+      expect(result.isError).toBeFalsy();
+      expect(requestedProperties()).toEqual([CORE_SET]);
+      const sc = result.structuredContent as Structured;
+      expect(sc.compounds[0]).toMatchObject({ cid: 2244, found: true });
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(text).toContain('## CID 2244 (found)');
+      expect(readTrailerValue(text, 'Formula')).toBe('C9H8O4');
+    },
+  );
 });

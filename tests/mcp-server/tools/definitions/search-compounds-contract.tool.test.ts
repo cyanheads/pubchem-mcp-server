@@ -12,6 +12,7 @@ import { runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchCompounds } from '@/mcp-server/tools/definitions/search-compounds.tool.js';
 import { initPubChemClient } from '@/services/pubchem/pubchem-client.js';
+import { readBlockquotes } from '../../../helpers/commonmark.js';
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -148,6 +149,287 @@ describe('pubchem_search_compounds omitted mode fields keep their reasons (#45)'
   });
 });
 
+describe('pubchem_search_compounds identifier mode reads query as identifiers[0] (#90)', () => {
+  const readNotice = (query: string) =>
+    `Read query "${query}" as identifiers[0]; identifier mode takes its lookups in identifiers.`;
+  const notFound = () =>
+    Response.json(
+      { Fault: { Code: 'PUGREST.NotFound', Message: 'No CID found' } },
+      { status: 404 },
+    );
+  const requested = () => fetchMock.mock.calls.map(([input]) => new URL(String(input)).pathname);
+  type Content = {
+    results: Array<{ cid: number; identifier?: string }>;
+    unresolvedIdentifiers?: string[];
+    notice?: string;
+  };
+  type Failure = { data?: { reason?: string; recovery?: { hint?: string } } };
+  const hintOf = (result: Awaited<ReturnType<typeof runToolContract>>) =>
+    (errorOf(result) as Failure).data?.recovery?.hint;
+
+  it('looks up a query sent with identifierType and no identifiers, and says so in the notice', async () => {
+    fetchMock.mockResolvedValueOnce(cidList([2519]));
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      identifierType: 'name',
+      query: 'caffeine',
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toMatchObject({
+      results: [{ cid: 2519, identifier: 'caffeine' }],
+      totalFound: 1,
+      notice: readNotice('caffeine'),
+    });
+    expect(requested()).toEqual(['/rest/pug/compound/name/caffeine/cids/JSON']);
+    expect(readBlockquotes(textOf(result)).at(-1)).toBe(readNotice('caffeine'));
+  });
+
+  it('fails a query sent with no identifierType as missing_identifier_args, its hint naming the query', async () => {
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      query: 'caffeine',
+    });
+
+    expect(errorOf(result).data?.reason).toBe('missing_identifier_args');
+    expect(hintOf(result)).toBe(
+      'Set identifierType (name/smiles/inchi/inchikey) to the form of "caffeine", the identifier read from query.',
+    );
+    expect(textOf(result)).toContain('"caffeine", the identifier read from query');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('cuts a long query to 100 characters in the missing_identifier_args hint', async () => {
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      query: `${'n'.repeat(150)} **x**`,
+    });
+
+    expect(errorOf(result).data?.reason).toBe('missing_identifier_args');
+    expect(hintOf(result)).toBe(
+      `Set identifierType (name/smiles/inchi/inchikey) to the form of "${'n'.repeat(100)}…", the identifier read from query.`,
+    );
+  });
+
+  it('uppercases a lowercase InChIKey query before lookup, as it does identifiers', async () => {
+    fetchMock.mockResolvedValueOnce(cidList([2519]));
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      identifierType: 'inchikey',
+      query: 'ryyvlzvuvijvgh-uhfffaoysa-n',
+    });
+
+    expect(requested()).toEqual([
+      '/rest/pug/compound/inchikey/RYYVLZVUVIJVGH-UHFFFAOYSA-N/cids/JSON',
+    ]);
+    expect(result.structuredContent).toMatchObject({
+      results: [{ cid: 2519, identifier: 'RYYVLZVUVIJVGH-UHFFFAOYSA-N' }],
+      notice: readNotice('ryyvlzvuvijvgh-uhfffaoysa-n'),
+    });
+  });
+
+  it('reads a query holding commas as one identifier, never split', async () => {
+    fetchMock.mockResolvedValueOnce(cidList([1493]));
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      identifierType: 'name',
+      query: '2,4-dinitrophenol',
+    });
+
+    expect(requested()).toEqual(['/rest/pug/compound/name/2%2C4-dinitrophenol/cids/JSON']);
+    expect(result.structuredContent).toMatchObject({
+      results: [{ cid: 1493, identifier: '2,4-dinitrophenol' }],
+    });
+  });
+
+  it.each(['', '   ', '\t\n'])(
+    'fails a blank query %j as missing_identifier_args before any request, with the declared hint',
+    async (query) => {
+      const result = await runToolContract(searchCompounds, {
+        searchType: 'identifier',
+        identifierType: 'name',
+        query,
+      });
+
+      expect(errorOf(result).data?.reason).toBe('missing_identifier_args');
+      expect(hintOf(result)).toBe(
+        searchCompounds.errors?.find((e) => e.reason === 'missing_identifier_args')?.recovery,
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps identifiers over query when both are sent, with no notice', async () => {
+    fetchMock.mockResolvedValueOnce(cidList([2244]));
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin'],
+      query: 'caffeine',
+    });
+
+    expect(result.structuredContent).toMatchObject({
+      results: [{ cid: 2244, identifier: 'aspirin' }],
+    });
+    expect(result.structuredContent).not.toHaveProperty('notice');
+    expect(requested()).toEqual(['/rest/pug/compound/name/aspirin/cids/JSON']);
+  });
+
+  it('joins the read notice with the not-found notice in one notice', async () => {
+    fetchMock.mockResolvedValueOnce(notFound());
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      identifierType: 'name',
+      query: 'notreal1zzz',
+    });
+
+    const notice = `${readNotice('notreal1zzz')} 1 of 1 identifier(s) did not resolve to a CID: notreal1zzz. Verify spelling and that identifierType="name" matches the identifier form (name/smiles/inchi/inchikey).`;
+    expect(result.structuredContent as Content).toMatchObject({
+      results: [],
+      unresolvedIdentifiers: ['notreal1zzz'],
+      notice,
+    });
+    expect(readBlockquotes(textOf(result)).at(-1)).toBe(notice);
+  });
+
+  it('joins the read notice with the next-page guidance in one notice', async () => {
+    fetchMock.mockResolvedValueOnce(cidList([2519, 1, 2]));
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      identifierType: 'name',
+      query: 'caffeine',
+      maxResults: 1,
+    });
+
+    const notice = `${readNotice('caffeine')} Showing matches 1-1 of 3. Pass offset=1 for the next page.`;
+    expect(result.structuredContent).toMatchObject({ nextOffset: 1, truncated: true, notice });
+    expect(readBlockquotes(textOf(result)).at(-1)).toBe(notice);
+  });
+
+  it('cuts a long query to 100 characters in the notice and keeps it whole in the echo', async () => {
+    const query = `${'n'.repeat(150)} **x**`;
+    fetchMock.mockResolvedValueOnce(cidList([2519]));
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      identifierType: 'name',
+      query,
+    });
+
+    expect(result.structuredContent).toMatchObject({
+      results: [{ cid: 2519, identifier: query }],
+      notice: readNotice(`${'n'.repeat(100)}…`),
+    });
+  });
+});
+
+describe('pubchem_search_compounds properties read PubChem’s current SMILES names (#92)', () => {
+  const ISOMERIC = 'C[C@@H](C(=O)O)N';
+  const CONNECTIVITY = 'CC(C(=O)O)N';
+
+  /** Answers the L-alanine name lookup with CID 5950, and a property request the way PubChem
+   * does: a SMILES asked for under either name comes back as "SMILES" or "ConnectivitySMILES". */
+  const pubchem = async (input: string | URL | Request): Promise<Response> => {
+    const { pathname } = new URL(String(input));
+    if (pathname === '/rest/pug/compound/name/L-alanine/cids/JSON') return cidList([5950]);
+    const names = /^\/rest\/pug\/compound\/cid\/5950\/property\/([^/]+)\/JSON$/.exec(pathname)?.[1];
+    if (names === undefined) throw new Error(`unmocked fetch: ${pathname}`);
+    const row: Record<string, unknown> = { CID: 5950 };
+    for (const name of names.split(',')) {
+      if (name === 'SMILES' || name === 'IsomericSMILES') row.SMILES = ISOMERIC;
+      else if (name === 'ConnectivitySMILES' || name === 'CanonicalSMILES') {
+        row.ConnectivitySMILES = CONNECTIVITY;
+      } else if (name === 'MolecularWeight') row.MolecularWeight = '89.09';
+      else throw new Error(`unmocked property: ${name}`);
+    }
+    return Response.json({ PropertyTable: { Properties: [row] } });
+  };
+  const propertyRequests = () =>
+    fetchMock.mock.calls
+      .map(([input]) => new URL(String(input)).pathname)
+      .filter((path) => path.includes('/property/'));
+  /** A lone string is sent as written, for the framework's argument repair to wrap. */
+  const withProperties = (properties: unknown) =>
+    runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['L-alanine'],
+      properties: properties as string[],
+    });
+  const propertiesOf = (result: Awaited<ReturnType<typeof runToolContract>>) => {
+    expect(result.isError).toBeFalsy();
+    return (result.structuredContent as { results: Array<{ properties?: unknown }> }).results[0]
+      ?.properties;
+  };
+
+  it.each<[unknown, string, Record<string, unknown>]>([
+    [['SMILES'], 'IsomericSMILES', { IsomericSMILES: ISOMERIC }],
+    [['ConnectivitySMILES'], 'CanonicalSMILES', { CanonicalSMILES: CONNECTIVITY }],
+    ['SMILES', 'IsomericSMILES', { IsomericSMILES: ISOMERIC }],
+    [['SMILES', 'IsomericSMILES'], 'IsomericSMILES', { IsomericSMILES: ISOMERIC }],
+    [
+      ['SMILES', 'MolecularWeight', 'IsomericSMILES'],
+      'IsomericSMILES,MolecularWeight',
+      { IsomericSMILES: ISOMERIC, MolecularWeight: '89.09' },
+    ],
+  ])(
+    'reads %j as a request for %s, keyed by this server’s names',
+    async (properties, requestedNames, expected) => {
+      fetchMock.mockImplementation(pubchem);
+
+      const result = await withProperties(properties);
+
+      expect(propertiesOf(result)).toEqual(expected);
+      expect(propertyRequests()).toEqual([
+        `/rest/pug/compound/cid/5950/property/${requestedNames}/JSON`,
+      ]);
+    },
+  );
+
+  it.each<[unknown, string, Record<string, unknown>]>([
+    [['IsomericSMILES'], 'IsomericSMILES', { IsomericSMILES: ISOMERIC }],
+    [['CanonicalSMILES'], 'CanonicalSMILES', { CanonicalSMILES: CONNECTIVITY }],
+    [
+      ['IsomericSMILES', 'CanonicalSMILES'],
+      'IsomericSMILES,CanonicalSMILES',
+      { IsomericSMILES: ISOMERIC, CanonicalSMILES: CONNECTIVITY },
+    ],
+    ['MolecularWeight', 'MolecularWeight', { MolecularWeight: '89.09' }],
+  ])('returns %j as before', async (properties, requestedNames, expected) => {
+    fetchMock.mockImplementation(pubchem);
+
+    const result = await withProperties(properties);
+
+    expect(propertiesOf(result)).toEqual(expected);
+    expect(propertyRequests()).toEqual([
+      `/rest/pug/compound/cid/5950/property/${requestedNames}/JSON`,
+    ]);
+  });
+
+  it.each([[['smiles']], [['Foo']], ['connectivitysmiles']])(
+    'still rejects %j at the schema',
+    async (properties) => {
+      const result = await withProperties(properties);
+
+      expect(result.isError).toBe(true);
+      expect(errorOf(result).code).toBe(JsonRpcErrorCode.InvalidParams);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('states the name pairing in the output properties description', () => {
+    expect(searchCompounds.output.shape.results.element.shape.properties.description).toContain(
+      'SMILES as IsomericSMILES, ConnectivitySMILES as CanonicalSMILES',
+    );
+  });
+});
+
 describe('pubchem_search_compounds cross-mode fields and padding (#45 regression)', () => {
   it("accepts an identifier search carrying other modes' empty fields", async () => {
     fetchMock.mockResolvedValueOnce(cidList([2244]));
@@ -164,7 +446,7 @@ describe('pubchem_search_compounds cross-mode fields and padding (#45 regression
     expect(result.structuredContent).toMatchObject({
       results: [{ cid: 2244, identifier: 'aspirin' }],
     });
-    expect(textOf(result)).toContain('2244 (aspirin)');
+    expect(textOf(result)).toContain('2244 (`aspirin`)');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain('/compound/name/aspirin/cids/JSON');
   });
@@ -652,7 +934,7 @@ describe('pubchem_search_compounds assay mode (#68)', () => {
       { cid: AID_1000_ACTIVE[1], properties: { Title: `Compound ${AID_1000_ACTIVE[1]}` } },
     ]);
     expect(requestKinds()).toEqual(['listkey active', 'page 0+2', 'properties']);
-    expect(textOf(result)).toContain(`Title: Compound ${AID_1000_ACTIVE[0]}`);
+    expect(textOf(result)).toContain(`Title: \`Compound ${AID_1000_ACTIVE[0]}\``);
   });
 
   it('does not echo activeOnly on other modes', async () => {

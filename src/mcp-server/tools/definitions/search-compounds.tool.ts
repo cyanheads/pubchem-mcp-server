@@ -6,8 +6,9 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
-import { COMPOUND_PROPERTIES, MAX_CID, MAX_INT32 } from '@/services/pubchem/types.js';
+import { MAX_CID, MAX_INT32 } from '@/services/pubchem/types.js';
 import { normalizeInchiKey } from './identifier-case.js';
 import {
   type CappedInput,
@@ -18,7 +19,8 @@ import {
   renderUnprocessed,
   splitBatch,
 } from './input-caps.js';
-import { clipEcho, inlineData, renderNotice } from './untrusted-text.js';
+import { dedupeProperties, propertyNameSchema } from './property-names.js';
+import { clipEcho, copyBack, literalData, renderNotice } from './untrusted-text.js';
 
 /** Identifiers looked up per call; identifiers past this are returned in unprocessed. */
 const IDENTIFIERS_CAP = 25;
@@ -44,7 +46,6 @@ const searchTypeEnum = z.enum([
 
 const identifierTypeEnum = z.enum(['name', 'smiles', 'inchi', 'inchikey']);
 const queryTypeEnum = z.enum(['smiles', 'cid']);
-const propertyEnum = z.enum(COMPOUND_PROPERTIES as unknown as [string, ...string[]]);
 
 type BoundedSearchType = 'formula' | 'substructure' | 'superstructure' | 'similarity';
 
@@ -195,7 +196,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         `Maximum CIDs to return per page. The per-call cap is ${MAX_RESULTS_CAP}: a larger value (up to ${INPUT_CEILING}) returns a page of ${MAX_RESULTS_CAP} and is reported in cappedInputs. Use offset to reach matches past this page. Default: 20.`,
       ),
     properties: z
-      .array(propertyEnum)
+      .array(propertyNameSchema)
       .optional()
       .describe(
         'Optional: fetch these properties for each result, avoiding a follow-up details call. E.g. ["MolecularFormula", "MolecularWeight", "CanonicalSMILES"].',
@@ -215,7 +216,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
               .record(z.string(), z.unknown())
               .optional()
               .describe(
-                'Compound properties keyed by name (echoes input.properties; only present when requested).',
+                'Compound properties keyed by name (echoes input.properties; only present when requested). A property requested under its current PubChem name is keyed by the older one: SMILES as IsomericSMILES, ConnectivitySMILES as CanonicalSMILES.',
               ),
           })
           .describe('Matching compound entry.'),
@@ -380,11 +381,17 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     // order the schema declares them.
     let unprocessed: string[] = [];
     let identifiers: string[] | undefined;
-    if (input.searchType === 'identifier' && input.identifiers) {
+    // Identifier mode reads a non-blank query as its one identifier when identifiers is absent
+    // (#90) — never split, since names carry commas.
+    const queryIdentifier =
+      searchType === 'identifier' && !input.identifiers && input.query?.trim()
+        ? input.query
+        : undefined;
+    const requested =
+      input.identifiers ?? (queryIdentifier === undefined ? undefined : [queryIdentifier]);
+    if (searchType === 'identifier' && requested) {
       const normalized =
-        input.identifierType === 'inchikey'
-          ? input.identifiers.map(normalizeInchiKey)
-          : input.identifiers;
+        input.identifierType === 'inchikey' ? requested.map(normalizeInchiKey) : requested;
       ({ served: identifiers, unprocessed } = splitBatch(
         'identifiers',
         normalized,
@@ -417,7 +424,18 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       case 'identifier': {
         const { identifierType } = input;
         if (!identifierType || !identifiers) {
-          throw ctx.fail('missing_identifier_args');
+          throw queryIdentifier === undefined
+            ? ctx.fail('missing_identifier_args')
+            : ctx.fail('missing_identifier_args', undefined, {
+                recovery: {
+                  hint: `Set identifierType (name/smiles/inchi/inchikey) to the form of "${clipEcho(queryIdentifier)}", the identifier read from query.`,
+                },
+              });
+        }
+        if (queryIdentifier !== undefined) {
+          noticeParts.push(
+            `Read query "${clipEcho(queryIdentifier)}" as identifiers[0]; identifier mode takes its lookups in identifiers.`,
+          );
         }
         const lookup = (id: string): Promise<number[]> => {
           switch (identifierType) {
@@ -678,7 +696,11 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     // Optionally hydrate with properties
     let propsMap: Map<number, Record<string, unknown>> | undefined;
     if (input.properties && input.properties.length > 0 && pagedCids.length > 0) {
-      const rows = await client.getProperties(pagedCids, input.properties, ctx.signal);
+      const rows = await client.getProperties(
+        pagedCids,
+        dedupeProperties(input.properties),
+        ctx.signal,
+      );
       propsMap = new Map(rows.map((r) => [r.CID, r]));
     }
 
@@ -709,39 +731,40 @@ export const searchCompounds = tool('pubchem_search_compounds', {
   format(result) {
     const lines: string[] = [];
 
+    // Identifier echoes and string property values are code literals (#88); one holding a line
+    // break is a fenced block on lines of its own, so each label opens an unindented line — an
+    // indented line after a block would read as code.
     if (result.results.length === 0) {
       lines.push('No results.');
-    } else {
-      const hasProps = result.results.some((r) => r.properties);
-
-      if (hasProps) {
-        for (const r of result.results) {
-          const label = r.identifier
-            ? `CID ${r.cid} — ${inlineData(r.identifier)}`
-            : `CID ${r.cid}`;
-          lines.push(`**${label}**`);
-          if (r.properties) {
-            const entries = Object.entries(r.properties);
-            lines.push('  **Properties:**');
-            lines.push(entries.map(([k, v]) => `    ${k}: ${v}`).join('\n'));
-          }
-          lines.push('');
-        }
-      } else {
-        const items = result.results.map((r) =>
-          r.identifier ? `${r.cid} (${inlineData(r.identifier)})` : String(r.cid),
+    } else if (result.results.some((r) => r.properties)) {
+      for (const r of result.results) {
+        lines.push(
+          r.identifier === undefined
+            ? `**CID ${r.cid}**`
+            : `**CID ${r.cid}** — ${literalData(r.identifier)}`,
         );
-        lines.push(`CIDs: ${items.join(', ')}`);
+        if (r.properties) {
+          lines.push('**Properties:**');
+          for (const [key, value] of Object.entries(r.properties)) {
+            lines.push(`${escapeMarkdownInline(key)}: ${copyBack(value)}`);
+          }
+        }
+        lines.push('');
       }
+    } else {
+      const items = result.results.map((r) =>
+        r.identifier === undefined ? String(r.cid) : `${r.cid} (${literalData(r.identifier)})`,
+      );
+      lines.push(`CIDs: ${items.join(', ')}`);
     }
 
     if (result.unresolvedIdentifiers && result.unresolvedIdentifiers.length > 0) {
       lines.push(
-        `Unresolved identifiers (${result.unresolvedIdentifiers.length}): ${result.unresolvedIdentifiers.map(inlineData).join(', ')}`,
+        `Unresolved identifiers (${result.unresolvedIdentifiers.length}): ${result.unresolvedIdentifiers.map(literalData).join(', ')}`,
       );
     }
     if (result.unprocessed && result.unprocessed.length > 0) {
-      lines.push(renderUnprocessed(result.unprocessed.map(inlineData)));
+      lines.push(renderUnprocessed(result.unprocessed.map(literalData)));
     }
 
     return [{ type: 'text', text: lines.join('\n') }];

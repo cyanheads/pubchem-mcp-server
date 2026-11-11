@@ -7,6 +7,13 @@ import { JsonRpcErrorCode, notFound } from '@cyanheads/mcp-ts-core/errors';
 import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompound3dStructure } from '@/mcp-server/tools/definitions/get-compound-3d-structure.tool.js';
+import { readCommonMark } from '../../../helpers/commonmark.js';
+import {
+  asReadBack,
+  formatBlock,
+  ONE_LINE_FUZZ,
+  READ_BACK_FUZZ,
+} from '../../../helpers/read-back.js';
 
 const mockClient = {
   getSdf3d: vi.fn(),
@@ -150,6 +157,82 @@ describe('getCompound3dStructure format', () => {
   });
 });
 
+// ── Upstream text reads back as structuredContent carries it (#88) ────
+
+const SENTINEL = 'SENTINEL';
+
+describe('getCompound3dStructure renders upstream text as itself (#88)', () => {
+  it.each(READ_BACK_FUZZ)('reads an element holding %s back, adding no construct', (_l, value) => {
+    const render = (element: string) =>
+      (
+        getCompound3dStructure.format!({
+          cid: 2244,
+          atomCount: 2,
+          bondCount: 0,
+          atoms: [
+            { element, x: 1, y: 2, z: 3 },
+            { element: 'C', x: 0, y: 0, z: 0 },
+          ],
+        })[0] as { type: 'text'; text: string }
+      ).text;
+
+    expect(readCommonMark(render(value))).toBe(
+      readCommonMark(render(SENTINEL)).replaceAll(SENTINEL, () => asReadBack(value)),
+    );
+  });
+
+  /** The tool's content[] with conformer IDs `ids`, after asserting structuredContent holds them. */
+  async function renderConformers(ids: string[]) {
+    mockClient.getSdf3d.mockResolvedValueOnce(SDF);
+    mockClient.getConformerIds.mockResolvedValueOnce(ids);
+    const result = await runToolContract(getCompound3dStructure, {
+      cid: 2244,
+      includeAlternateConformerIds: true,
+    });
+    expect(result.structuredContent).toMatchObject({
+      conformerId: ids[0],
+      alternateConformerIds: ids.slice(1),
+    });
+    return formatBlock(result);
+  }
+
+  it.each(ONE_LINE_FUZZ)(
+    'renders conformer IDs holding %s verbatim in code spans',
+    async (_label, value) => {
+      const baselineRead = readCommonMark(await renderConformers([SENTINEL, SENTINEL]));
+      const text = await renderConformers([value, value]);
+
+      expect(baselineRead).toContain(`Default conformer: ⟨code_inline:${SENTINEL}⟩`);
+      expect(baselineRead).toContain(`Alternate conformers: ⟨code_inline:${SENTINEL}⟩`);
+      expect(readCommonMark(text)).toBe(baselineRead.replaceAll(SENTINEL, () => value));
+      expect(text).toContain(value);
+    },
+  );
+
+  it('fences a conformer ID holding a line break on lines of its own', async () => {
+    const read = readCommonMark(await renderConformers(['x\r\n# INJECTED', 'x\r\n# INJECTED']));
+
+    expect(read.split('⟨fence:x\n# INJECTED⟩')).toHaveLength(3);
+    expect(read.split('⟨heading_open⟩')).toHaveLength(2);
+  });
+
+  /** The SDF block's text as content[] carries it, after the call returns `sdf` as sent. */
+  async function readSdfBlock(sdf: string) {
+    mockClient.getSdf3d.mockResolvedValueOnce(sdf);
+    const result = await runToolContract(getCompound3dStructure, { cid: 2244, format: 'sdf' });
+    expect((result.structuredContent as { sdf: string }).sdf).toBe(sdf);
+    return readCommonMark(formatBlock(result)).match(/⟨fence:([\s\S]*)⟩/)?.[1];
+  }
+
+  it('reads an SDF record back byte for byte, its final newline included', async () => {
+    expect(await readSdfBlock(`${SDF}\n`)).toBe(`${SDF}\n`);
+  });
+
+  it('reads an SDF record without a final newline back as sent', async () => {
+    expect(await readSdfBlock(SDF)).toBe(SDF);
+  });
+});
+
 // A 3-header + counts + 600 atom lines + terminators SDF: > DEFAULT_SDF_LINE_CAP (500).
 const bigSdf = [
   'big',
@@ -234,6 +317,17 @@ describe('getCompound3dStructure — output controls (#28)', () => {
     const result = await getCompound3dStructure.handler(input, ctx);
 
     expect(result.sdf).toBe(bigSdf);
+    expect(getEnrichment(ctx).truncated).toBeUndefined();
+  });
+
+  it('leaves a record of exactly the line cap unchanged, its final newline included', async () => {
+    const atLineCap = `${bigSdf.split('\n').slice(0, 500).join('\n')}\n`;
+    mockClient.getSdf3d.mockResolvedValueOnce(atLineCap);
+    const ctx = createMockContext({ errors: getCompound3dStructure.errors });
+    const input = getCompound3dStructure.input.parse({ cid: 2244, format: 'sdf' });
+    const result = await getCompound3dStructure.handler(input, ctx);
+
+    expect(result.sdf).toBe(atLineCap);
     expect(getEnrichment(ctx).truncated).toBeUndefined();
   });
 

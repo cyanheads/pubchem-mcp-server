@@ -5,25 +5,26 @@
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import type {
   CompoundClassification,
   DrugLikenessAssessment,
   DrugLikenessRule,
 } from '@/services/pubchem/types.js';
-import { COMPOUND_PROPERTIES, DEFAULT_PROPERTIES, MAX_CID } from '@/services/pubchem/types.js';
+import { DEFAULT_PROPERTIES, MAX_CID } from '@/services/pubchem/types.js';
 import {
   type CappedInput,
   capPageSize,
   cappedInputsField,
   INPUT_CEILING,
+  readCids,
   renderCappedInputs,
   renderUnprocessed,
   splitBatch,
 } from './input-caps.js';
-import { inlineData, quoteData } from './untrusted-text.js';
-
-const propertyEnum = z.enum(COMPOUND_PROPERTIES as unknown as [string, ...string[]]);
+import { dedupeProperties, propertyNameSchema } from './property-names.js';
+import { copyBack, literalData, quoteData } from './untrusted-text.js';
 
 const drugLikenessRuleSchema = z.object({
   limit: z.number().describe('Rule threshold.'),
@@ -166,14 +167,12 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
   },
   input: z.object({
     cids: z
-      .array(z.number().int().min(1).max(MAX_CID))
-      .min(1)
-      .max(INPUT_CEILING)
+      .preprocess(readCids, z.array(z.number().int().min(1).max(MAX_CID)).min(1).max(INPUT_CEILING))
       .describe(
         `PubChem Compound IDs to fetch. The per-call cap is ${CIDS_CAP}: the first ${CIDS_CAP} are fetched, and any past that (up to ${INPUT_CEILING} in all) are returned in unprocessed, in input order, and reported in cappedInputs. Resolve from names/SMILES with pubchem_search_compounds.`,
       ),
     properties: z
-      .array(propertyEnum)
+      .array(propertyNameSchema)
       .optional()
       .describe(
         'Properties to retrieve. Defaults to a core set: MolecularFormula, MolecularWeight, IUPACName, CanonicalSMILES, IsomericSMILES, InChIKey, XLogP, TPSA, HBondDonorCount, HBondAcceptorCount, RotatableBondCount, HeavyAtomCount, Charge, Complexity.',
@@ -237,6 +236,8 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         `Include pharmacological classification: FDA Established Pharmacologic Classes, mechanisms of action, MeSH classes, and ATC codes. Fetched only for the first ${PUG_VIEW_CID_CAP} CIDs in the batch; remaining CIDs return without classification and are listed in the response's skippedCids.`,
       ),
   }),
+  // The single-CID tools take `cid`; a call carrying that key names one compound here too.
+  inputAliases: { cid: 'cids' },
   output: z.object({
     compounds: z
       .array(
@@ -251,7 +252,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
             properties: z
               .record(z.string(), z.unknown())
               .describe(
-                'Physicochemical properties keyed by name (echoes input.properties or the default core set; drug-likeness inputs are appended automatically when includeDrugLikeness is true).',
+                'Physicochemical properties keyed by name: the requested properties, or the default core set when properties is omitted or empty; drug-likeness inputs are appended automatically when includeDrugLikeness is true. A property requested under its current PubChem name is keyed by the older one: SMILES as IsomericSMILES, ConnectivitySMILES as CanonicalSMILES.',
               ),
             descriptions: z
               .array(
@@ -382,7 +383,14 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
 
   async handler(input, ctx) {
     const client = getPubChemClient();
-    const requestedProps = input.properties ?? [...DEFAULT_PROPERTIES];
+    // An empty list reads as unset: the client sends PubChem no request without a property,
+    // so every CID would come back as not found.
+    const requestedProps = input.properties?.length ? input.properties : DEFAULT_PROPERTIES;
+    // Each property named once, drug-likeness inputs included: `SMILES` and `IsomericSMILES`
+    // both read as `IsomericSMILES`.
+    const props = dedupeProperties(
+      input.includeDrugLikeness ? [...requestedProps, ...DRUG_LIKENESS_PROPS] : requestedProps,
+    );
 
     // Clamp in schema order so cappedInputs lists inputs as declared. A page size is clamped
     // (and reported) only when its list is fetched — otherwise it has no effect.
@@ -394,14 +402,6 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
     const maxSynonyms = input.includeSynonyms
       ? capPageSize('maxSynonyms', input.maxSynonyms, MAX_SYNONYMS_CAP, capped)
       : input.maxSynonyms;
-
-    // Ensure drug-likeness properties are fetched when needed
-    let props = requestedProps;
-    if (input.includeDrugLikeness) {
-      const propsSet = new Set(requestedProps);
-      const missing = DRUG_LIKENESS_PROPS.filter((p) => !propsSet.has(p));
-      if (missing.length > 0) props = [...requestedProps, ...missing];
-    }
 
     // Batch property fetch
     const propertyRows = await client.getProperties(cids, props, ctx.signal);
@@ -584,39 +584,39 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         continue;
       }
 
-      const p = c.properties as Record<string, unknown>;
-      const name = (p.IUPACName as string) ?? (p.Title as string) ?? '';
-      const header = name
-        ? `## CID ${c.cid} — ${inlineData(name)} (found)`
-        : `## CID ${c.cid} (found)`;
-      blocks.push(header);
+      // The heading holds the CID alone: a name can carry a line break, which ends a heading.
+      blocks.push(`## CID ${c.cid} (found)`);
 
-      const lines: string[] = ['**Properties:**'];
+      const p = c.properties;
+      const lines: string[] = [];
+      if (p.Title) lines.push(`**Title:** ${copyBack(p.Title)}`);
+      if (p.IUPACName) lines.push(`**IUPAC Name:** ${copyBack(p.IUPACName)}`);
+      lines.push('**Properties:**');
 
       // Key identifiers
-      if (p.MolecularFormula) lines.push(`**Formula:** ${p.MolecularFormula}`);
-      const mw = p.MolecularWeight;
-      if (mw != null) lines.push(`**MW:** ${mw} g/mol`);
-      if (p.CanonicalSMILES) lines.push(`**SMILES:** ${p.CanonicalSMILES}`);
+      if (p.MolecularFormula) lines.push(`**Formula:** ${copyBack(p.MolecularFormula)}`);
+      if (p.MolecularWeight != null) lines.push(`**MW:** ${plain(p.MolecularWeight)} g/mol`);
+      // Labelled "Canonical": PubChem now calls the stereo form plain "SMILES".
+      if (p.CanonicalSMILES) lines.push(`**Canonical SMILES:** ${copyBack(p.CanonicalSMILES)}`);
       if (p.IsomericSMILES && p.IsomericSMILES !== p.CanonicalSMILES) {
-        lines.push(`**Isomeric SMILES:** ${p.IsomericSMILES}`);
+        lines.push(`**Isomeric SMILES:** ${copyBack(p.IsomericSMILES)}`);
       }
-      if (p.InChIKey) lines.push(`**InChIKey:** ${p.InChIKey}`);
+      if (p.InChIKey) lines.push(`**InChIKey:** ${copyBack(p.InChIKey)}`);
 
       // Drug-likeness properties
       const drugProps: string[] = [];
-      if (p.XLogP != null) drugProps.push(`XLogP: ${p.XLogP}`);
-      if (p.TPSA != null) drugProps.push(`TPSA: ${p.TPSA}`);
-      if (p.Complexity != null) drugProps.push(`Complexity: ${p.Complexity}`);
+      if (p.XLogP != null) drugProps.push(`XLogP: ${plain(p.XLogP)}`);
+      if (p.TPSA != null) drugProps.push(`TPSA: ${plain(p.TPSA)}`);
+      if (p.Complexity != null) drugProps.push(`Complexity: ${plain(p.Complexity)}`);
       if (drugProps.length > 0) lines.push(`**Descriptors:** ${drugProps.join(' | ')}`);
 
       // Atom/bond counts
       const counts: string[] = [];
-      if (p.HBondDonorCount != null) counts.push(`HBD: ${p.HBondDonorCount}`);
-      if (p.HBondAcceptorCount != null) counts.push(`HBA: ${p.HBondAcceptorCount}`);
-      if (p.RotatableBondCount != null) counts.push(`Rotatable: ${p.RotatableBondCount}`);
-      if (p.HeavyAtomCount != null) counts.push(`Heavy: ${p.HeavyAtomCount}`);
-      if (p.Charge != null && p.Charge !== 0) counts.push(`Charge: ${p.Charge}`);
+      if (p.HBondDonorCount != null) counts.push(`HBD: ${plain(p.HBondDonorCount)}`);
+      if (p.HBondAcceptorCount != null) counts.push(`HBA: ${plain(p.HBondAcceptorCount)}`);
+      if (p.RotatableBondCount != null) counts.push(`Rotatable: ${plain(p.RotatableBondCount)}`);
+      if (p.HeavyAtomCount != null) counts.push(`Heavy: ${plain(p.HeavyAtomCount)}`);
+      if (p.Charge != null && p.Charge !== 0) counts.push(`Charge: ${plain(p.Charge)}`);
       if (counts.length > 0) lines.push(`**Counts:** ${counts.join(' | ')}`);
 
       // Remaining properties not already shown
@@ -639,7 +639,9 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       ]);
       const extra = Object.entries(p).filter(([k]) => !shown.has(k));
       if (extra.length > 0) {
-        lines.push(extra.map(([k, v]) => `**${k}:** ${v}`).join(' | '));
+        lines.push(
+          extra.map(([k, v]) => `**${escapeMarkdownInline(k)}:** ${copyBack(v)}`).join(' | '),
+        );
       }
 
       blocks.push(lines.join('\n'));
@@ -674,29 +676,39 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         const cls = c.classification;
         lines.length = 0;
         lines.push('\n**Classification:**');
-        if (cls.fdaClasses.length > 0) lines.push(`  FDA: ${cls.fdaClasses.join(', ')}`);
-        if (cls.fdaMechanisms.length > 0) lines.push(`  MoA: ${cls.fdaMechanisms.join(', ')}`);
+        if (cls.fdaClasses.length > 0) {
+          lines.push(listItem(0, `FDA: ${cls.fdaClasses.map(escapeMarkdownInline).join(', ')}`));
+        }
+        if (cls.fdaMechanisms.length > 0) {
+          lines.push(listItem(0, `MoA: ${cls.fdaMechanisms.map(escapeMarkdownInline).join(', ')}`));
+        }
         /**
          * MeSH classes render in full — structuredContent carries the whole list uncapped.
          * Each value is a multi-sentence scope note that routinely contains both "; " and
-         * ", ", so no inline separator can mark an entry boundary unambiguously. One entry
-         * per line instead: inlineData collapses embedded newlines, so a value cannot forge
-         * a bullet of its own and the line break is an unforgeable entry boundary.
+         * ", ", so no inline separator can mark an entry boundary unambiguously. One list
+         * item per class instead: the escaper turns a line break inside a class into a hard
+         * break within its own item and escapes a list marker opening a line, so a value
+         * cannot forge an item of its own and the item boundary is unforgeable.
          */
         if (cls.meshClasses.length > 0) {
-          lines.push('  MeSH:');
-          for (const meshClass of cls.meshClasses) lines.push(`    - ${inlineData(meshClass)}`);
+          lines.push('- MeSH:');
+          for (const meshClass of cls.meshClasses) {
+            lines.push(listItem(2, escapeMarkdownInline(meshClass)));
+          }
         }
-        /** One code per line, its hierarchy top-down: WHO level names carry commas
+        /** One list item per code, its hierarchy top-down: WHO level names carry commas
          * ("Systemic hormonal preparations, excl. sex hormones and insulins"). */
         if (cls.atcCodes.length > 0) {
-          lines.push('  ATC:');
+          lines.push('- ATC:');
           for (const atc of cls.atcCodes) {
             const path = [...atc.levels, atc]
               .filter((level) => level.description)
-              .map((level) => `${level.code} ${inlineData(level.description)}`)
+              .map(
+                (level) =>
+                  `${escapeMarkdownInline(level.code)} ${escapeMarkdownInline(level.description)}`,
+              )
               .join(' > ');
-            lines.push(`    - ${atc.code}${path ? `: ${path}` : ''}`);
+            lines.push(listItem(2, `${escapeMarkdownInline(atc.code)}${path ? `: ${path}` : ''}`));
           }
         }
         blocks.push(lines.join('\n'));
@@ -723,7 +735,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
           // Upstream free text — render the statement as a blockquote data block
           // so it reads as retrieved data, not server instructions.
           const label = d.source
-            ? `**Description (${inlineData(d.source)}):**`
+            ? `**Description (${escapeMarkdownInline(d.source)}):**`
             : '**Description:**';
           descLines.push(`${label}\n${quoteData(d.text)}`);
         }
@@ -746,14 +758,13 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         const more = total - c.synonyms.length;
         const suffix = more > 0 ? ` (+${more} more not on this page)` : '';
         /**
-         * Pipe-separated: CAS-style inverted names ("Benzoic acid, 2-(acetyloxy)-") carry
-         * their own ", ", which would split one synonym into two. " | " is this formatter's
-         * existing inline multi-value separator. A bare "|" does turn up in depositor
-         * synonyms as mangled Greek letters ("17|A-Oestradiol"), so the delimiter is the
-         * space-padded form; that exact sequence was absent from every synonym sampled,
-         * but unlike the MeSH line break it is a rare-collision separator, not a proof.
+         * One code literal per synonym, so the literal is the entry boundary: CAS-style
+         * inverted names ("Benzoic acid, 2-(acetyloxy)-") carry their own ", ", and a bare
+         * "|" turns up in depositor synonyms as a mangled Greek letter ("17|A-Oestradiol"),
+         * but neither can end a literal early. " | " between them is this formatter's
+         * inline multi-value separator.
          */
-        const syns = c.synonyms.map(inlineData).join(' | ');
+        const syns = c.synonyms.map(literalData).join(' | ');
         blocks.push(`\n**Synonyms** (${total} total): ${syns}${suffix}`);
       }
 
@@ -784,6 +795,20 @@ function listPage(
     largestTotal,
     nextOffset: offset + cap,
   };
+}
+
+/** A property value read rather than copied: a number as itself, a string escaped
+ * (PubChem sends MolecularWeight as one). */
+function plain(value: unknown): string {
+  return typeof value === 'string' ? escapeMarkdownInline(value) : String(value);
+}
+
+/** A bullet list item `indent` spaces in, holding `text` as {@link escapeMarkdownInline}
+ * renders it: each continuation line sits at the item's content column, so a line break in
+ * the text stays inside its item. */
+function listItem(indent: number, text: string): string {
+  const margin = ' '.repeat(indent);
+  return `${margin}- ${text.replaceAll('\n', `\n${margin}  `)}`;
 }
 
 function formatRules(rules: Array<[string, DrugLikenessRule]>): string {

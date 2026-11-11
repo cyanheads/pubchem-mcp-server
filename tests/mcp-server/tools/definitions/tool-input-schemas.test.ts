@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { allResourceDefinitions } from '@/mcp-server/resources/definitions/index.js';
 import { allToolDefinitions } from '@/mcp-server/tools/definitions/index.js';
+import { COMPOUND_PROPERTIES } from '@/services/pubchem/types.js';
 
 /** The input schema as `tools/list` advertises it: the framework hands the SDK the definition's
  * `input['~standard'].jsonSchema`, and the SDK renders it with `.input()` at draft-2020-12. */
@@ -242,6 +243,72 @@ describe('compound resource CID params carry the 32-bit upper bound (#59)', () =
       }
     },
   );
+});
+
+/** Fields a tool reads before its schema sees them (#91 `cids`, #92 `properties`), with the node
+ * each advertised on 0.8.0. A read in front of a field changes what a call may send, never what
+ * `tools/list` tells the model to send. */
+const fieldsReadBeforeTheSchema = [
+  [
+    'pubchem_get_compound_details',
+    'cids',
+    {
+      type: 'array',
+      minItems: 1,
+      maxItems: 1000,
+      items: { type: 'integer', minimum: 1, maximum: MAX_CID },
+      description:
+        'PubChem Compound IDs to fetch. The per-call cap is 100: the first 100 are fetched, and any past that (up to 1000 in all) are returned in unprocessed, in input order, and reported in cappedInputs. Resolve from names/SMILES with pubchem_search_compounds.',
+    },
+  ],
+  [
+    'pubchem_get_compound_safety',
+    'cids',
+    {
+      type: 'array',
+      minItems: 1,
+      maxItems: 1000,
+      items: { type: 'integer', minimum: 1, maximum: MAX_CID },
+      description:
+        'PubChem Compound IDs to fetch safety data for. The per-call cap is 25: the first 25 are looked up, and any past that (up to 1000 in all) are returned in unprocessed, in input order, and reported in cappedInputs. Resolve from names/SMILES with pubchem_search_compounds.',
+    },
+  ],
+] as const;
+
+/** The same, for nodes that must come back byte for byte — key order included. */
+const fieldsAdvertisedByteForByte = [
+  [
+    'pubchem_get_compound_details',
+    'properties',
+    {
+      description:
+        'Properties to retrieve. Defaults to a core set: MolecularFormula, MolecularWeight, IUPACName, CanonicalSMILES, IsomericSMILES, InChIKey, XLogP, TPSA, HBondDonorCount, HBondAcceptorCount, RotatableBondCount, HeavyAtomCount, Charge, Complexity.',
+      type: 'array',
+      items: { type: 'string', enum: [...COMPOUND_PROPERTIES] },
+    },
+  ],
+  [
+    'pubchem_search_compounds',
+    'properties',
+    {
+      description:
+        'Optional: fetch these properties for each result, avoiding a follow-up details call. E.g. ["MolecularFormula", "MolecularWeight", "CanonicalSMILES"].',
+      type: 'array',
+      items: { type: 'string', enum: [...COMPOUND_PROPERTIES] },
+    },
+  ],
+] as const;
+
+describe('fields read before the schema advertise their 0.8.0 node (#91, #92)', () => {
+  it.each(fieldsReadBeforeTheSchema)('%s %s, key order aside', (name, field, node) => {
+    const schema = advertisedInputSchema(toolByName.get(name)!);
+    expect(at(schema, `/properties/${field}`)).toEqual(node);
+  });
+
+  it.each(fieldsAdvertisedByteForByte)('%s %s, byte for byte', (name, field, node) => {
+    const schema = advertisedInputSchema(toolByName.get(name)!);
+    expect(JSON.stringify(at(schema, `/properties/${field}`))).toBe(JSON.stringify(node));
+  });
 });
 
 describe('resource template ID params (#51)', () => {

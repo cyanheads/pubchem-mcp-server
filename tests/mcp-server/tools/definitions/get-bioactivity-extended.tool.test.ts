@@ -518,7 +518,7 @@ describe('getBioactivity handler — assays naming several targets (#73)', () =>
 
     expect(aid(parsed, 1798182)).toHaveProperty('otherTargets');
     expect(block).toContain('IC50: 2.4 uM');
-    expect(block).toContain('Other target: GeneID:443551 — P05979 (Active)');
+    expect(block).toContain('Other target: GeneID:443551 — `P05979` (Active)');
     expect(block).toContain('IC50: 0.35 uM');
   });
 });
@@ -945,7 +945,7 @@ describe('getBioactivity assay type and PubMed IDs (#79)', () => {
       { aid: 3, assayType: 'Summary', pmids: [30000000] },
     ]);
     expect(text).toContain(
-      '**AID 1** — Assay 1 (Active)\n  Assay type: Confirmatory\n  PMIDs: 21366347, 15284455\n  Target: GeneID:5742 — P23219\n',
+      '**AID 1** — Assay 1 (Active)\n  Assay type: Confirmatory\n  PMIDs: 21366347, 15284455\n  Target: GeneID:5742 — `P23219`\n',
     );
     expect(text).toContain(
       '**AID 3** — Assay 3 (Active)\n  Assay type: Summary\n  PMIDs: 30000000\n',

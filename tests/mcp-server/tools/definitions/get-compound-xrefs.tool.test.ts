@@ -3,12 +3,15 @@
  * @module mcp-server/tools/definitions/get-compound-xrefs.test
  */
 
-import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundXrefs } from '@/mcp-server/tools/definitions/get-compound-xrefs.tool.js';
+import { readCommonMark } from '../../../helpers/commonmark.js';
+import { formatBlock, ONE_LINE_FUZZ } from '../../../helpers/read-back.js';
 
 const mockClient = {
   getXrefs: vi.fn(),
+  getHeadingXrefs: vi.fn(),
 };
 
 vi.mock('@/services/pubchem/pubchem-client.js', () => ({
@@ -113,5 +116,45 @@ describe('getCompoundXrefs format', () => {
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).toContain('None found');
+  });
+});
+
+// ── String IDs read back as structuredContent carries them (#88) ──────
+
+describe('getCompoundXrefs renders string IDs as code literals (#88)', () => {
+  const SENTINEL = 'SENTINEL';
+
+  /** Renders an RN list and a counted CAS list holding `id`, through the tool. */
+  async function render(id: string) {
+    mockClient.getXrefs.mockResolvedValueOnce([id, 1234]);
+    mockClient.getHeadingXrefs.mockResolvedValueOnce([{ id, sourceCount: 2 }]);
+    const result = await runToolContract(getCompoundXrefs, { cid: 2244, xrefTypes: ['RN', 'CAS'] });
+    expect(result.structuredContent).toMatchObject({
+      xrefs: [
+        { type: 'RN', ids: [id, 1234] },
+        { type: 'CAS', ids: [id], sourceCounts: [2] },
+      ],
+    });
+    return formatBlock(result);
+  }
+
+  it.each(ONE_LINE_FUZZ)(
+    'renders an ID holding %s verbatim in a code span, counted or not',
+    async (_label, value) => {
+      const baselineRead = readCommonMark(await render(SENTINEL));
+      const text = await render(value);
+
+      expect(baselineRead).toContain(`⟨code_inline:${SENTINEL}⟩, 1234`);
+      expect(baselineRead).toContain(`⟨code_inline:${SENTINEL}⟩ (2 source records)`);
+      expect(readCommonMark(text)).toBe(baselineRead.replaceAll(SENTINEL, () => value));
+      expect(text).toContain(value);
+    },
+  );
+
+  it('fences an ID holding a line break on lines of its own', async () => {
+    const read = readCommonMark(await render('x\r\n# INJECTED'));
+
+    expect(read.split('⟨fence:x\n# INJECTED⟩')).toHaveLength(3);
+    expect(read).not.toContain('⟨heading_open⟩');
   });
 });

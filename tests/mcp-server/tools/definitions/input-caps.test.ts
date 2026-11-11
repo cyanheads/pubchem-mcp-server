@@ -4,10 +4,12 @@
  * returns the rest as `unprocessed` in input order, and `cappedInputs` discloses the clamp on
  * both surfaces. Values at or under the cap behave as before, and values past the ceiling
  * still fail at the schema. Runs the real schema, handler, enrichment, and format() through
- * `runToolContract`, with the PubChem client stubbed at its method boundary.
+ * `runToolContract`, with the PubChem client stubbed at its method boundary. Also tables the
+ * shared `cids` reader (#91) once at its own seam.
  * @module tests/mcp-server/tools/definitions/input-caps.test
  */
 
+import { z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode, validationError } from '@cyanheads/mcp-ts-core/errors';
 import { runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,8 +19,10 @@ import { getCompoundInteractions } from '@/mcp-server/tools/definitions/get-comp
 import { getCompoundSafety } from '@/mcp-server/tools/definitions/get-compound-safety.tool.js';
 import { getCompoundXrefs } from '@/mcp-server/tools/definitions/get-compound-xrefs.tool.js';
 import { getSummary } from '@/mcp-server/tools/definitions/get-summary.tool.js';
+import { INPUT_CEILING, readCids } from '@/mcp-server/tools/definitions/input-caps.js';
 import { searchAssays } from '@/mcp-server/tools/definitions/search-assays.tool.js';
 import { searchCompounds } from '@/mcp-server/tools/definitions/search-compounds.tool.js';
+import { MAX_CID } from '@/services/pubchem/types.js';
 
 const mockClient = {
   getAssayCidPage: vi.fn(),
@@ -522,7 +526,7 @@ describe('pubchem_search_compounds identifiers (cap 25)', () => {
       'identifiers: requested 28, served 25 (the per-call cap); the remaining 3 are listed in unprocessed, in input order — pass them in a follow-up call.',
     );
     expect(text).toContain(
-      '**Unprocessed (3, past the per-call cap):** compound-3, compound-2, compound-1',
+      '**Unprocessed (3, past the per-call cap):** `compound-3`, `compound-2`, `compound-1`',
     );
   });
 
@@ -595,7 +599,7 @@ describe('pubchem_search_compounds identifiers (cap 25)', () => {
     expect(mockClient.searchByName).toHaveBeenCalledTimes(25);
   });
 
-  it('renders caller identifiers in content[] as inline data', async () => {
+  it('renders caller identifiers in content[] as code literals (#88)', async () => {
     const odd = 'x*y\n# HEADING';
     mockClient.searchByName.mockImplementation(async (name: string) =>
       name === 'a*b' ? [7] : name.startsWith('compound-') ? [Number(name.split('-')[1])] : [],
@@ -611,10 +615,13 @@ describe('pubchem_search_compounds identifiers (cap 25)', () => {
     expect(sc.unprocessed).toEqual([odd]);
     expect(sc.unresolvedIdentifiers).toEqual(['**none**']);
     const text = textOf(result);
-    expect(text).toContain('**Unprocessed (1, past the per-call cap):** x\\*y # HEADING');
-    expect(text).toContain('Unresolved identifiers (1): \\*\\*none\\*\\*');
-    expect(text).toContain('7 (a\\*b)');
-    expect(text).not.toMatch(/^# HEADING/m);
+    expect(text).toContain(
+      '**Unprocessed (1, past the per-call cap):** \n```\nx*y\n# HEADING\n```\n',
+    );
+    expect(text).toContain('Unresolved identifiers (1): `**none**`');
+    expect(text).toContain('7 (`a*b`)');
+    // The format block carries no escapes; the notice trailer after it is escaped prose.
+    expect((result.content[0] as { text: string }).text).not.toContain('\\');
   });
 });
 
@@ -668,5 +675,78 @@ describe('pubchem_get_summary identifiers (cap 10)', () => {
         identifiers: range(1001).map(String),
       }),
     );
+  });
+});
+
+// ── cids reader (#91) ────────────────────────────────────────────────────────
+
+describe('readCids', () => {
+  it.each<[string, unknown, unknown]>([
+    ['a lone integer', 2519, [2519]],
+    ['a lone numeric string', '2519', [2519]],
+    ['a padded numeric string', ' 2519 ', [2519]],
+    ['a lone zero, left to the element bound', 0, [0]],
+    ['a negative numeric string, left to the element bound', '-5', [-5]],
+    ['a lone fraction', 2519.5, 2519.5],
+    ['a decimal string', '1.0', '1.0'],
+    ['a zero-padded string', '01', '01'],
+    ['a negative-zero string', '-0', '-0'],
+    ['a fraction string', '2519.5', '2519.5'],
+    ['an empty string', '', ''],
+    ['a blank string', '   ', '   '],
+    ['a name', 'caffeine', 'caffeine'],
+    ['a joined list', '2519,702', '2519,702'],
+    ['a boolean', true, true],
+    ['null', null, null],
+    ['undefined', undefined, undefined],
+    ['an object', { cid: 2519 }, { cid: 2519 }],
+    ['an empty list', [], []],
+    [
+      'a mixed list',
+      [2519, '702', ' 3 ', '01', 2519.5, '1.0', 'caffeine'],
+      [2519, 702, 3, '01', 2519.5, '1.0', 'caffeine'],
+    ],
+    ['a nested list, its inner list unread', ['2519', ['702'], [703]], [2519, ['702'], [703]]],
+    ['nested non-list values', [{ cid: 1 }, null, true], [{ cid: 1 }, null, true]],
+  ])('reads %s', (_label, value, read) => {
+    expect(readCids(value)).toEqual(read);
+  });
+
+  /** The `cids` field both batch tools declare, with the reader in front. */
+  const cidsField = z.preprocess(
+    readCids,
+    z.array(z.number().int().min(1).max(MAX_CID)).min(1).max(INPUT_CEILING),
+  );
+
+  it.each<[unknown, number[]]>([
+    [2519, [2519]],
+    ['2519', [2519]],
+    [['2519'], [2519]],
+    [
+      [2519, '702'],
+      [2519, 702],
+    ],
+  ])('the wrapped field accepts %j as %j on the first parse', (value, parsed) => {
+    expect(cidsField.safeParse(value)).toEqual({ success: true, data: parsed });
+  });
+
+  it.each<[unknown, string, string]>([
+    ['1.0', '', 'invalid_type'],
+    ['caffeine', '', 'invalid_type'],
+    [2519.5, '', 'invalid_type'],
+    [0, '0', 'too_small'],
+    [[], '', 'too_small'],
+    [[0], '0', 'too_small'],
+    [[2519.5], '0', 'invalid_type'],
+    [['01'], '0', 'invalid_type'],
+    [['-0'], '0', 'invalid_type'],
+    [[''], '0', 'invalid_type'],
+    [range(INPUT_CEILING + 1), '', 'too_big'],
+  ])('the wrapped field rejects %j at path "%s" (%s)', (value, path, code) => {
+    const result = cidsField.safeParse(value);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => [issue.path.join('.'), issue.code])).toEqual([
+      [path, code],
+    ]);
   });
 });

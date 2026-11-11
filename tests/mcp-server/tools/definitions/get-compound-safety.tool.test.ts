@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs';
 import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundSafety } from '@/mcp-server/tools/definitions/get-compound-safety.tool.js';
+import { readCommonMark } from '../../../helpers/commonmark.js';
+import { asReadBack, formatBlock, READ_BACK_FUZZ } from '../../../helpers/read-back.js';
 
 const mockClient = {
   getSafetyData: vi.fn(),
@@ -156,6 +158,141 @@ describe('getCompoundSafety input validation', () => {
   });
 });
 
+// ── cid and a lone CID read as cids (#91) ─────────────────────────────
+
+type Rejection = {
+  error: { code: number; message: string; data: { recovery: { hint: string } } };
+};
+
+/** The rejection a schema failure returns, asserted as -32602 before the handler ran. */
+function rejectionOf(result: Awaited<ReturnType<typeof runToolContract>>): Rejection['error'] {
+  expect(result.isError).toBe(true);
+  const { error } = result.structuredContent as Rejection;
+  expect(error.code).toBe(-32602);
+  expect(mockClient.getSafetyData).not.toHaveBeenCalled();
+  return error;
+}
+
+const MESSAGE_PREFIX =
+  'Input validation error: Invalid arguments for tool pubchem_get_compound_safety: ';
+
+describe('getCompoundSafety reads cid and a lone CID as cids (#91)', () => {
+  beforeEach(() => {
+    mockClient.getSafetyData.mockResolvedValue({ ...found, ghs: { ...ghs, classifications: [] } });
+  });
+
+  it.each<[string, unknown]>([
+    ['cid as a number', { cid: 2519 }],
+    ['cid as a numeric string', { cid: '2519' }],
+    ['a lone CID', { cids: 2519 }],
+    ['a lone numeric-string CID', { cids: '2519' }],
+  ])('answers %s as it answers cids: [2519]', async (_label, input) => {
+    const expected = await runToolContract(getCompoundSafety, { cids: [2519] });
+    const result = await runToolContract(getCompoundSafety, input as never);
+
+    expect(result.isError).toBeFalsy();
+    expect(result).toEqual(expected);
+    expect(mockClient.getSafetyData.mock.calls.map(([cid]) => cid)).toEqual([2519, 2519]);
+  });
+
+  it('rejects a cid that spells no CID, naming the key it validated', async () => {
+    const error = rejectionOf(
+      await runToolContract(getCompoundSafety, { cid: 'caffeine' } as never),
+    );
+
+    expect(error.message).toBe(
+      `${MESSAGE_PREFIX}cids: Invalid input: expected array, received string`,
+    );
+    expect(error.data.recovery.hint).toMatch(/ Validated cid as cids\.$/);
+  });
+
+  it('rejects cid sent beside cids', async () => {
+    const error = rejectionOf(
+      await runToolContract(getCompoundSafety, { cid: 2519, cids: [702] } as never),
+    );
+
+    expect(error.data.recovery.hint).toContain(
+      'cid is an alias of cids; send one of them, not both.',
+    );
+  });
+
+  it.each<[unknown[], number[]]>([
+    [['2519'], [2519]],
+    [
+      [2519, '702'],
+      [2519, 702],
+    ],
+  ])('validates cids %j as %j on the first parse, with no argument repair', (sent, parsed) => {
+    expect(getCompoundSafety.input.safeParse({ cids: sent })).toEqual({
+      success: true,
+      data: { cids: parsed },
+    });
+  });
+
+  const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
+  const notANumber = [
+    'cids.0: Invalid input: expected number, received string',
+    'Send cids.0 as a number, not a string.',
+  ] as const;
+
+  it.each<[string, unknown[], string, string]>([
+    [
+      'an empty list',
+      [],
+      'cids: Too small: expected array to have >=1 items',
+      'cids: Too small: expected array to have >=1 items',
+    ],
+    [
+      '1,001 CIDs',
+      range(1001),
+      'cids: Too big: expected array to have <=1000 items',
+      'cids: Too big: expected array to have <=1000 items',
+    ],
+    [
+      'a zero',
+      [0],
+      'cids.0: Too small: expected number to be >=1',
+      'cids.0: Too small: expected number to be >=1',
+    ],
+    [
+      'a fraction',
+      [2519.5],
+      'cids.0: Invalid input: expected int, received number',
+      'Send cids.0 as an integer, not a fractional number.',
+    ],
+    ['a decimal string', ['1.0'], ...notANumber],
+    ['a zero-padded string', ['01'], ...notANumber],
+    ['a negative-zero string', ['-0'], ...notANumber],
+    ['an empty string', [''], ...notANumber],
+  ])('rejects %s with the message and hint it got before', async (_label, cids, issue, hint) => {
+    const error = rejectionOf(await runToolContract(getCompoundSafety, { cids } as never));
+
+    expect(error.message).toBe(`${MESSAGE_PREFIX}${issue}`);
+    expect(error.data.recovery.hint).toBe(hint);
+  });
+
+  it('advertises the input schema it advertised before', () => {
+    expect(
+      getCompoundSafety.input['~standard'].jsonSchema.input({ target: 'draft-2020-12' }),
+    ).toEqual({
+      $schema: 'https://json-schema.org/draft/2020-12/schema',
+      type: 'object',
+      properties: {
+        cids: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 1000,
+          items: { type: 'integer', minimum: 1, maximum: 2147483647 },
+          description:
+            'PubChem Compound IDs to fetch safety data for. The per-call cap is 25: the first 25 are looked up, and any past that (up to 1000 in all) are returned in unprocessed, in input order, and reported in cappedInputs. Resolve from names/SMILES with pubchem_search_compounds.',
+        },
+      },
+      required: ['cids'],
+      additionalProperties: false,
+    });
+  });
+});
+
 describe('getCompoundSafety format', () => {
   it('renders a per-CID GHS block and a no-data block', () => {
     const blocks = getCompoundSafety.format!({
@@ -257,6 +394,58 @@ describe('getCompoundSafety format', () => {
   });
 });
 
+// ── Upstream text reads back as structuredContent carries it (#88) ────
+
+/** A GHS lookup holding `v` in every string field format() renders. */
+function ghsHolding(v: string) {
+  return {
+    status: 'ok' as const,
+    ghs: {
+      signalWord: v,
+      pictograms: [v, v],
+      hazardStatements: [{ code: v, statement: v }],
+      precautionaryStatements: [{ code: v, statement: v, decoded: true }],
+      classifications: [
+        {
+          source: v,
+          sourceRecord: v,
+          signalWord: v,
+          pictograms: [v],
+          hazardCodes: [{ code: v, agreement: v }],
+          notifications: v,
+        },
+      ],
+      source: v,
+    },
+  };
+}
+
+describe('getCompoundSafety renders GHS text as itself (#88)', () => {
+  const SENTINEL = 'SENTINEL';
+
+  it.each(READ_BACK_FUZZ)(
+    'reads %s back at every site on both surfaces, adding no construct',
+    async (_label, value) => {
+      mockClient.getSafetyData
+        .mockResolvedValueOnce(ghsHolding(SENTINEL))
+        .mockResolvedValueOnce(ghsHolding(value));
+      const baseline = await runToolContract(getCompoundSafety, { cids: [702] });
+      const result = await runToolContract(getCompoundSafety, { cids: [702] });
+
+      const { source, ...ghs } = ghsHolding(value).ghs;
+      expect((result.structuredContent as { results: unknown[] }).results).toEqual([
+        { cid: 702, hasData: true, status: 'ok', ghs, source },
+      ]);
+      // The plain-word render read back, the value standing where the word stood: any construct
+      // the value opened, and any character it lost, shows as a difference.
+      const expected = readCommonMark(formatBlock(baseline)).replaceAll(SENTINEL, () =>
+        asReadBack(value),
+      );
+      expect(readCommonMark(formatBlock(result))).toBe(expected);
+    },
+  );
+});
+
 // ── Real parser over captured PubChem records ─────────────────────────
 
 const FIXTURES = new URL('../../../fixtures/', import.meta.url);
@@ -346,8 +535,8 @@ describe('getCompoundSafety over captured PubChem records', () => {
 
     const text = (result.content[0] as { type: 'text'; text: string }).text;
     expect(text).toContain('**Classifications by source (11):**');
-    expect(text).toContain(
-      '  - European Chemicals Agency (ECHA) — Ethanol (EC: 200-578-6): Danger · Flammable, Irritant · H225 (> 99.9%), H319 (37.7%) · Aggregated GHS information provided per 13886 reports by companies from 79 notifications to the ECHA C&L Inventory. Each notification may be associated with multiple companies.',
+    expect(readCommonMark(text)).toContain(
+      '⟨list_item_open⟩\n\nEuropean Chemicals Agency (ECHA) — Ethanol (EC: 200-578-6): Danger · Flammable, Irritant · H225 (> 99.9%), H319 (37.7%) · Aggregated GHS information provided per 13886 reports by companies from 79 notifications to the ECHA C&L Inventory. Each notification may be associated with multiple companies.\n\n⟨list_item_close⟩',
     );
     expect(text).toMatch(
       /NITE-CMC — Ethanol - FY2013 \(Revised classification\): Danger · [^\n]*H350/,

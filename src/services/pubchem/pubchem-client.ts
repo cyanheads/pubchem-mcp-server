@@ -58,6 +58,7 @@ import type {
   TargetGroup,
   XrefResponse,
 } from './types.js';
+import { PROPERTY_NAME_MAP } from './types.js';
 
 const isNotFound = (error: unknown): boolean =>
   error instanceof McpError && error.code === JsonRpcErrorCode.NotFound;
@@ -325,12 +326,15 @@ function exhaustedHttpFailure(
  * retry covers the body read as well as the exchange. */
 const UNREADABLE_BODY = 'PubChemUnreadableBody';
 
-/** A body read's failure as the attempt throws it. The framework already classifies a body
- * read the request's own clocks or the caller ended, as an `McpError`; anything else — a
- * `SyntaxError` from `JSON.parse`, the runtime's error for a dropped connection — is the body
- * itself failing, which is PubChem's side, never the caller's. */
+/** A body read's failure as the attempt throws it. A body read the request's own clocks or the
+ * caller ended keeps the framework's classification. Anything else is the body itself failing,
+ * which is PubChem's side, never the caller's: a `SyntaxError` from `JSON.parse`, or a stream
+ * that broke off mid-read, which the framework reports as a network error
+ * (`FetchNetworkErrorWrapper`) whether the connection dropped or the stream aborted on its own. */
 function bodyReadFailure(error: unknown): unknown {
-  if (error instanceof McpError) return error;
+  if (error instanceof McpError && error.data?.errorSource !== 'FetchNetworkErrorWrapper') {
+    return error;
+  }
   return serviceUnavailable(
     `PubChem response body could not be read: ${error instanceof Error ? error.message : String(error)}`,
     { errorSource: UNREADABLE_BODY },
@@ -357,20 +361,15 @@ function requestFailure(error: unknown): unknown {
     });
   }
   if (error.data?.errorSource === 'FetchNetworkErrorWrapper') {
-    return new McpError(
-      error.code,
-      'PubChem could not be reached (network error). Retry shortly.',
-      data,
-      { cause: error },
-    );
-  }
-  // An abort raised outside every signal the request carries — the runtime or the connection
-  // ending it. The framework reports any abort as RequestCancelled, but this one is not the
-  // caller's: fetchResponse rethrows the caller's own cancellation before reaching here.
-  if (error.data?.errorSource === 'FetchAborted') {
-    return serviceUnavailable('PubChem ended the request before answering. Retry shortly.', data, {
-      cause: error,
-    });
+    // The framework reports `fetch` rejecting with an AbortError that no signal the request
+    // carries raised as a network error too: the runtime or the connection ended it. A caller's
+    // own cancellation never reaches here — fetchResponse rethrows it first — and a body that
+    // broke off mid-read, abort or not, arrives as an unreadable body.
+    const message =
+      error.data.originalErrorName === 'AbortError'
+        ? 'PubChem ended the request before answering. Retry shortly.'
+        : 'PubChem could not be reached (network error). Retry shortly.';
+    return new McpError(error.code, message, data, { cause: error });
   }
   if (error.data?.errorSource === UNREADABLE_BODY) {
     return serviceUnavailable(
@@ -416,18 +415,13 @@ function logFailedRequest(
   );
 }
 
-/** PubChem returns different field names than the request parameter names for some properties.
- * Request IsomericSMILES → response key "SMILES" (includes stereochemistry).
- * Request CanonicalSMILES → response key "ConnectivitySMILES" (connectivity only). */
-const PROPERTY_NAME_MAP: Record<string, string> = {
-  SMILES: 'IsomericSMILES',
-  ConnectivitySMILES: 'CanonicalSMILES',
-};
-
+/** Keys a property row by this server's property names: PubChem answers a request for
+ * IsomericSMILES under "SMILES" and one for CanonicalSMILES under "ConnectivitySMILES"
+ * ({@link PROPERTY_NAME_MAP}). */
 function normalizePropertyNames<T extends Record<string, unknown>>(row: T): T {
   const result = {} as Record<string, unknown>;
   for (const [key, value] of Object.entries(row)) {
-    result[PROPERTY_NAME_MAP[key] ?? key] = value;
+    result[PROPERTY_NAME_MAP.get(key) ?? key] = value;
   }
   return result as T;
 }
@@ -1009,12 +1003,12 @@ export class PubChemClient {
    * with nothing left fails the request before it is sent. The body is read inside the attempt,
    * so a response that stalls after its headers is bounded too. One retry, after 1 s — or after
    * the `Retry-After` PubChem names, up to 30 s, when the budget still covers it — on a 5xx
-   * (except a rejected search query), a network error, an attempt timeout, or a body that could
-   * not be read; any other non-2xx fails at once, carrying PubChem's parsed fault on
-   * `data.fault` when the body states one. A failure with no HTTP status reaches the caller as
-   * {@link requestFailure} rebuilds it, with nothing of the request in it. A `sideLookup`
-   * request gets the lesser of the call's remaining budget and {@link SIDE_LOOKUP_MS}, and no
-   * retry.
+   * (except a rejected search query), a network error (an abort the caller did not make
+   * included), an attempt timeout, or a body that could not be read; any other non-2xx fails at
+   * once, carrying PubChem's parsed fault on `data.fault` when the body states one. A failure
+   * with no HTTP status reaches the caller as {@link requestFailure} rebuilds it, with nothing of
+   * the request in it. A `sideLookup` request gets the lesser of the call's remaining budget and
+   * {@link SIDE_LOOKUP_MS}, and no retry.
    *
    * `init.signal` is the caller's cancellation, and identifies the call whose budget the request
    * draws on. Once it aborts — queued for a slot, mid-fetch, mid-body, or in the backoff — the

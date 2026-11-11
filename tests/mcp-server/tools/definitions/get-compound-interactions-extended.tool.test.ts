@@ -558,12 +558,12 @@ describe('getCompoundInteractions — target entries on both surfaces (#78)', ()
     expect(text).toContain('**target** — 2 entries from 738 target(s) — truncated');
     expect(text).toContain('Next offset: 2');
     expect(text).toContain(
-      '- (target) **EGFR - epidermal growth factor receptor [Homo sapiens (human)] (GeneID:1956)** _(source: PubChem BioAssay)_',
+      '- (target) `EGFR - epidermal growth factor receptor [Homo sapiens (human)] (GeneID:1956)` _(source: PubChem BioAssay)_',
     );
     expect(text).toContain(
       '  > Active in 253 of 351 assays (Inactive 1, Inconclusive 4, Unspecified 93); most potent active: IC50 0.000029 uM (AID 1956454)',
     );
-    expect(text).toContain('- (target) **accession:WP_006493245 (group of 18 Gene IDs)**');
+    expect(text).toContain('- (target) `accession:WP_006493245 (group of 18 Gene IDs)`');
     expect(text).toContain('  > Active in 0 of 1 assay (Inactive 1)');
   });
 });

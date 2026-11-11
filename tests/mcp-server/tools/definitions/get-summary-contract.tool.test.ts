@@ -154,7 +154,7 @@ describe('pubchem_get_summary comma-joined identifiers (#66)', () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
       for (const url of requestedUrls()) expect(url).not.toMatch(/,|%2C/i);
       const text = textOf(result);
-      for (const id of ids) expect(text).toContain(`identifier: ${id}, found`);
+      for (const id of ids) expect(text).toContain(`**Identifier found:** ${id}\n`);
     },
   );
 
@@ -493,7 +493,7 @@ describe('pubchem_get_summary over-cap split (#66 with the per-call cap of 10)',
       cappedInputs: [{ input: 'identifiers', requested: 13, served: 10, unprocessed: 3 }],
     });
     const text = textOf(result);
-    expect(text).toContain('2010, 2011, 2012');
+    expect(text).toContain('`2010`, `2011`, `2012`');
     expect(text).toContain(
       'identifiers: requested 13, served 10 (the per-call cap); the remaining 3 are listed in unprocessed',
     );
@@ -620,7 +620,7 @@ describe('pubchem_get_summary protein pass-through (#66 regression)', () => {
 });
 
 describe('pubchem_get_summary frames caller text in content[]', () => {
-  it('renders a not-found protein identifier as inline data, not markdown', async () => {
+  it('renders a not-found protein identifier as a code literal, not markdown', async () => {
     fetchMock.mockImplementation(pubchemSummaries);
 
     const result = await runToolContract(getSummary, {
@@ -629,12 +629,14 @@ describe('pubchem_get_summary frames caller text in content[]', () => {
     });
 
     expect(rowsOf(result)).toEqual([{ identifier: 'X1\n# INJECTED **BOLD**', found: false }]);
-    const text = textOf(result);
-    expect(text).toContain('**Identifier X1 # INJECTED \\*\\*BOLD\\*\\*** — not found');
-    expect(text).not.toMatch(/^# INJECTED/m);
+    const read = readCommonMark(textOf(result));
+    expect(read).toContain(
+      '⟨strong⟩Identifier not found:⟨/strong⟩\n\n⟨fence:X1\n# INJECTED **BOLD**⟩',
+    );
+    expect(read).not.toMatch(/⟨heading_open⟩\n\n[^⟨]*INJECTED/);
   });
 
-  it('renders a found protein identifier as inline data', async () => {
+  it('renders a found protein identifier as a code literal', async () => {
     fetchMock.mockImplementation(pubchemSummaries);
 
     const result = await runToolContract(getSummary, {
@@ -642,7 +644,7 @@ describe('pubchem_get_summary frames caller text in content[]', () => {
       identifiers: ['P00533'],
     });
 
-    expect(textOf(result)).toContain('(identifier: P00533, found)');
+    expect(textOf(result)).toContain('**Identifier found:** `P00533`\n');
   });
 });
 

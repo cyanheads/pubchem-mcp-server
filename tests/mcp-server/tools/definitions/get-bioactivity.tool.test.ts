@@ -3,10 +3,17 @@
  * @module mcp-server/tools/definitions/get-bioactivity.test
  */
 
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBioactivity } from '@/mcp-server/tools/definitions/get-bioactivity.tool.js';
 import type { AssaySummary, BioactivityRow } from '@/services/pubchem/types.js';
+import { readCommonMark } from '../../../helpers/commonmark.js';
+import {
+  asReadBack,
+  formatBlock,
+  ONE_LINE_FUZZ,
+  READ_BACK_FUZZ,
+} from '../../../helpers/read-back.js';
 
 const mockClient = {
   getAssaySummary: vi.fn(),
@@ -278,7 +285,7 @@ describe('getBioactivity format', () => {
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
 
     expect(text).toContain(
-      '  IC50: 0.35 uM\n  Other target: GeneID:443551 — P05979 (Inactive)\n    IC50: 100 uM\n  Other target: not identified (Inconclusive)',
+      '  IC50: 0.35 uM\n  Other target: GeneID:443551 — `P05979` (Inactive)\n    IC50: 100 uM\n  Other target: not identified (Inconclusive)',
     );
   });
 
@@ -300,7 +307,7 @@ describe('getBioactivity format', () => {
         'Total assays: 2 | Active: 1 | Inactive: 1',
         '',
         '**AID 1000** — COX-2 inhibition (Active)',
-        '  Target: GeneID:5743 — P35354',
+        '  Target: GeneID:5743 — `P35354`',
         '  IC50: 0.35 uM',
         '  Other target: GeneID:5742 (Inactive)',
         '',
@@ -330,11 +337,12 @@ describe('getBioactivity format', () => {
         '**AID 1000** — COX-2 inhibition (Active)',
         '  Assay type: Confirmatory',
         '  PMIDs: 21366347, 15284455',
-        '  Target: GeneID:5743 — P35354',
+        '  Target: GeneID:5743 — `P35354`',
         '  IC50: 0.35 uM',
         '',
         '**AID 2000** — hERG binding (Inactive)',
-        '  Assay type: \\*\\*Other\\*\\* next',
+        '  Assay type: \\*\\*Other\\*\\*\\',
+        'next',
         '',
       ].join('\n'),
     );
@@ -372,6 +380,73 @@ describe('getBioactivity format', () => {
     expect(text).toContain('AID 1195');
     expect(text).not.toContain('Value: 0');
     expect(text).not.toContain('0 uM');
+  });
+});
+
+// ── Upstream text reads back as structuredContent carries it (#88) ────
+
+/** One multi-target assay row: `label` in every label and unit, `accession` on each target. */
+const rowHolding = (label: string, accession: string): BioactivityRow => ({
+  aid: 1000,
+  assayName: label,
+  assayType: label,
+  outcome: label,
+  targetAccession: accession,
+  targetGeneId: 5743,
+  activityValues: [{ name: label, value: 0.35, unit: label }],
+  otherTargets: [
+    { accession, outcome: label, activityValues: [{ name: label, value: 100, unit: label }] },
+  ],
+});
+
+describe('getBioactivity renders upstream text as itself (#88)', () => {
+  const SENTINEL = 'SENTINEL';
+
+  /** Renders `row` and a twin holding SENTINEL where `row` holds the value, through the tool. */
+  async function renderBoth(row: BioactivityRow, baseline: BioactivityRow) {
+    mockClient.getAssaySummary
+      .mockResolvedValueOnce(summary([baseline]))
+      .mockResolvedValueOnce(summary([row]));
+    const before = await runToolContract(getBioactivity, { cid: 2244 });
+    const result = await runToolContract(getBioactivity, { cid: 2244 });
+    expect((result.structuredContent as { results: unknown[] }).results).toEqual([row]);
+    return { baselineRead: readCommonMark(formatBlock(before)), text: formatBlock(result) };
+  }
+
+  it.each(READ_BACK_FUZZ)(
+    'reads %s back in every assay label, outcome, and unit, adding no construct',
+    async (_label, value) => {
+      const { baselineRead, text } = await renderBoth(
+        rowHolding(value, 'P35354'),
+        rowHolding(SENTINEL, 'P35354'),
+      );
+
+      expect(readCommonMark(text)).toBe(baselineRead.replaceAll(SENTINEL, () => asReadBack(value)));
+    },
+  );
+
+  it.each(ONE_LINE_FUZZ)(
+    'renders an accession holding %s as a code span holding it verbatim',
+    async (_label, value) => {
+      const { baselineRead, text } = await renderBoth(
+        rowHolding('IC50', value),
+        rowHolding('IC50', SENTINEL),
+      );
+
+      expect(baselineRead).toContain(`⟨code_inline:${SENTINEL}⟩`);
+      expect(readCommonMark(text)).toBe(baselineRead.replaceAll(SENTINEL, () => value));
+      // The text a reader copies is the accession itself, no escape added.
+      expect(text).toContain(value);
+    },
+  );
+
+  it('fences an accession holding a line break on lines of its own', async () => {
+    const value = 'x\r\n# INJECTED';
+    const { text } = await renderBoth(rowHolding('IC50', value), rowHolding('IC50', SENTINEL));
+    const read = readCommonMark(text);
+
+    expect(read.split('⟨fence:x\n# INJECTED⟩')).toHaveLength(3);
+    expect(read.split('⟨heading_open⟩')).toHaveLength(2);
   });
 });
 

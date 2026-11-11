@@ -570,8 +570,8 @@ describe('getCompoundXrefs — CAS and EC from PUG View (#77)', () => {
       ],
     });
     const text = contentText(result);
-    expect(text).toContain('64-17-5 (24 source records)');
-    expect(text).toContain('200-578-6 (1 source record)');
+    expect(text).toContain('`64-17-5` (24 source records)');
+    expect(text).toContain('`200-578-6` (1 source record)');
   });
 
   it('lists every distinct value most-attested first, each with its count', async () => {
@@ -590,7 +590,7 @@ describe('getCompoundXrefs — CAS and EC from PUG View (#77)', () => {
       ],
     });
     expect(contentText(result)).toContain(
-      '50-99-7 (11 source records), 2280-44-6 (4 source records), 54-17-1 (2 source records), 1227096-09-4 (1 source record)',
+      '`50-99-7` (11 source records), `2280-44-6` (4 source records), `54-17-1` (2 source records), `1227096-09-4` (1 source record)',
     );
   });
 
@@ -685,7 +685,7 @@ describe('getCompoundXrefs — CAS and EC from PUG View (#77)', () => {
     const [rn] = (result.structuredContent as { xrefs: Array<Record<string, unknown>> }).xrefs;
 
     expect(rn).not.toHaveProperty('sourceCounts');
-    expect(contentText(result)).toContain(ASPIRIN_RN.join(', '));
+    expect(contentText(result)).toContain(ASPIRIN_RN.map((id) => `\`${id}\``).join(', '));
   });
 });
 

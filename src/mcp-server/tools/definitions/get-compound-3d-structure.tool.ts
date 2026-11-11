@@ -5,10 +5,11 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { parseSdfV2000 } from '@/services/pubchem/sdf-parser.js';
 import { MAX_CID } from '@/services/pubchem/types.js';
-import { fencedData } from './untrusted-text.js';
+import { fencedData, literalData } from './untrusted-text.js';
 
 /**
  * Safe-default ceilings applied when the caller sets no explicit cap. Sized to
@@ -202,7 +203,9 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       out.bonds = parsed.bonds.slice(0, bondCap);
     } else {
       const sdfLines = sdf.split(/\r\n?|\n/);
-      if (input.includeRawSdf || sdfLines.length <= DEFAULT_SDF_LINE_CAP) {
+      // A final line ending ends the last line; it does not start one more.
+      const lineCount = sdfLines.at(-1) === '' ? sdfLines.length - 1 : sdfLines.length;
+      if (input.includeRawSdf || lineCount <= DEFAULT_SDF_LINE_CAP) {
         out.sdf = sdf;
       } else {
         out.sdf = sdfLines.slice(0, DEFAULT_SDF_LINE_CAP).join('\n');
@@ -259,15 +262,18 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       `Atoms: ${result.atomCount} | Bonds: ${result.bondCount}`,
     ];
 
-    if (result.conformerId) lines.push(`Default conformer: ${result.conformerId}`);
+    // Conformer IDs are PubChem identifiers an agent copies, so they render as code literals.
+    if (result.conformerId) lines.push(`Default conformer: ${literalData(result.conformerId)}`);
     if (result.alternateConformerIds && result.alternateConformerIds.length > 0) {
-      lines.push(`Alternate conformers: ${result.alternateConformerIds.join(', ')}`);
+      lines.push(
+        `Alternate conformers: ${result.alternateConformerIds.map(literalData).join(', ')}`,
+      );
     }
 
     if (result.atoms && result.atoms.length > 0) {
       lines.push('', '**Atoms** (element: x, y, z):');
       for (const a of result.atoms) {
-        lines.push(`  ${a.element}: ${a.x}, ${a.y}, ${a.z}`);
+        lines.push(`  ${escapeMarkdownInline(a.element)}: ${a.x}, ${a.y}, ${a.z}`);
       }
       if (result.atomCount > result.atoms.length) {
         lines.push(
@@ -289,9 +295,10 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
     }
 
     if (result.sdf) {
-      // fencedData lengthens the fence past any backtick run in the payload so a
-      // stray ``` in the SDF cannot break out of the code block.
-      lines.push('', '**SDF (V2000):**', fencedData(result.sdf.trimEnd()));
+      // Verbatim, final newline included, so the block reads back as the record
+      // structuredContent carries. fencedData lengthens the fence past any backtick run in the
+      // payload so a stray ``` in the SDF cannot break out of the code block.
+      lines.push('', '**SDF (V2000):**', fencedData(result.sdf));
     }
 
     return [{ type: 'text', text: lines.join('\n') }];

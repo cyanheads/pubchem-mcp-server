@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-0.8.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/pubchem-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.4.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/pubchem-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/pubchem-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.4.0-f472b6.svg?style=flat-square)](https://bun.sh/)
+[![Version](https://img.shields.io/badge/Version-0.8.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/users/cyanheads/packages/container/package/pubchem-mcp-server) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^2.4.0-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![npm](https://img.shields.io/npm/v/@cyanheads/pubchem-mcp-server?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@cyanheads/pubchem-mcp-server) [![TypeScript](https://img.shields.io/badge/TypeScript-^7.0.2-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-^1.4.4-f472b6.svg?style=flat-square)](https://bun.sh/)
 
 </div>
 
@@ -67,15 +67,16 @@ The server publishes an agent skill, [`pubchem-guide`](skills/pubchem-guide/SKIL
 
 ### `pubchem_search_compounds` <sub>tool</sub>
 
-- Six search strategies: identifier (`identifierType` + `identifiers`; name/SMILES/InChI/InChIKey, 25 per call, the rest returned in `unprocessed`), formula (`formula`, Hill notation, optional `allowOtherElements`), substructure/superstructure and 2D similarity (`query` + `queryType`; similarity threshold 70-100, default 90), or assay (`aid`; compounds the bioassay marked active, or every compound tested with `activeOnly: false`)
-- Up to 200 CIDs per page (default 20; a larger `maxResults` is served at 200 and reported in `cappedInputs`); `offset` pages identifier and assay searches to the end of their matches, and formula, substructure, superstructure, and similarity searches to 10,000 (deeper fails with `offset_ceiling_exceeded`). Optional `properties` saves a follow-up `pubchem_get_compound_details` call
+- Six search strategies: identifier (`identifierType` + `identifiers`; name/SMILES/InChI/InChIKey, 25 per call, the rest returned in `unprocessed`; a `query` sent without `identifiers` is read as the one identifier, with a notice), formula (`formula`, Hill notation, optional `allowOtherElements`), substructure/superstructure and 2D similarity (`query` + `queryType`; similarity threshold 70-100, default 90), or assay (`aid`; compounds the bioassay marked active, or every compound tested with `activeOnly: false`)
+- Up to 200 CIDs per page (default 20; a larger `maxResults` is served at 200 and reported in `cappedInputs`); `offset` pages identifier and assay searches to the end of their matches, and formula, substructure, superstructure, and similarity searches to 10,000 (deeper fails with `offset_ceiling_exceeded`). Optional `properties` saves a follow-up `pubchem_get_compound_details` call, and takes `SMILES` and `ConnectivitySMILES` as the details tool does
 - Reports `totalFound`, or a `totalFoundAtLeast` floor when an upstream search saturated, and `unresolvedIdentifiers` for inputs with no CID. Fails with `aid_not_found` for an unknown AID and `search_query_rejected` (with a hint) for a query PubChem cannot search
 
 ---
 
 ### `pubchem_get_compound_details` <sub>tool</sub>
 
-- Up to 100 CIDs per call (the rest returned in `unprocessed`); 27 available properties, defaulting to a core set of 14
+- Up to 100 CIDs per call (the rest returned in `unprocessed`); `cids` also takes a lone CID, numeric strings, or the key `cid`
+- 27 available properties, defaulting to a core set of 14 (an empty `properties` list reads as that set). PubChem's current names `SMILES` and `ConnectivitySMILES` are accepted and returned as `IsomericSMILES` and `CanonicalSMILES`
 - Optional descriptions (`descriptionOffset`/`maxDescriptions`, default 3, max 20) and classification (FDA, MeSH, ATC) cover the first 10 CIDs only, the rest listed in `skippedCids`. Optional synonyms (`synonymOffset`/`maxSynonyms`, default 20, max 100) and a Lipinski/Veber drug-likeness check cover every found CID
 - Per-CID `found: false` separates a nonexistent CID from a compound with no data
 
@@ -111,7 +112,7 @@ The server publishes an agent skill, [`pubchem-guide`](skills/pubchem-guide/SKIL
 
 ### `pubchem_get_compound_safety` <sub>tool</sub>
 
-- Up to 25 CIDs per call (the rest returned in `unprocessed`)
+- Up to 25 CIDs per call (the rest returned in `unprocessed`); `cids` also takes a lone CID, numeric strings, or the key `cid`
 - Returns the GHS signal word, pictograms, H-codes, and P-codes merged across sources, plus `classifications[]` with each source's own label; precautionary statements carry a `decoded` flag
 - Per-CID `status`: `ok`, `not_classified` (notifiers found no GHS hazard), `no_ghs_data` (no deposited classification), or `cid_not_found`, so a bad CID never reads as "no hazards on file"
 
@@ -291,7 +292,7 @@ MCP_TRANSPORT_TYPE=http MCP_HTTP_PORT=3010 bun run start:http
 
 ### Prerequisites
 
-- [Bun v1.4.0](https://bun.sh/) or higher (or Node.js v24+).
+- [Bun v1.4.4](https://bun.sh/) or higher (or Node.js v24+).
 - No API keys required — PubChem's API is freely accessible.
 
 ### Installation

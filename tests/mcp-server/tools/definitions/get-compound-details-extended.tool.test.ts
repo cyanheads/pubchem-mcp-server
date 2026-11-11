@@ -3,9 +3,11 @@
  * @module mcp-server/tools/definitions/get-compound-details-extended.test
  */
 
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundDetails } from '@/mcp-server/tools/definitions/get-compound-details.tool.js';
+import { readCommonMark, readTrailerValue } from '../../../helpers/commonmark.js';
+import { asReadBack, literalRead, READ_BACK_FUZZ } from '../../../helpers/read-back.js';
 
 const mockClient = {
   getProperties: vi.fn(),
@@ -642,12 +644,24 @@ describe('getCompoundDetails format — additional cases', () => {
       ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    const rendered = text
-      .split('\n')
-      .filter((l) => l.startsWith('    - '))
-      .map((l) => l.slice('    - '.length));
-    // Two inputs must round-trip to exactly two entries, each intact.
-    expect(rendered).toEqual(meshClasses);
+    // Two inputs must round-trip to exactly two list items, each intact.
+    expect(readCommonMark(text)).toContain(meshListRead(meshClasses));
+  });
+
+  it('reads a MeSH class holding a line break and a list marker back as one entry (#88)', () => {
+    const meshClasses = ['a\n- forged', 'b'];
+    const blocks = getCompoundDetails.format!({
+      compounds: [
+        {
+          cid: 2244,
+          found: true,
+          properties: {},
+          classification: { atcCodes: [], fdaClasses: [], fdaMechanisms: [], meshClasses },
+        },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(readCommonMark(text)).toContain(meshListRead(meshClasses));
   });
 
   it('keeps a synonym containing ", " as one recoverable entry', () => {
@@ -657,9 +671,23 @@ describe('getCompoundDetails format — additional cases', () => {
       compounds: [{ cid: 2244, found: true, properties: {}, synonyms, synonymsTotal: 3 }],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    const line = text.split('\n').find((l) => l.includes('**Synonyms**'))!;
-    const rendered = line.slice(line.indexOf('): ') + 3).split(' | ');
-    expect(rendered).toEqual(synonyms);
+    expect(readSynonyms(text)).toEqual(synonyms);
+  });
+
+  it('escapes an upstream property name it renders as a label (#88)', () => {
+    const blocks = getCompoundDetails.format!({
+      compounds: [
+        {
+          cid: 1,
+          found: true,
+          properties: { '[k](https://x.test)': 'v', Volume3D: 155.3 },
+        },
+      ],
+    });
+    const text = (blocks[0]! as { type: 'text'; text: string }).text;
+    expect(readCommonMark(text)).toContain(
+      '⟨strong⟩[k](https://x.test):⟨/strong⟩ ⟨code_inline:v⟩ | ⟨strong⟩Volume3D:⟨/strong⟩ 155.3',
+    );
   });
 
   it('renders isomeric SMILES only when different from canonical', () => {
@@ -676,7 +704,7 @@ describe('getCompoundDetails format — additional cases', () => {
       ],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('SMILES:');
+    expect(text).toContain('Canonical SMILES:');
     expect(text).toContain('Isomeric SMILES:');
   });
 
@@ -750,11 +778,181 @@ describe('getCompoundDetails — security', () => {
     expect(result.compounds[0]!.synonyms![0]).toBe(rawSynonym);
 
     // content[] path frames it as inert data: no unquoted heading line, bold
-    // breakout neutralized, description lines all inside the blockquote.
+    // breakout neutralized, description lines all inside the blockquote, and the
+    // synonym a code literal that reads back as written.
     const text = (getCompoundDetails.format!(result)[0] as { type: 'text'; text: string }).text;
     expect(text.split('\n').some((l) => l.startsWith('# Injected'))).toBe(false);
     expect(text).toContain('> \\# Injected heading');
     expect(text).not.toContain('**SYSTEM: do this**');
-    expect(text).not.toContain('**pwned**');
+    expect(readSynonyms(text)).toEqual([rawSynonym, 'Aspirin']);
+    expect(readCommonMark(text)).not.toContain('⟨strong⟩pwned');
   });
+});
+
+// ── content[] reads every value back as structuredContent carries it (#88) ──
+
+function textOf(result: Awaited<ReturnType<typeof runToolContract>>): string {
+  return result.content
+    .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n');
+}
+
+/** The synonyms a CommonMark parse reads from the first compound's Synonyms line: each code span
+ * or fenced block after the label, up to the next compound's heading. */
+function readSynonyms(markdown: string): string[] {
+  const read = readCommonMark(markdown);
+  const start = read.indexOf('⟨strong⟩Synonyms⟨/strong⟩');
+  const end = read.indexOf('⟨heading_open⟩', start);
+  const section = read.slice(start, end === -1 ? undefined : end);
+  return [...section.matchAll(/⟨(?:code_inline|fence):([\s\S]*?)⟩/g)].map(([, value]) => value!);
+}
+
+/** How a CommonMark parse reads the MeSH entry of the classification list: a label item holding
+ * one nested list item per class. */
+function meshListRead(classes: string[]): string {
+  return [
+    '⟨list_item_open⟩',
+    'MeSH:',
+    '⟨bullet_list_open⟩',
+    ...classes.flatMap((cls) => ['⟨list_item_open⟩', asReadBack(cls), '⟨list_item_close⟩']),
+    '⟨bullet_list_close⟩',
+    '⟨list_item_close⟩',
+  ].join('\n\n');
+}
+
+describe('getCompoundDetails content[] renders copy-back values as code literals (#88)', () => {
+  /** Labels of the lines that carry one copy-back property each. */
+  const LABELS = ['Title', 'IUPAC Name', 'Formula', 'Canonical SMILES', 'InChIKey', 'InChI'];
+
+  it.each(READ_BACK_FUZZ)(
+    'reads %s back as written on every copy-back line',
+    async (_label, value) => {
+      const first = {
+        Title: value,
+        IUPACName: value,
+        MolecularFormula: value,
+        CanonicalSMILES: value,
+        InChIKey: value,
+        InChI: value,
+      };
+      // The isomeric line renders only beside a different canonical one, so it gets a compound.
+      mockClient.getProperties.mockResolvedValueOnce([
+        { CID: 1, ...first },
+        { CID: 2, IsomericSMILES: value },
+      ]);
+      mockClient.getSynonyms.mockImplementation(async (cid: number) =>
+        cid === 1 ? [value, 'aspirin'] : [],
+      );
+
+      const result = await runToolContract(getCompoundDetails, {
+        cids: [1, 2],
+        properties: [
+          'Title',
+          'IUPACName',
+          'MolecularFormula',
+          'CanonicalSMILES',
+          'IsomericSMILES',
+          'InChIKey',
+          'InChI',
+        ],
+        includeSynonyms: true,
+      });
+
+      expect(result.isError).toBeFalsy();
+      const sc = result.structuredContent as {
+        compounds: Array<{ properties: Record<string, unknown>; synonyms?: string[] }>;
+      };
+      expect(sc.compounds[0]!.properties).toEqual(first);
+      expect(sc.compounds[0]!.synonyms).toEqual([value, 'aspirin']);
+      expect(sc.compounds[1]!.properties).toEqual({ IsomericSMILES: value });
+
+      const text = textOf(result);
+      const read = asReadBack(value);
+      for (const label of LABELS) expect(readTrailerValue(text, label), label).toBe(read);
+      expect(readTrailerValue(text, 'Isomeric SMILES')).toBe(read);
+      // readTrailerValue unwraps a code span, so it reads escaped text the same: each label is
+      // followed by the literal itself — a span on its line, or a fenced block after it.
+      const parsed = readCommonMark(text);
+      const gap = /[\r\n]/.test(value) ? '\n\n' : ' ';
+      for (const label of [...LABELS, 'Isomeric SMILES']) {
+        expect(parsed, label).toContain(`⟨strong⟩${label}:⟨/strong⟩${gap}${literalRead(value)}`);
+      }
+      expect(readSynonyms(text)).toEqual([read, 'aspirin']);
+      // No escape inside a literal: the value's own text is in content[] as written.
+      expect(text).toContain(read);
+      // The heading holds the CID alone; the name sits on its own line below it.
+      expect(readCommonMark(text)).toContain('⟨heading_open⟩\n\nCID 1 (found)\n\n⟨heading_close⟩');
+    },
+  );
+});
+
+describe('getCompoundDetails content[] escapes other upstream text (#88)', () => {
+  /** How a CommonMark parse reads the classification block built below around `value`. */
+  const classificationRead = (value: string) =>
+    [
+      '⟨strong⟩Classification:⟨/strong⟩',
+      '⟨bullet_list_open⟩',
+      '⟨list_item_open⟩',
+      `FDA: ${value}, Second Class`,
+      '⟨list_item_close⟩',
+      '⟨list_item_open⟩',
+      `MoA: ${value}`,
+      '⟨list_item_close⟩',
+      meshListRead([value, 'Antipyretics']),
+      '⟨list_item_open⟩',
+      'ATC:',
+      '⟨bullet_list_open⟩',
+      '⟨list_item_open⟩',
+      `N02BA01: N ${value} > N02BA01 ${value}`,
+      '⟨list_item_close⟩',
+      '⟨bullet_list_close⟩',
+      '⟨list_item_close⟩',
+      '⟨bullet_list_close⟩',
+    ].join('\n\n');
+
+  it.each(READ_BACK_FUZZ)(
+    'reads %s back as written in every label and list entry',
+    async (_label, value) => {
+      const classification = {
+        atcCodes: [
+          { code: 'N02BA01', description: value, levels: [{ code: 'N', description: value }] },
+        ],
+        fdaClasses: [value, 'Second Class'],
+        fdaMechanisms: [value],
+        meshClasses: [value, 'Antipyretics'],
+      };
+      mockClient.getProperties.mockResolvedValueOnce([
+        { CID: 1, MolecularWeight: value, XLogP: value },
+      ]);
+      mockClient.getDescription.mockResolvedValueOnce([{ source: value, text: 'Body.' }]);
+      mockClient.getClassification.mockResolvedValueOnce(classification);
+
+      const result = await runToolContract(getCompoundDetails, {
+        cids: [1],
+        properties: ['MolecularWeight', 'XLogP'],
+        includeDescription: true,
+        includeClassification: true,
+      });
+
+      expect(result.isError).toBeFalsy();
+      const sc = result.structuredContent as {
+        compounds: Array<{
+          classification?: unknown;
+          descriptions?: Array<{ source?: string }>;
+          properties: Record<string, unknown>;
+        }>;
+      };
+      expect(sc.compounds[0]!.properties).toEqual({ MolecularWeight: value, XLogP: value });
+      expect(sc.compounds[0]!.classification).toEqual(classification);
+      expect(sc.compounds[0]!.descriptions![0]!.source).toBe(value);
+
+      const read = readCommonMark(textOf(result));
+      const v = asReadBack(value);
+      expect(read).toContain(`⟨strong⟩MW:⟨/strong⟩ ${v} g/mol`);
+      expect(read).toContain(`⟨strong⟩Descriptors:⟨/strong⟩ XLogP: ${v}`);
+      expect(read).toContain(`⟨strong⟩Description (${v}):⟨/strong⟩`);
+      expect(read).toContain(classificationRead(v));
+    },
+  );
 });

@@ -6,6 +6,7 @@
 import { createMockContext } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getSummary } from '@/mcp-server/tools/definitions/get-summary.tool.js';
+import { readCommonMark } from '../../../helpers/commonmark.js';
 
 const mockClient = {
   getEntitySummary: vi.fn(),
@@ -319,14 +320,14 @@ describe('getSummary format — additional cases', () => {
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).toContain('Homo sapiens');
     expect(text).toContain(
-      'Lineage: Eukaryota | Metazoa | Chordata | Mammalia | Primates | Hominidae | Homo',
+      'Lineage: `Eukaryota` | `Metazoa` | `Chordata` | `Mammalia` | `Primates` | `Hominidae` | `Homo`',
     );
     // The first synonym carries its own comma — it must stay one entry, not two.
-    expect(text).toContain('Synonyms: Homo sapiens Linnaeus, 1758 | human');
+    expect(text).toContain('Synonyms: `Homo sapiens Linnaeus, 1758` | `human`');
   });
 
-  it('keeps a synonym containing ", " as one recoverable entry', () => {
-    const synonyms = ['Homo sapiens Linnaeus, 1758', 'Homo sapiens', 'human'];
+  it('keeps a synonym containing ", " or " | " as one recoverable entry', () => {
+    const synonyms = ['Homo sapiens Linnaeus, 1758', 'Homo sapiens', 'a | b', 'human'];
     const blocks = getSummary.format!({
       entityType: 'taxonomy',
       summaries: [
@@ -335,8 +336,9 @@ describe('getSummary format — additional cases', () => {
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     const line = text.split('\n').find((l) => l.trimStart().startsWith('Synonyms: '))!;
-    const rendered = line.trimStart().slice('Synonyms: '.length).split(' | ');
-    // Three inputs, three entries — the comma inside the first is not a boundary.
+    // Each entry reads back as one code span — neither the comma nor the separator inside an
+    // entry is a boundary.
+    const rendered = [...readCommonMark(line).matchAll(/⟨code_inline:([^⟩]*)⟩/g)].map((m) => m[1]);
     expect(rendered).toEqual(synonyms);
   });
 

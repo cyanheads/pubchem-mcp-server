@@ -2,7 +2,8 @@
  * @fileoverview Per-call caps on read-side workload inputs (ID batches and page sizes). A value
  * between the cap and the schema ceiling is served up to the cap instead of rejected; each clamp
  * is recorded so the tool can disclose it in its `cappedInputs` enrichment field, worded the same
- * way on every tool.
+ * way on every tool. Also the shared reader that accepts a lone CID or numeric-string CIDs on a
+ * `cids` batch.
  * @module mcp-server/tools/definitions/input-caps
  */
 
@@ -75,6 +76,29 @@ export function capPageSize(
   if (requested <= cap) return requested;
   capped.push({ input, requested, served: cap });
   return cap;
+}
+
+/**
+ * `z.preprocess` reader for a `cids` list. A lone CID becomes a one-element list, and every
+ * element gets the same read: an integer stays as sent, and a string becomes the integer it
+ * spells only when its trimmed text is that integer's decimal form (`String(Number(t)) === t`,
+ * the grammar of the framework's string-to-number repair), so `" 2519 "` reads as `2519` while
+ * `"1.0"`, `"01"`, `"-0"`, and `""` do not. Anything else passes through unchanged for the
+ * field's own schema to reject as before. Reading elements here keeps `["2519"]` from depending
+ * on an argument repair below the transform.
+ */
+export function readCids(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(readCid);
+  const cid = readCid(value);
+  return Number.isInteger(cid) ? [cid] : value;
+}
+
+/** One CID as {@link readCids} reads it. */
+function readCid(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  const number = Number(trimmed);
+  return Number.isInteger(number) && String(number) === trimmed ? number : value;
 }
 
 /** Splits an ID batch at `cap`: the first `cap` items are served, the rest are returned

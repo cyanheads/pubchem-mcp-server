@@ -338,6 +338,31 @@ describe('searchAssays caller-text framing (#74)', () => {
     expect(structuredOf(result).notice).toBe(notice);
     expect(readBlockquotes(textOf(result))).toEqual([notice]);
   });
+
+  // #88: format() renders no caller text, so the trailer's echo and notice are the only sites.
+  it.each([
+    ['entity text', '&amp; &#42; &lt;'],
+    ['backticks', 'drop `code` here'],
+    ['trailing backslash', 'abc\\'],
+    ['SMILES bracket atom', 'C[C@@H](C(=O)O)N'],
+    ['underscore emphasis', '_x_'],
+    ['link', '[l](https://x.test)'],
+    ['CRLF setext heading', 'x\r\n==='],
+  ])('reads a targetQuery holding %s back on both trailer lines (#88)', async (_l, value) => {
+    mockClient.searchAssaysByTarget.mockResolvedValueOnce([]);
+
+    const result = await runToolContract(searchAssays, {
+      targetType: 'proteinname',
+      targetQuery: value,
+    });
+
+    const { targetQuery, notice } = structuredOf(result);
+    expect(targetQuery).toBe(value);
+    const text = textOf(result);
+    expect(readTrailerValue(text, 'targetQuery')).toBe(value.replace(/\r\n?/g, '\n'));
+    expect(readBlockquotes(text)).toEqual([notice?.replace(/\r\n?/g, '\n')]);
+    expect((result.content[0] as { text: string }).text).toBe('No assays returned.');
+  });
 });
 
 describe('searchAssays rejected target query, through the real client (#81)', () => {

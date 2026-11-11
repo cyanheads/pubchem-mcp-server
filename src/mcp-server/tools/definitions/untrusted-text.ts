@@ -1,50 +1,56 @@
 /**
- * @fileoverview Framing helpers that render upstream-controlled free text and caller-supplied echoes as
- * clearly-delimited DATA in MCP `content[]` output. PubChem descriptions,
- * summaries, interaction statements, synonyms, and assay/GHS text are relayed
- * verbatim into the model's context; rendered as bare prose they blur the
- * boundary between server-authored instructions and retrieved data and can
- * inject markdown structure. These helpers keep that boundary explicit and
- * neutralize markdown-structure injection. `structuredContent` always carries
- * the raw value — this only shapes the human/LLM text-rendering surface.
+ * @fileoverview Renders text this server did not author — PubChem's upstream values and
+ * caller-supplied echoes — into MCP `content[]` Markdown, so a CommonMark parse reads each value
+ * back exactly as `structuredContent` carries it and no value opens a construct the server did
+ * not write. The rendering follows what the reader does with the value:
+ * - {@link literalData}: a value an agent may send back to a `pubchem_*` tool (an identifier
+ *   echo, SMILES, InChI, InChIKey, formula, name, accession, xref ID) renders as a code literal,
+ *   so the text a reader copies carries no escape. {@link copyBack} applies it to a value that
+ *   may be a number.
+ * - Other upstream text in running prose goes through the framework's `escapeMarkdownInline` at
+ *   the call site.
+ * - {@link quoteData} (alias {@link renderNotice}): multi-line prose, and a notice that echoes
+ *   caller text, renders as one escaped blockquote marked as quoted data.
+ *
+ * {@link fencedData} holds a raw record verbatim and {@link clipEcho} bounds a caller echo.
+ * `structuredContent` always carries the raw value; these shape only the text surface.
  * @module mcp-server/tools/definitions/untrusted-text
  */
 
 import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 
 /**
- * Inline markdown delimiters an upstream value could use to break out of a
- * surrounding emphasis/code span (`**bold**`, `` `code` ``) or inject its own.
- * Deliberately narrow — ordinary chemistry punctuation (hyphens, parentheses,
- * brackets, commas, +/=/#) is left intact so legitimate names are not mangled.
- * Underscore is intentionally excluded: CommonMark treats intraword `_` as
- * literal, so it is a far weaker vector than `*`, and escaping it collides with
- * the format-parity linter's underscored sentinels.
+ * Render a value an agent may send back to a `pubchem_*` tool as a code literal that a
+ * CommonMark parse reads back exactly, with no escape in the text a reader copies — the
+ * rendering mcp-ts-core gives copy-back values in its enrichment trailer.
  *
- * The backslash is in the class because escaping is not idempotent against one
- * the payload already carries: `\*` escaped to `\\*` reads as a literal
- * backslash followed by a LIVE `*`, re-arming the delimiter the escape was meant
- * to defuse. Escaping it to `\\` first keeps the following `\*` inert. It also
- * matters on its own — a SMILES stereo bond (`C/C=C\C`) ends a line with a
- * backslash, which CommonMark reads as a hard line break.
+ * A one-line value is a code span, delimited one backtick longer than its longest backtick run
+ * and padded with a space when a backtick touches either end, or when the value starts and ends
+ * with a space around other text; the empty string renders as nothing. A value holding a line
+ * break is a fenced block on lines of its own — the result starts and ends with a line feed —
+ * with CR and CRLF read as LF, so it belongs where a block may stand: not in a heading, a table
+ * cell, or a list item unless the caller indents it. Linear in the value's length.
  */
-const INLINE_MARKDOWN = /[\\`*~]/g;
+export function literalData(value: string): string {
+  if (/[\r\n]/.test(value)) return `\n${fencedData(value.replace(/\r\n?/g, '\n'))}\n`;
+  if (value === '') return '';
+  const fence = '`'.repeat(longestBacktickRun(value) + 1);
+  const pad =
+    value.startsWith('`') ||
+    value.endsWith('`') ||
+    (value.startsWith(' ') && value.endsWith(' ') && /[^ ]/.test(value))
+      ? ' '
+      : '';
+  return `${fence}${pad}${value}${pad}${fence}`;
+}
 
 /**
- * Frame a single upstream value for safe inline interpolation into `content[]`
- * markdown. Collapses embedded newlines (so the value cannot start a new
- * markdown block) and escapes emphasis / inline-code delimiters. Proportionate
- * by design: the goal is a data boundary, not heavy escaping. Runs in time
- * linear in the value's length.
+ * A value an agent may send back to a `pubchem_*` tool, as it renders next to others of mixed
+ * type: a string as {@link literalData}, anything else as itself (PubChem sends some numeric
+ * properties as numbers and some as strings).
  */
-export function inlineData(value: string): string {
-  return (
-    value
-      // A whitespace run holding a line break becomes one space.
-      .replace(/\s+/g, (run) => (/[\r\n]/.test(run) ? ' ' : run))
-      .replace(INLINE_MARKDOWN, '\\$&')
-      .trim()
-  );
+export function copyBack(value: unknown): string {
+  return typeof value === 'string' ? literalData(value) : String(value);
 }
 
 /** Longest caller-supplied value, in code points, echoed into a notice or error message. */
@@ -65,49 +71,46 @@ export function clipEcho(value: string): string {
 }
 
 /**
- * `enrichmentTrailer` renderer for a notice that echoes caller text. The default
- * notice line is authored Markdown and stays live, so caller text in it could
- * inject structure; this renders the same blockquote — every line quoted, a
- * blank one as `>` — with each line through `escapeMarkdownInline`, so a
- * CommonMark parse of `content[]` reads the notice back as `structuredContent`
- * carries it.
+ * Frame upstream prose as a markdown blockquote — an explicit "quoted data" boundary distinct
+ * from server-authored instructions — that a CommonMark parse reads back as one paragraph holding
+ * exactly `text`, CR and CRLF read as LF. The text goes through `escapeMarkdownInline` whole, so
+ * no line can open a heading (setext included), list, quote, code block, link, or emphasis, and
+ * each line break is a hard break; every output line is then prefixed `> `. The escaper writes
+ * edge whitespace as references and puts a hard-break backslash on every line it continues, so
+ * no output line is blank or whitespace-only and the quote cannot end early; only the empty
+ * string yields an empty line, rendered as a bare `>`.
  */
-export function renderNotice(notice: string): string {
-  return notice
-    .split(/\r\n?|\n/)
-    .map((line) => (line === '' ? '>' : `> ${escapeMarkdownInline(line)}`))
+export function quoteData(text: string): string {
+  return escapeMarkdownInline(text)
+    .split('\n')
+    .map((line) => (line === '' ? '>' : `> ${line}`))
     .join('\n');
 }
 
 /**
- * Frame multi-line upstream prose as a markdown blockquote — an explicit
- * "quoted data" boundary distinct from server-authored instructions. Every
- * line (blank ones included) is prefixed with `>` so the payload cannot break
- * out of the quote; inline emphasis/code is escaped and a leading block marker
- * (heading, quote, bullet, ordered list) is defused so it cannot restructure
- * the surrounding document.
+ * `enrichmentTrailer` renderer for a notice that echoes caller text: {@link quoteData}. The
+ * default notice line is authored Markdown and stays live, so caller text in it could inject
+ * structure; quoted, the notice reads back as `structuredContent` carries it.
  */
-export function quoteData(text: string): string {
-  return text
-    .split(/\r\n?|\n/)
-    .map((rawLine) => {
-      const line = rawLine
-        .replace(INLINE_MARKDOWN, '\\$&')
-        .replace(/^(\s*)([#>+-])/, '$1\\$2')
-        .replace(/^(\s*\d{1,9})([.)])/, '$1\\$2');
-      return line.trim().length > 0 ? `> ${line}` : '>';
-    })
-    .join('\n');
-}
+export const renderNotice = quoteData;
 
 /**
  * Wrap raw upstream text in a fenced code block whose fence is guaranteed
  * longer than any backtick run inside the payload, so a stray ``` cannot close
  * the fence early and let following lines render as markdown. Preserves the
- * content verbatim (no character substitution) — used for raw V2000 SDF.
+ * content verbatim (no character substitution) — used for raw V2000 SDF and
+ * for a multi-line {@link literalData}.
  */
-export function fencedData(content: string, language = ''): string {
-  const longestRun = Math.max(0, ...[...content.matchAll(/`+/g)].map((m) => m[0].length));
-  const fence = '`'.repeat(Math.max(3, longestRun + 1));
-  return `${fence}${language}\n${content}\n${fence}`;
+export function fencedData(content: string): string {
+  const fence = '`'.repeat(Math.max(3, longestBacktickRun(content) + 1));
+  return `${fence}\n${content}\n${fence}`;
+}
+
+/** The length of the longest backtick run in `text`; 0 when it holds none. Iterated, not
+ * collected into one call's arguments: a text of mostly backticks holds as many runs as
+ * characters, past what a call can take. */
+function longestBacktickRun(text: string): number {
+  let longest = 0;
+  for (const [run] of text.matchAll(/`+/g)) longest = Math.max(longest, run.length);
+  return longest;
 }

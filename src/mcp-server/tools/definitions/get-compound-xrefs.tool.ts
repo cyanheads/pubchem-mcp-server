@@ -15,6 +15,7 @@ import {
   INPUT_CEILING,
   renderCappedInputs,
 } from './input-caps.js';
+import { copyBack } from './untrusted-text.js';
 
 /** IDs served per xref type per page; a larger maxPerType is clamped to this. */
 const MAX_PER_TYPE_CAP = 500;
@@ -260,12 +261,13 @@ export const getCompoundXrefs = tool('pubchem_get_compound_xrefs', {
       if (xref.ids.length > 0) {
         // Rendered in full: the handler already capped ids at maxPerType and the header
         // discloses that cap, so a second slice here would hide IDs structuredContent returned.
+        // A string ID (CAS, EC, patent, registry number) is one an agent copies, so it renders
+        // as a code literal; a numeric ID renders as itself.
         const counts = xref.sourceCounts;
+        const ids = xref.ids.map((id) => copyBack(id));
         const rendered = counts
-          ? xref.ids.map(
-              (id, i) => `${id} (${counts[i]} source record${counts[i] === 1 ? '' : 's'})`,
-            )
-          : xref.ids;
+          ? ids.map((id, i) => `${id} (${counts[i]} source record${counts[i] === 1 ? '' : 's'})`)
+          : ids;
         lines.push(`  ${rendered.join(', ')}`);
       } else {
         lines.push(xref.totalAvailable > 0 ? '  None on this page' : '  None found');

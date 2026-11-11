@@ -4,6 +4,7 @@
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { MAX_CID } from '@/services/pubchem/types.js';
 import {
@@ -13,7 +14,7 @@ import {
   INPUT_CEILING,
   renderCappedInputs,
 } from './input-caps.js';
-import { inlineData, quoteData } from './untrusted-text.js';
+import { literalData, quoteData } from './untrusted-text.js';
 
 /** Entries served per kind per page; a larger maxEntries is clamped to this. */
 const MAX_ENTRIES_CAP = 50;
@@ -318,8 +319,11 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
     }
 
     for (const e of result.entries) {
-      const partner = e.partner ? ` **${inlineData(e.partner)}**` : '';
-      lines.push(`- (${e.kind})${partner} _(source: ${inlineData(e.source)})_`);
+      // A partner is a drug name an agent searches with, or a target label carrying the ID
+      // pubchem_get_bioactivity filters on, so it renders as a code literal; one holding a line
+      // break is a fenced block, indented to the list item's content column to stay inside it.
+      const partner = e.partner ? ` ${literalData(e.partner).replaceAll('\n', '\n  ')}` : '';
+      lines.push(`- (${e.kind})${partner} _(source: ${escapeMarkdownInline(e.source)})_`);
       // The interaction statement is upstream free text — render it as an
       // indented blockquote so the data/instruction boundary is explicit.
       for (const q of quoteData(e.text).split('\n')) lines.push(`  ${q}`);

@@ -173,8 +173,8 @@ describe('identifier batch — not-found inputs (#29 path through the real clien
       totalFound: 1,
     });
     const text = textOf(result);
-    expect(text).toContain('2244 (aspirin)');
-    expect(text).toContain('Unresolved identifiers (1): notreal1zzz');
+    expect(text).toContain('2244 (`aspirin`)');
+    expect(text).toContain('Unresolved identifiers (1): `notreal1zzz`');
     expect(text).toContain('1 of 2 identifier(s) did not resolve to a CID: notreal1zzz');
   });
 });
@@ -198,8 +198,8 @@ describe('identifier batch — a SMILES PubChem cannot interpret (#55)', () => {
     expect(notice).toContain('SMILES syntax');
     expect(notice).not.toContain('did not resolve to a CID');
     const text = textOf(result);
-    expect(text).toContain('702 (CCO)');
-    expect(text).toContain('Unresolved identifiers (1): not-a-smiles');
+    expect(text).toContain('702 (`CCO`)');
+    expect(text).toContain('Unresolved identifiers (1): `not-a-smiles`');
     expect(text).toContain('could not interpret 1 of 2');
     expect(requestsFor('not-a-smiles')).toBe(1);
   });
@@ -312,7 +312,9 @@ describe('identifier batch — mixed outcomes across pages (#29, #55, #56)', () 
       'PubChem could not interpret 1 of 5 identifier(s) as SMILES: not-a-smiles',
     );
     expect(notice).toContain('Pass offset=1 for the next page');
-    expect(textOf(result)).toContain(`Unresolved identifiers (3): ${UNRESOLVED.join(', ')}`);
+    expect(textOf(result)).toContain(
+      `Unresolved identifiers (3): ${UNRESOLVED.map((id) => `\`${id}\``).join(', ')}`,
+    );
   });
 
   it('pages to the second match, hydrating it, and keeps reporting the unresolved inputs', async () => {
@@ -334,8 +336,8 @@ describe('identifier batch — mixed outcomes across pages (#29, #55, #56)', () 
     });
     expect(result.structuredContent).not.toHaveProperty('nextOffset');
     const text = textOf(result);
-    expect(text).toContain('CID 6334 — CCC');
-    expect(text).toContain('MolecularWeight: 44.10');
+    expect(text).toContain('**CID 6334** — `CCC`');
+    expect(text).toContain('MolecularWeight: `44.10`');
     expect(text).toContain('could not interpret 1 of 5');
   });
 
@@ -520,7 +522,7 @@ describe('identifier batch — full InChI strings (#80)', () => {
     });
     expect(result.structuredContent).not.toHaveProperty('unresolvedIdentifiers');
     expect(result.structuredContent).not.toHaveProperty('notice');
-    expect(textOf(result)).toContain(`CIDs: 2244 (${ASPIRIN})`);
+    expect(textOf(result)).toContain(`CIDs: 2244 (\`${ASPIRIN}\`)`);
     expect(inchiBodies()).toEqual([ASPIRIN]);
   });
 
@@ -563,7 +565,9 @@ describe('identifier batch — full InChI strings (#80)', () => {
     expect((result.structuredContent as { notice?: string }).notice).toBe(notice);
     const text = textOf(result);
     expect(text).toContain(notice);
-    expect(text).toContain(`Unresolved identifiers (2): ${ASPIRIN_LOWER}, ${ASPIRIN_TRUNCATED}`);
+    expect(text).toContain(
+      `Unresolved identifiers (2): \`${ASPIRIN_LOWER}\`, \`${ASPIRIN_TRUNCATED}\``,
+    );
     // No case normalization: the lowercased string went upstream as written.
     expect(inchiBodies()).toEqual([ASPIRIN, ASPIRIN_LOWER, ASPIRIN_TRUNCATED]);
   });
@@ -603,7 +607,7 @@ describe('identifier batch — full InChI strings (#80)', () => {
     expect((result.structuredContent as { notice?: string }).notice).toBe(notice);
     const text = textOf(result);
     expect(text).toContain(notice);
-    expect(text).toContain(`Unresolved identifiers (1): ${ALKANE_C123}`);
+    expect(text).toContain(`Unresolved identifiers (1): \`${ALKANE_C123}\``);
     expect(text).not.toMatch(/CIDs: [^\n]*\b0\b/);
     expect(inchiBodies()).toEqual([ASPIRIN, ALKANE_C123]);
   });

@@ -806,8 +806,9 @@ describe('PubChemClient.getInteractions records whether a retry can clear a fail
   it.each(kinds)(
     'marks %s retryable when fetch rejects with an abort the caller did not make',
     async (kind) => {
-      // An AbortError raised outside the caller's signal: fetchWithTimeout reports it as
-      // RequestCancelled (FetchAborted), though nobody withdrew the call.
+      // An AbortError raised outside every signal the request carries: fetchWithTimeout reports
+      // it as a network failure (ServiceUnavailable, originalErrorName AbortError), since
+      // nobody withdrew the call.
       fetchMock.mockImplementation(async () => {
         throw new DOMException('The operation was aborted.', 'AbortError');
       });

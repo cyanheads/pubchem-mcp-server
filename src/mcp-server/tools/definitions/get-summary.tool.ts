@@ -5,6 +5,7 @@
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { MAX_INT32 } from '@/services/pubchem/types.js';
 import { normalizeProteinAccession } from './identifier-case.js';
@@ -16,7 +17,7 @@ import {
   renderUnprocessed,
   splitBatch,
 } from './input-caps.js';
-import { clipEcho, inlineData, quoteData, renderNotice } from './untrusted-text.js';
+import { clipEcho, copyBack, literalData, quoteData, renderNotice } from './untrusted-text.js';
 
 const entityTypeEnum = z.enum(['assay', 'gene', 'protein', 'taxonomy']);
 
@@ -301,68 +302,73 @@ export const getSummary = tool('pubchem_get_summary', {
       : { entityType, summaries };
   },
 
+  /**
+   * Caller and upstream values render per #88: identifiers, copy-back fields, and array entries
+   * as code literals, other upstream strings escaped, the description as a quote. Each value
+   * follows its label, so a literal holding a line break — a fenced block — ends its line.
+   */
   format(result) {
     const lines: string[] = [`## ${capitalize(result.entityType)} Summaries`, ''];
 
     for (const s of result.summaries) {
+      const identifier = copyBack(s.identifier);
       if (s.invalid) {
-        lines.push(
-          `**Identifier ${inlineData(String(s.identifier))}** — invalid for this entityType, not looked up`,
-          '',
-        );
+        lines.push(`**Identifier invalid for this entityType, not looked up:** ${identifier}`, '');
       }
       if (!s.found || !s.data) {
-        if (!s.invalid) {
-          lines.push(`**Identifier ${inlineData(String(s.identifier))}** — not found`, '');
-        }
+        if (!s.invalid) lines.push(`**Identifier not found:** ${identifier}`, '');
         continue;
       }
 
-      const d = s.data;
-      const displayName = d.name ?? d.symbol ?? String(s.identifier);
-      lines.push(
-        `**${inlineData(displayName)}** (identifier: ${inlineData(String(s.identifier))}, found)`,
-      );
-
-      for (const [key, value] of Object.entries(d)) {
-        if (value == null || key === 'name') continue;
-        // description is upstream prose — frame it as a blockquote data block.
+      lines.push(`**Identifier found:** ${identifier}`);
+      for (const [key, value] of Object.entries(s.data)) {
+        if (value == null) continue;
+        const label = `  ${formatKey(key)}:`;
+        // description is upstream prose — framed as a blockquote, closed by a blank line so the
+        // next field cannot continue the quote's paragraph.
         if (key === 'description' && typeof value === 'string') {
-          lines.push(`  ${formatKey(key)}:`);
-          for (const q of quoteData(value).split('\n')) lines.push(`  ${q}`);
+          lines.push(
+            label,
+            ...quoteData(value)
+              .split('\n')
+              .map((q) => `  ${q}`),
+            '',
+          );
           continue;
         }
-        if (key === 'targets' && d.targets) {
+        if (key === 'targets' && s.data.targets) {
           // Objects, not strings — each renders as accession and name, pipe-separated like synonyms.
-          const items = d.targets.map(
+          const items = s.data.targets.map(
             (t) =>
-              `${inlineData(t.accession ?? 'accession not available')} — ${inlineData(t.name ?? 'name not available')}`,
+              `${t.accession === undefined ? 'accession not available' : literalData(t.accession)} — ${t.name === undefined ? 'name not available' : literalData(t.name)}`,
           );
-          lines.push(`  ${formatKey(key)}: ${items.join(' | ')}`);
+          lines.push(`${label} ${items.join(' | ')}`);
           continue;
         }
         if (Array.isArray(value)) {
           if (value.length === 0) continue;
           /**
-           * synonyms / lineage — upstream free text; escape each element inline.
-           * Rendered in full: structuredContent carries the whole array, so capping
-           * here would hide values the structured surface already returned.
-           * Pipe-separated because synonyms carry their own commas ("Homo sapiens
-           * Linnaeus, 1758"), which would split one entry into two.
+           * synonyms / lineage — each entry a code literal, so its boundary survives the read
+           * even when an entry holds the separator. Rendered in full: structuredContent carries
+           * the whole array, so capping here would hide values the structured surface already
+           * returned. Pipe-separated because synonyms carry their own commas ("Homo sapiens
+           * Linnaeus, 1758").
            */
-          const items = value.map((v) => inlineData(String(v)));
-          lines.push(`  ${formatKey(key)}: ${items.join(' | ')}`);
+          lines.push(`${label} ${value.map((v) => literalData(String(v))).join(' | ')}`);
         } else if (typeof value === 'string') {
-          lines.push(`  ${formatKey(key)}: ${inlineData(value)}`);
+          const rendered = isCopyBack(result.entityType, key)
+            ? literalData(value)
+            : escapeMarkdownInline(value);
+          lines.push(`${label} ${rendered}`);
         } else {
-          lines.push(`  ${formatKey(key)}: ${value}`);
+          lines.push(`${label} ${value}`);
         }
       }
       lines.push('');
     }
 
     if (result.unprocessed && result.unprocessed.length > 0) {
-      lines.push(renderUnprocessed(result.unprocessed.map(inlineData)));
+      lines.push(renderUnprocessed(result.unprocessed.map(literalData)));
     }
 
     return [{ type: 'text', text: lines.join('\n') }];
@@ -502,6 +508,18 @@ function extractSummary(entityType: EntityType, raw: Record<string, unknown>): E
       put(data, 'synonyms', toStrArr(raw.Synonym));
       return data;
   }
+}
+
+/**
+ * Whether a scalar summary field is one an agent may send back to a `pubchem_*` tool — a gene
+ * symbol, a gene or protein name (`pubchem_search_assays` genesymbol and proteinname targets), a
+ * protein accession — and so renders as a code literal. Assay names, source names, methods, and
+ * taxonomy names are labels, rendered as escaped text.
+ */
+function isCopyBack(entityType: string, key: string): boolean {
+  return (
+    key === 'symbol' || key === 'proteinAccession' || (key === 'name' && entityType !== 'assay')
+  );
 }
 
 function capitalize(s: string): string {

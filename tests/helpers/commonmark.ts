@@ -1,12 +1,14 @@
 /**
  * @fileoverview Reads `content[]` Markdown back through a real CommonMark parser
- * (`markdown-it`, GFM preset), so a test asserts what a client renders rather
+ * (`markdown-it`, default preset), so a test asserts what a client renders rather
  * than which escapes or code spans the framework wrote.
  * @module tests/helpers/commonmark
  */
 import MarkdownIt, { type Token } from 'markdown-it';
 
-const parser = new MarkdownIt('default');
+/** Raw HTML on, as CommonMark parses it: a tag left unescaped reads as an `html_inline` or
+ * `html_block` node instead of plain text. */
+const parser = new MarkdownIt('default', { html: true });
 
 /**
  * The text an inline run reads as, line breaks as `\n`, with every node that is

@@ -2,8 +2,8 @@
 
 **Server:** pubchem-mcp-server
 **Version:** 0.8.0
-**Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) `^0.13.18`
-**Engines:** Bun ≥1.4.0, Node ≥24.0.0
+**Framework:** [@cyanheads/mcp-ts-core](https://www.npmjs.com/package/@cyanheads/mcp-ts-core) `^0.13.22`
+**Engines:** Bun ≥1.4.4, Node ≥24.0.0
 **MCP SDK:** `@modelcontextprotocol/server` ^2.4.0
 **Zod:** ^4.6.7
 
@@ -54,8 +54,7 @@ import { clipEcho, renderNotice } from './untrusted-text.js';
 export const searchAssays = tool('pubchem_search_assays', {
   title: 'Search Assays',
   description:
-    'Find PubChem bioassays associated with a biological target. Search by gene symbol ' +
-    '(e.g. "EGFR"), protein name, NCBI Gene ID, or UniProt accession.',
+    'Find PubChem bioassays associated with a biological target. Search by gene symbol (e.g. "EGFR"), protein name, NCBI Gene ID, or UniProt accession.',
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
   input: z.object({
     targetType: z.enum(['genesymbol', 'proteinname', 'geneid', 'proteinaccession'])
@@ -210,7 +209,8 @@ src/
       get-summary.tool.ts               # Entity summaries (assays, genes, proteins, etc.)
       untrusted-text.ts                 # Framing helpers for upstream text and caller echoes in content[]
       identifier-case.ts                # Case normalization for InChIKeys and protein accessions
-      input-caps.ts                     # Per-call caps on ID batches and page sizes, cappedInputs disclosure
+      input-caps.ts                     # Per-call caps on ID batches and page sizes, cappedInputs disclosure, cids reader
+      property-names.ts                 # properties input element (PubChem's current names read as ours), dedupe
       index.ts                          # Barrel export
     resources/definitions/
       compound.resource.ts              # pubchem://compound/{cid}

@@ -4,17 +4,18 @@
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
+import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { MAX_CID, type SafetyLookup } from '@/services/pubchem/types.js';
 import {
   type CappedInput,
   cappedInputsField,
   INPUT_CEILING,
+  readCids,
   renderCappedInputs,
   renderUnprocessed,
   splitBatch,
 } from './input-caps.js';
-import { inlineData } from './untrusted-text.js';
 
 const classificationSchema = z
   .object({
@@ -121,22 +122,27 @@ const ghsSchema = z
   })
   .describe('GHS classification data.');
 
-/** One line per source classification: who, which record, then its own label. */
+/**
+ * One line per source classification: who, which record, then its own label. Every value is
+ * PubChem's text, escaped so it reads back as written; a value holding a line break continues
+ * the list item it sits in.
+ */
 function formatClassification(c: z.infer<typeof classificationSchema>): string {
-  const who = [c.source ?? 'Source not named', c.sourceRecord]
-    .filter((s): s is string => s !== undefined)
-    .map(inlineData)
-    .join(' — ');
+  const who = [c.source === undefined ? 'Source not named' : escapeMarkdownInline(c.source)];
+  if (c.sourceRecord !== undefined) who.push(escapeMarkdownInline(c.sourceRecord));
   const parts = [
     c.notClassified && 'Not Classified',
-    c.signalWord && inlineData(c.signalWord),
-    c.pictograms.map(inlineData).join(', '),
+    c.signalWord && escapeMarkdownInline(c.signalWord),
+    c.pictograms.map(escapeMarkdownInline).join(', '),
     c.hazardCodes
-      .map((h) => (h.agreement ? `${h.code} (${inlineData(h.agreement)})` : h.code))
+      .map((h) => {
+        const code = escapeMarkdownInline(h.code);
+        return h.agreement ? `${code} (${escapeMarkdownInline(h.agreement)})` : code;
+      })
       .join(', '),
-    c.notifications && inlineData(c.notifications),
+    c.notifications && escapeMarkdownInline(c.notifications),
   ];
-  return `${who}: ${parts.filter(Boolean).join(' · ')}`;
+  return `${who.join(' — ')}: ${parts.filter(Boolean).join(' · ')}`;
 }
 
 /** Fan-out cap: at most this many PUG View calls in flight at once (mirrors get_compound_details). */
@@ -156,13 +162,13 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
   },
   input: z.object({
     cids: z
-      .array(z.number().int().min(1).max(MAX_CID))
-      .min(1)
-      .max(INPUT_CEILING)
+      .preprocess(readCids, z.array(z.number().int().min(1).max(MAX_CID)).min(1).max(INPUT_CEILING))
       .describe(
         `PubChem Compound IDs to fetch safety data for. The per-call cap is ${CIDS_CAP}: the first ${CIDS_CAP} are looked up, and any past that (up to ${INPUT_CEILING} in all) are returned in unprocessed, in input order, and reported in cappedInputs. Resolve from names/SMILES with pubchem_search_compounds.`,
       ),
   }),
+  // The single-CID tools' key, and a lone CID (readCids), name the same one-compound batch.
+  inputAliases: { cid: 'cids' },
   output: z.object({
     results: z
       .array(
@@ -326,12 +332,17 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
       ];
       const g = r.ghs;
 
-      if (g.signalWord) lines.push(`**Signal Word:** ${g.signalWord}`);
-      if (g.pictograms.length > 0) lines.push(`**Pictograms:** ${g.pictograms.join(', ')}`);
+      // GHS codes, labels, and statements are PubChem's text: escaped, they read back as written.
+      if (g.signalWord) lines.push(`**Signal Word:** ${escapeMarkdownInline(g.signalWord)}`);
+      if (g.pictograms.length > 0) {
+        lines.push(`**Pictograms:** ${g.pictograms.map(escapeMarkdownInline).join(', ')}`);
+      }
 
       if (g.hazardStatements.length > 0) {
         lines.push('', '**Hazard Statements:**');
-        for (const h of g.hazardStatements) lines.push(`  ${h.code}: ${inlineData(h.statement)}`);
+        for (const h of g.hazardStatements) {
+          lines.push(`  ${escapeMarkdownInline(h.code)}: ${escapeMarkdownInline(h.statement)}`);
+        }
       }
 
       if (g.classifications.length > 0) {
@@ -345,13 +356,16 @@ export const getCompoundSafety = tool('pubchem_get_compound_safety', {
           '**Precautionary Statements:** (PubChem deposits bare P-codes; any not decoded below is a decoder gap or a code needing label-specific fill text, not an empty statement)',
         );
         for (const p of g.precautionaryStatements) {
+          const code = escapeMarkdownInline(p.code);
           lines.push(
-            p.decoded ? `  ${p.code}: ${inlineData(p.statement)}` : `  ${p.code}: (not decoded)`,
+            p.decoded
+              ? `  ${code}: ${escapeMarkdownInline(p.statement)}`
+              : `  ${code}: (not decoded)`,
           );
         }
       }
 
-      if (r.source) lines.push('', `*Source: ${inlineData(r.source)}*`);
+      if (r.source) lines.push('', `*Source: ${escapeMarkdownInline(r.source)}*`);
 
       blocks.push(lines.join('\n'), '');
     }

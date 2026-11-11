@@ -4,9 +4,11 @@
  */
 
 import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
-import { createMockContext, getEnrichment } from '@cyanheads/mcp-ts-core/testing';
+import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchCompounds } from '@/mcp-server/tools/definitions/search-compounds.tool.js';
+import { readCommonMark } from '../../../helpers/commonmark.js';
+import { expectReadBack, formatBlock, READ_BACK_FUZZ } from '../../../helpers/read-back.js';
 
 const mockClient = {
   searchByName: vi.fn(),
@@ -439,7 +441,7 @@ describe('searchCompounds format', () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.type).toBe('text');
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('2244 (aspirin)');
+    expect(text).toBe('CIDs: 2244 (`aspirin`), 3672 (`ibuprofen`)');
   });
 
   it('formats results with properties', () => {
@@ -447,8 +449,7 @@ describe('searchCompounds format', () => {
       results: [{ cid: 2244, properties: { MolecularFormula: 'C9H8O4' } }],
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(text).toContain('CID 2244');
-    expect(text).toContain('MolecularFormula: C9H8O4');
+    expect(text).toBe('**CID 2244**\n**Properties:**\nMolecularFormula: `C9H8O4`\n');
   });
 
   it('formats empty results', () => {
@@ -457,5 +458,89 @@ describe('searchCompounds format', () => {
     });
     const text = (blocks[0]! as { type: 'text'; text: string }).text;
     expect(text).toContain('No results');
+  });
+});
+
+describe('searchCompounds content[] reads caller and upstream values back (#88)', () => {
+  type Content = {
+    results: Array<{ cid: number; identifier?: string; properties?: Record<string, unknown> }>;
+    unresolvedIdentifiers?: string[];
+    unprocessed?: string[];
+  };
+  const fillers = Array.from({ length: 24 }, (_, i) => `compound-${i + 1}`);
+
+  it.each(READ_BACK_FUZZ)('reads an identifier echo holding %s back as sent', async (_l, value) => {
+    await expectReadBack(async (v) => {
+      mockClient.searchByName.mockResolvedValueOnce([2244]);
+      const result = await runToolContract(searchCompounds, {
+        searchType: 'identifier',
+        identifierType: 'name',
+        identifiers: [v],
+      });
+      expect((result.structuredContent as Content).results).toEqual([{ cid: 2244, identifier: v }]);
+      return formatBlock(result);
+    }, value);
+  });
+
+  it.each(READ_BACK_FUZZ)(
+    'reads an identifier echo and a property value holding %s back as sent',
+    async (_l, value) => {
+      await expectReadBack(async (v) => {
+        mockClient.searchByName.mockResolvedValueOnce([2244]);
+        mockClient.getProperties.mockResolvedValueOnce([
+          { CID: 2244, Title: v, MolecularWeight: 180.16 },
+        ]);
+        const result = await runToolContract(searchCompounds, {
+          searchType: 'identifier',
+          identifierType: 'name',
+          identifiers: [v],
+          properties: ['Title', 'MolecularWeight'],
+        });
+        expect((result.structuredContent as Content).results).toEqual([
+          { cid: 2244, identifier: v, properties: { Title: v, MolecularWeight: 180.16 } },
+        ]);
+        return formatBlock(result);
+      }, value);
+    },
+  );
+
+  it.each(READ_BACK_FUZZ)(
+    'reads an unresolved and an unprocessed identifier holding %s back as sent',
+    async (_l, value) => {
+      await expectReadBack(async (v) => {
+        mockClient.searchByName.mockImplementation(async (name: string) =>
+          name === v ? [] : [Number(name.split('-')[1])],
+        );
+        const result = await runToolContract(searchCompounds, {
+          searchType: 'identifier',
+          identifierType: 'name',
+          identifiers: [v, ...fillers, v],
+        });
+        const content = result.structuredContent as Content;
+        expect(content.unresolvedIdentifiers).toEqual([v]);
+        expect(content.unprocessed).toEqual([v]);
+        return formatBlock(result);
+      }, value);
+    },
+  );
+
+  it('escapes an upstream property name it renders as a label', async () => {
+    const properties = { '[k](https://x.test)': 'v', _x_: 2 };
+    mockClient.searchByName.mockResolvedValueOnce([2244]);
+    mockClient.getProperties.mockResolvedValueOnce([{ CID: 2244, ...properties }]);
+
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'identifier',
+      identifierType: 'name',
+      identifiers: ['aspirin'],
+      properties: ['Title'],
+    });
+
+    expect((result.structuredContent as Content).results).toEqual([
+      { cid: 2244, identifier: 'aspirin', properties },
+    ]);
+    expect(readCommonMark(formatBlock(result))).toContain(
+      '⟨strong⟩Properties:⟨/strong⟩\n[k](https://x.test): ⟨code_inline:v⟩\n_x_: 2',
+    );
   });
 });
