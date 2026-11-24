@@ -35,13 +35,13 @@ Chemical compounds and bioassays from PubChem. Search compounds by name, formula
 
 | Tool | Description |
 |:---|:---|
-| `pubchem_search_compounds` | Search for compounds by name, SMILES, InChI, InChIKey, formula, substructure, superstructure, or 2D similarity, or list the compounds a bioassay found active. |
+| `pubchem_search_compounds` | Search for compounds by name, SMILES, InChI, InChIKey, formula, substructure, superstructure, 2D similarity (each hit with its Tanimoto score), or accurate mass or molecular weight range, or list the compounds a bioassay found active. |
 | `pubchem_get_compound_details` | Get physicochemical properties, descriptions, synonyms, drug-likeness, and classification for compounds by CID. |
 | `pubchem_get_compound_image` | Fetch a 2D structure diagram (PNG) for a compound by CID. |
-| `pubchem_get_compound_3d_structure` | Fetch a 3D conformer (atomic coordinates and bonds) for a compound by CID, as parsed JSON or raw SDF. |
+| `pubchem_get_compound_3d_structure` | Fetch a 3D conformer (atomic coordinates and bonds) for a compound by CID, its default or a conformer you name, as parsed JSON or raw SDF. |
 | `pubchem_get_compound_xrefs` | Get external database cross-references (PubMed, patents, genes, CAS and EC numbers, etc.). |
 | `pubchem_get_compound_safety` | Get GHS hazard classification and safety data for one or more compounds by CID (batch). |
-| `pubchem_get_bioactivity` | Get a compound's bioactivity profile: assay results, targets, activity values, assay types, and cited PubMed IDs; filter by outcome, molecular target, or assay type. |
+| `pubchem_get_bioactivity` | Get a compound's bioactivity profile: assay results, targets, activity values, assay types, and cited PubMed IDs; filter by outcome, molecular target, assay type, or activity name, and rank by potency. |
 | `pubchem_get_compound_interactions` | Get a compound's drug-food interactions and the molecular targets its assays name, each with assay counts and the most potent active value. |
 | `pubchem_search_assays` | Find bioassays by biological target (gene symbol, protein, Gene ID, UniProt accession). |
 | `pubchem_get_summary` | Get summaries for PubChem entities: assays, genes, proteins, taxonomy. |
@@ -67,18 +67,19 @@ The server publishes an agent skill, [`pubchem-guide`](skills/pubchem-guide/SKIL
 
 ### `pubchem_search_compounds` <sub>tool</sub>
 
-- Six search strategies: identifier (`identifierType` + `identifiers`; name/SMILES/InChI/InChIKey, 25 per call, the rest returned in `unprocessed`; a `query` sent without `identifiers` is read as the one identifier, with a notice), formula (`formula`, Hill notation, optional `allowOtherElements`), substructure/superstructure and 2D similarity (`query` + `queryType`; similarity threshold 70-100, default 90), or assay (`aid`; compounds the bioassay marked active, or every compound tested with `activeOnly: false`)
-- Up to 200 CIDs per page (default 20; a larger `maxResults` is served at 200 and reported in `cappedInputs`); `offset` pages identifier and assay searches to the end of their matches, and formula, substructure, superstructure, and similarity searches to 10,000 (deeper fails with `offset_ceiling_exceeded`). Optional `properties` saves a follow-up `pubchem_get_compound_details` call, and takes `SMILES` and `ConnectivitySMILES` as the details tool does
-- Reports `totalFound`, or a `totalFoundAtLeast` floor when an upstream search saturated, and `unresolvedIdentifiers` for inputs with no CID. Fails with `aid_not_found` for an unknown AID and `search_query_rejected` (with a hint) for a query PubChem cannot search
+- Seven search strategies: identifier (`identifierType` + `identifiers`; name/SMILES/InChI/InChIKey, 25 per call, the rest returned in `unprocessed`; a `query` sent without `identifiers` is read as the one identifier, with a notice), formula (`formula`, Hill notation, optional `allowOtherElements`), substructure/superstructure and 2D similarity (`query` + `queryType`; similarity threshold 70-100, default 90), assay (`aid`; compounds the bioassay marked active, or every compound tested with `activeOnly: false`), or mass (`massType` of `monoisotopic_mass`, `exact_mass`, or `molecular_weight`, with an inclusive `massMin`/`massMax` window in daltons; `exact_mass` differs from `monoisotopic_mass` for Cl- and Br-rich compounds and molecules of about 90 or more carbons). Mass matches come in PubChem's order, not ranked by closeness to a target mass
+- Each similarity hit carries `similarity`, PubChem's own Tanimoto score (0 to 1, three decimals) from the 881-bit `Fingerprint2D` fingerprint. Hits are not ranked by score, so raise `threshold` to narrow to closer analogs; a score of 1 means a fingerprint identical to the query's, not an identical compound (isotopologues and some positional isomers score 1). Scoring costs one extra property request per page (a SMILES query adds a second, sent alongside); if the lookup fails, the page returns unscored with a retry notice, and a hit or query with no fingerprint (a SMILES PubChem has no record of, for one) goes unscored with the reason in the notice
+- Up to 200 CIDs per page (default 20; a larger `maxResults` is served at 200 and reported in `cappedInputs`); `offset` pages identifier, assay, and mass searches to the end of their matches, and formula, substructure, superstructure, and similarity searches to 10,000 (deeper fails with `offset_ceiling_exceeded`). A mass search counts and pages at most 1,000,000 matches, reported as `totalFoundAtLeast` with a notice to narrow the window. Optional `properties` saves a follow-up `pubchem_get_compound_details` call, and takes `SMILES` and `ConnectivitySMILES` as the details tool does
+- Reports `totalFound`, or a `totalFoundAtLeast` floor when an upstream search saturated, and `unresolvedIdentifiers` for inputs with no CID. Fails with `aid_not_found` for an unknown AID and `search_query_rejected` (with a hint) for a query PubChem cannot search. A mass search fails with `missing_mass_args` when `massType`, `massMin`, or `massMax` is absent, `inverted_mass_window` when `massMin` exceeds `massMax`, and `mass_search_timeout` for a window hundreds of daltons wide
 
 ---
 
 ### `pubchem_get_compound_details` <sub>tool</sub>
 
 - Up to 100 CIDs per call (the rest returned in `unprocessed`); `cids` also takes a lone CID, numeric strings, or the key `cid`
-- 27 available properties, defaulting to a core set of 14 (an empty `properties` list reads as that set). PubChem's current names `SMILES` and `ConnectivitySMILES` are accepted and returned as `IsomericSMILES` and `CanonicalSMILES`
-- Optional descriptions (`descriptionOffset`/`maxDescriptions`, default 3, max 20) and classification (FDA, MeSH, ATC) cover the first 10 CIDs only, the rest listed in `skippedCids`. Optional synonyms (`synonymOffset`/`maxSynonyms`, default 20, max 100) and a Lipinski/Veber drug-likeness check cover every found CID
-- Per-CID `found: false` separates a nonexistent CID from a compound with no data
+- 27 available properties, defaulting to a core set of 15 that opens with `Title`, PubChem's display name for the record (an empty `properties` list reads as that set; a property PubChem has no value for is left out of the record). PubChem's current names `SMILES` and `ConnectivitySMILES` are accepted and returned as `IsomericSMILES` and `CanonicalSMILES`
+- Optional descriptions (`descriptionOffset`/`maxDescriptions`, default 3, max 20) and classification (FDA, MeSH, ATC; MeSH classes come as `{ name, description }`, the heading and its scope note) cover the first 10 CIDs only, the rest listed in `skippedCids`. Optional synonyms (`synonymOffset`/`maxSynonyms`, default 20, max 100) and a Lipinski/Veber drug-likeness check cover every found CID
+- Per-CID `found: false` separates a nonexistent CID from a compound with no data; a real compound that lacks every requested property returns `found: true` with an empty `properties` record
 
 ---
 
@@ -93,9 +94,10 @@ The server publishes an agent skill, [`pubchem-guide`](skills/pubchem-guide/SKIL
 ### `pubchem_get_compound_3d_structure` <sub>tool</sub>
 
 - Single CID; `format="json"` (default) returns parsed atoms (element + x/y/z) and bonds, `format="sdf"` returns the raw V2000 SDF text
+- Returns the compound's default conformer, or the one `conformerId` names (16 hex digits whose first 8 are the CID, either case); the response's `conformerId` says which was returned. A malformed ID or one owned by another CID fails as `invalid_conformer_id` before any request, and one PubChem doesn't hold fails as `conformer_not_found`
 - `maxAtoms`/`maxBonds` cap the JSON preview (default 200 each); `atomCount`/`bondCount` always report the full totals, with any capping disclosed via enrichment
 - `includeRawSdf` bypasses the default 500-line cap on the raw SDF text
-- Optional `includeAlternateConformerIds` lists conformer IDs beyond the default
+- Optional `includeAlternateConformerIds` lists the compound's other conformer IDs (`alternateConformerIds`, the default included when another was requested), each a value for `conformerId`
 - Typed `no_3d_structure` error when PubChem has no computed 3D coordinates (large molecules, mixtures, some salts)
 
 ---
@@ -120,17 +122,18 @@ The server publishes an agent skill, [`pubchem-guide`](skills/pubchem-guide/SKIL
 
 ### `pubchem_get_bioactivity` <sub>tool</sub>
 
-- Single CID; filter by `outcomeFilter` (`active`/`inactive`/`all`, default `all`), `targetGeneId`/`targetAccession`, and `assayType` (any of `confirmatory`/`screening`/`summary`/`other`); an assay must pass every filter set
+- Single CID; filter by `outcomeFilter` (`active`/`inactive`/`all`, default `all`), `targetGeneId`/`targetAccession`, `assayType` (any of `confirmatory`/`screening`/`summary`/`other`), and `activityName` (whole measurement names such as `["IC50"]`, case-insensitive; keeps assays whose reported target has a value with that name and narrows its `activityValues` to the matches); an assay must pass every filter set
+- `sort: "potency"` orders by lowest kept activity value first (ties to the lower AID) and needs `activityName`, else it fails as `missing_activity_name`; the default `table` order is not ranked by potency. `offset` applies after every filter and the sort, and `filteredCount` counts after the activity-name filter. The strongest IC50 against a target is one call: `activityName: ["IC50"]`, `sort: "potency"`, `maxResults: 1`
 - A target filter matches any identifier tied to the same target, so Gene ID 5742, UniProt P23219, and RefSeq NP_542158 all reach the same COX-1 assays
 - Each result carries the assay's `assayType` and the PubMed IDs it cites (`pmids`, newest first)
 - Up to 100 results per page (default 20); `offset` reaches the rest. A multi-target assay reports the matched target and lists the others under `otherTargets`
-- Reports `totalAssays`/`activeCount`/`inactiveCount` for the whole compound and `filteredCount`/`returnedCount` for the page; notices say whether there is no data, the filter excluded everything, or `offset` is past the end
+- Reports `totalAssays`/`activeCount`/`inactiveCount` for the whole compound and `filteredCount`/`returnedCount` for the page; notices say whether there is no data, the filter excluded everything (an activity-name miss lists the names those assays carry), or `offset` is past the end
 
 ---
 
 ### `pubchem_get_compound_interactions` <sub>tool</sub>
 
-- Single CID; one or more `kinds` — `drug-food` (PUG View), `target`, `drug-drug` (DrugBank); default `["drug-food"]`, and an empty drug-food page points at `target`
+- Single CID; one or more `kinds` — `drug-food` (PUG View), `target`, `drug-drug` (DrugBank); default `["drug-food"]`. When the drug-food request answers that PubChem has no record for the CID, the notice says so and points at `pubchem_search_compounds`; for a CID that has a record, an empty drug-food page points at `target`, and an empty target-only or drug-drug-only page (no drug-food answer to tell the two apart) adds a verify-the-CID hint
 - `target` gives one entry per target the compound's assay summary names: a Gene ID with the accessions the table pairs with it, or an identifier it never pairs. A Gene ID and an accession that no row pairs are separate entries even when they name the same protein (erlotinib's ERBB2 appears as `accession:P04626` and as `GeneID:2064`). Each entry names the target from a batched gene or protein summary lookup, plus the `GeneID:` or `accession:` value `pubchem_get_bioactivity` filters on, and states the assay counts by outcome and the most potent Active value with its AID. Active targets come first, most potent first. If a name lookup fails or does not answer within a few seconds, the entries keep their identifier and the notice says so
 - `maxEntries` per kind per page (max 50, default 10); `offset` counts records (targets, for `target`), up to 2,147,483,646. Each kind pages independently, reported in `paging[]` (`totalRecords`/`nextOffset`/`truncated`)
 - A kind that fails is named in `failedKinds` and the others still return. The notice offers a retry only for a failure a retry can clear (timeout, rate limit, network error, unreadable response, 5xx other than 501); an HTTP 400, 403, or 501, or a response in a shape the server does not expect, fails the same way on every call. `drug-drug` comes from PubChem's SDQ service, which refuses automated requests, so it lands in `failedKinds` and a retry will not help
@@ -152,13 +155,13 @@ The server publishes an agent skill, [`pubchem-guide`](skills/pubchem-guide/SKIL
 - `entityType`: `assay` (AID), `gene` (NCBI Gene ID), `protein` (UniProt accession), or `taxonomy` (Tax ID); up to 10 identifiers per call
 - A comma-joined string is split into identifiers; any past the first 10 are returned in `unprocessed`, and more than 1000 fails as `too_many_identifiers`
 - AIDs, Gene IDs, and Tax IDs must be positive integers up to 2147483647; other pieces get an `invalid: true` row, and the call fails as `invalid_identifier` only when none is usable
-- Per-identifier `found` flag; fields depend on `entityType` (taxonomy: ordered `lineage`; gene: `symbol`/`taxonomy`; assay: `method`, the first 25 `targets` with `targetCount`, tested/active compound counts, `lastDataChange`)
+- Per-identifier `found` flag; fields depend on `entityType` (taxonomy: ordered `lineage`; gene: `symbol`/`taxonomy`; assay: `method`, the first 25 `targets` with `targetCount`, tested/active compound counts, `lastDataChange`, the depositor's `comment` (often the Active threshold, citation, or target notes) and `sourceId` (their own assay ID, e.g. a ChEMBL ID) when recorded)
 
 ---
 
 ### `pubchem://compound/{cid}` <sub>resource</sub>
 
-- Core physicochemical properties (the same default 14-property set as `pubchem_get_compound_details`), as `application/json`
+- Core physicochemical properties (the same default 15-property set as `pubchem_get_compound_details`), as `application/json`
 - Throws a typed not-found when the CID doesn't exist in PubChem
 - Use `pubchem_get_compound_details` to select specific properties or add descriptions, synonyms, drug-likeness, and classification
 
@@ -188,7 +191,7 @@ The server publishes an agent skill, [`pubchem-guide`](skills/pubchem-guide/SKIL
 ### `pubchem://compound/{cid}/bioactivity` <sub>resource</sub>
 
 - Up to 25 assays as `application/json`, each with its `assayType` and `pmids`, plus `totalAssays`/`activeCount` for the whole compound; a multi-target assay lists its further targets under `otherTargets`
-- Use `pubchem_get_bioactivity` to filter by outcome, target, or assay type, raise the cap, or page with offset
+- Use `pubchem_get_bioactivity` to filter by outcome, target, assay type, or activity name, rank by potency, raise the cap, or page with offset
 
 ---
 

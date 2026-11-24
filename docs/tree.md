@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-11-11 06:34:59
+Generated on: 2026-11-24 08:17:12
 
 ```text
 pubchem-mcp-server/
@@ -176,6 +176,7 @@ pubchem-mcp-server/
 │   │           └── untrusted-text.ts
 │   ├── services/
 │   │   └── pubchem/
+│   │       ├── fingerprint.ts
 │   │       ├── pubchem-client.ts
 │   │       ├── sdf-parser.ts
 │   │       ├── target-rollup.ts
@@ -184,9 +185,14 @@ pubchem-mcp-server/
 │   └── index.ts
 ├── tests/
 │   ├── fixtures/
+│   │   ├── assay-summaries-comment.json
 │   │   ├── assay-summaries.json
 │   │   ├── assaysummary-176870-targets.json
 │   │   ├── assaysummary-2244-cox.json
+│   │   ├── assaysummary-2662-cox2.json
+│   │   ├── fastsimilarity-2244-t75.json
+│   │   ├── fingerprint2d-2244-t75.json
+│   │   ├── fingerprint2d-novel-smiles-hits.json
 │   │   ├── ghs-135398658.json
 │   │   ├── ghs-2244.json
 │   │   ├── ghs-241.json
@@ -197,7 +203,10 @@ pubchem-mcp-server/
 │   │   ├── ghs-toplevel-baseline.json
 │   │   ├── pug-rest-xrefs-2244.json
 │   │   ├── pug-view-atc.json
-│   │   └── pug-view-cas-ec.json
+│   │   ├── pug-view-cas-ec.json
+│   │   ├── pug-view-mesh.json
+│   │   ├── sdf-2244-conformer-000008C40000000B.sdf
+│   │   └── sdf-2244-default.sdf
 │   ├── helpers/
 │   │   ├── commonmark.ts
 │   │   └── read-back.ts
@@ -243,6 +252,7 @@ pubchem-mcp-server/
 │   │           └── untrusted-text.test.ts
 │   └── services/
 │       └── pubchem/
+│           ├── fingerprint.test.ts
 │           ├── pubchem-client-cancellation.test.ts
 │           ├── pubchem-client-extended.test.ts
 │           ├── pubchem-client-http-status.test.ts

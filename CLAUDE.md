@@ -190,6 +190,7 @@ src/
   index.ts                              # createApp() entry point
   services/
     pubchem/
+      fingerprint.ts                    # Tanimoto similarity over PubChem's 881-bit Fingerprint2D
       pubchem-client.ts                 # PubChem API client (rate limiting, retry, parsing)
       sdf-parser.ts                     # V2000 SDF → atoms and bonds
       target-rollup.ts                  # Assay summary → one summary per molecular target
@@ -197,7 +198,7 @@ src/
       xref-lookup.ts                    # Per-type xref lookup (PUG REST + PUG View CAS/EC), failure isolation
   mcp-server/
     tools/definitions/
-      search-compounds.tool.ts          # Search by name/SMILES/InChI/InChIKey/formula/structure/similarity/assay
+      search-compounds.tool.ts          # Search by name/SMILES/InChI/InChIKey/formula/structure/similarity/assay/mass
       get-compound-details.tool.ts      # Properties, descriptions, synonyms
       get-compound-image.tool.ts        # 2D structure diagram (PNG)
       get-compound-3d-structure.tool.ts # 3D conformer as parsed JSON or raw SDF
