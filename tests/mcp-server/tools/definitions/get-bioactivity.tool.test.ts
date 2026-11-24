@@ -30,6 +30,8 @@ beforeEach(() => {
   vi.resetAllMocks();
 });
 
+const newCtx = () => createMockContext({ errors: getBioactivity.errors });
+
 const activeRow: BioactivityRow = {
   aid: 1000,
   assayName: 'COX-2 inhibition',
@@ -58,7 +60,7 @@ describe('getBioactivity handler', () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(
       summary([activeRow, inactiveRow, inconclusiveRow]),
     );
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244 });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -73,7 +75,7 @@ describe('getBioactivity handler', () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(
       summary([activeRow, inactiveRow, inconclusiveRow]),
     );
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'active' });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -84,7 +86,7 @@ describe('getBioactivity handler', () => {
 
   it('filters to inactive only', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([activeRow, inactiveRow]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'inactive' });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -98,7 +100,7 @@ describe('getBioactivity handler', () => {
       aid: i + 1,
     }));
     mockClient.getAssaySummary.mockResolvedValueOnce(summary(manyRows));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, maxResults: 5 });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -108,7 +110,7 @@ describe('getBioactivity handler', () => {
 
   it('handles compound with no assay data', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 999 });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -123,7 +125,7 @@ describe('getBioactivity handler — enrichment', () => {
   it('echoes outcomeFilter and the filtered/returned cap boundary', async () => {
     const manyRows = Array.from({ length: 30 }, (_, i) => ({ ...activeRow, aid: i + 1 }));
     mockClient.getAssaySummary.mockResolvedValueOnce(summary(manyRows));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({
       cid: 2244,
       outcomeFilter: 'active',
@@ -144,7 +146,7 @@ describe('getBioactivity handler — enrichment', () => {
 
   it('adds a notice when the compound has no bioactivity data', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 999 });
     await getBioactivity.handler(input, ctx);
     const enrichment = getEnrichment(ctx);
@@ -157,7 +159,7 @@ describe('getBioactivity handler — enrichment', () => {
 
   it('adds a notice when the filter excludes every assay', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([inactiveRow, inconclusiveRow]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'active' });
     await getBioactivity.handler(input, ctx);
     const enrichment = getEnrichment(ctx);
@@ -173,7 +175,7 @@ describe('getBioactivity handler — offset pagination (#33)', () => {
 
   it('returns the slice starting at offset', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary(page(30)));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, offset: 10, maxResults: 5 });
     const result = await getBioactivity.handler(input, ctx);
     const enrichment = getEnrichment(ctx);
@@ -190,7 +192,7 @@ describe('getBioactivity handler — offset pagination (#33)', () => {
     const seen: number[] = [];
     for (let offset = 0; offset < 30; offset += 12) {
       mockClient.getAssaySummary.mockResolvedValueOnce(summary(page(30)));
-      const ctx = createMockContext();
+      const ctx = newCtx();
       const input = getBioactivity.input.parse({ cid: 2244, offset, maxResults: 12 });
       const result = await getBioactivity.handler(input, ctx);
       seen.push(...result.results.map((r) => r.aid));
@@ -202,7 +204,7 @@ describe('getBioactivity handler — offset pagination (#33)', () => {
   it('applies offset after the outcome filter, not before', async () => {
     const rows = [inactiveRow, activeRow, inactiveRow, { ...activeRow, aid: 1001 }];
     mockClient.getAssaySummary.mockResolvedValueOnce(summary(rows));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'active', offset: 1 });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -212,7 +214,7 @@ describe('getBioactivity handler — offset pagination (#33)', () => {
 
   it('marks the last page as complete rather than truncated', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary(page(30)));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, offset: 25, maxResults: 10 });
     const result = await getBioactivity.handler(input, ctx);
     const enrichment = getEnrichment(ctx);
@@ -225,7 +227,7 @@ describe('getBioactivity handler — offset pagination (#33)', () => {
 
   it('explains an offset that runs past the filtered set', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary(page(3)));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, offset: 50 });
     const result = await getBioactivity.handler(input, ctx);
     const enrichment = getEnrichment(ctx);

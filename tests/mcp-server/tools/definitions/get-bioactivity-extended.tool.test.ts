@@ -4,6 +4,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { createMockContext, getEnrichment, runToolContract } from '@cyanheads/mcp-ts-core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getBioactivity } from '@/mcp-server/tools/definitions/get-bioactivity.tool.js';
@@ -32,6 +33,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
 });
+
+const newCtx = () => createMockContext({ errors: getBioactivity.errors });
 
 /**
  * Serve `table` as PubChem's assaysummary response and route the tool through the real
@@ -120,7 +123,7 @@ describe('getBioactivity handler — outcomeFilter inconclusive', () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(
       summary([activeRow, inactiveRow, inconclusiveRow]),
     );
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'all' });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -133,7 +136,7 @@ describe('getBioactivity handler — outcomeFilter inconclusive', () => {
 
   it('inconclusive rows are counted in totalAssays but not in activeCount/inactiveCount', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([activeRow, inconclusiveRow]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244 });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -172,7 +175,7 @@ describe('getBioactivity handler — counting', () => {
       { aid: 4, assayName: 'D', outcome: 'Probe', activityValues: [] },
     ];
     mockClient.getAssaySummary.mockResolvedValueOnce(summary(rows));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 1 });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -185,7 +188,7 @@ describe('getBioactivity handler — counting', () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(
       summary([activeRow, inactiveRow, inconclusiveRow]),
     );
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'inactive' });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -220,7 +223,7 @@ describe('getBioactivity handler — target filter (#9)', () => {
 
   it('filters by targetGeneId; global counts are unaffected', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([cox2, cox1, noTarget]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, targetGeneId: 5743 });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -231,7 +234,7 @@ describe('getBioactivity handler — target filter (#9)', () => {
 
   it('filters by targetAccession', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([cox2, cox1, noTarget]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, targetAccession: 'P23219' });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -241,7 +244,7 @@ describe('getBioactivity handler — target filter (#9)', () => {
 
   it('matches a lowercase targetAccession and echoes it uppercased (#67)', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([cox2, cox1, noTarget]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, targetAccession: 'p23219' });
     const result = await getBioactivity.handler(input, ctx);
 
@@ -253,7 +256,7 @@ describe('getBioactivity handler — target filter (#9)', () => {
   it('combines outcome and target filters', async () => {
     const inactiveCox2: BioactivityRow = { ...cox2, aid: 9, outcome: 'Inactive' };
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([cox2, inactiveCox2]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({
       cid: 2244,
       outcomeFilter: 'active',
@@ -267,7 +270,7 @@ describe('getBioactivity handler — target filter (#9)', () => {
 
   it('echoes the target filter and notices when nothing matches', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([cox1, noTarget]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244, targetGeneId: 99999 });
     const result = await getBioactivity.handler(input, ctx);
     const e = getEnrichment(ctx);
@@ -279,7 +282,7 @@ describe('getBioactivity handler — target filter (#9)', () => {
 
   it('omits the targetFilter echo when no target filter is set', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([cox2]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const input = getBioactivity.input.parse({ cid: 2244 });
     await getBioactivity.handler(input, ctx);
 
@@ -289,7 +292,7 @@ describe('getBioactivity handler — target filter (#9)', () => {
 
 describe('getBioactivity handler — target identifier groups (#65)', () => {
   async function run(input: Record<string, unknown>) {
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const result = await getBioactivity.handler(
       getBioactivity.input.parse({ cid: 2244, maxResults: 100, ...input }),
       ctx,
@@ -415,7 +418,7 @@ describe('getBioactivity handler — target identifier groups (#65)', () => {
 
 describe('getBioactivity handler — assays naming several targets (#73)', () => {
   async function run(input: Record<string, unknown>) {
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const result = await getBioactivity.handler(
       getBioactivity.input.parse({ cid: 2244, maxResults: 100, ...input }),
       ctx,
@@ -674,7 +677,7 @@ describe('getBioactivity no-match notices', () => {
 
   async function notice(rows: BioactivityRow[], input: Record<string, unknown>) {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary(rows));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     await getBioactivity.handler(getBioactivity.input.parse({ cid: 2244, ...input }), ctx);
     return getEnrichment(ctx).notice;
   }
@@ -780,7 +783,7 @@ describe('getBioactivity assay type and PubMed IDs (#79)', () => {
 
   async function run(input: Record<string, unknown>) {
     serveAssayTable(table);
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const result = await getBioactivity.handler(
       getBioactivity.input.parse({ cid: 2244, ...input }),
       ctx,
@@ -913,7 +916,7 @@ describe('getBioactivity assay type and PubMed IDs (#79)', () => {
 
   it('names the assay-type filter alone when it is the only one set', async () => {
     serveAssayTable(typedTable([[1, 'Active', '', '', 'Screening', '']]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     await getBioactivity.handler(
       getBioactivity.input.parse({ cid: 2244, assayType: ['confirmatory'] }),
       ctx,
@@ -989,7 +992,7 @@ describe('getBioactivity counts and filters by the first listed or matched targe
 
   it('counts a multi-target assay by its first target only', async () => {
     mockClient.getAssaySummary.mockResolvedValueOnce(summary([splitRow]));
-    const ctx = createMockContext();
+    const ctx = newCtx();
     const result = await getBioactivity.handler(
       getBioactivity.input.parse({ cid: 2244, outcomeFilter: 'active' }),
       ctx,
@@ -1007,5 +1010,515 @@ describe('getBioactivity counts and filters by the first listed or matched targe
     expect(getBioactivity.input.shape.outcomeFilter.description).toMatch(
       /the target a target filter matched, else the first target the assay lists/,
     );
+  });
+});
+
+/**
+ * Every row of every celecoxib (CID 2662) AID that names human COX-2 (P35354 / NP_000954 /
+ * Gene 5743), cut from PubChem's live assaysummary response of 2026-11-23.
+ */
+const celecoxibCox2Table: unknown = JSON.parse(
+  readFileSync(new URL('../../../fixtures/assaysummary-2662-cox2.json', import.meta.url), 'utf8'),
+);
+
+/** "Which confirmatory assays show celecoxib active against COX-2?" */
+const COX2_ACTIVE_CONFIRMATORY = {
+  cid: 2662,
+  targetGeneId: 5743,
+  outcomeFilter: 'active',
+  assayType: ['confirmatory'],
+} as const;
+
+type BioactivityResult = {
+  results: Array<{
+    aid: number;
+    activityValues: Array<{ name?: string; value: number; unit?: string }>;
+    otherTargets?: Array<{ activityValues: Array<{ name?: string; value: number }> }>;
+  }>;
+  filteredCount: number;
+  nextOffset?: number;
+  notice?: string;
+  activityNameFilter?: string[];
+  sort?: string;
+};
+
+/** One call on the celecoxib COX-2 table, through the production parse. */
+async function onCelecoxib(input: Record<string, unknown>) {
+  serveAssayTable(celecoxibCox2Table);
+  const result = await runToolContract(getBioactivity, input as never);
+  return { result, structured: result.structuredContent as BioactivityResult };
+}
+
+describe('getBioactivity on celecoxib against COX-2, in table order (#102)', () => {
+  it('pages the 246 matching assays in AID order with the existing echo and nothing more', async () => {
+    const { result, structured } = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      maxResults: 5,
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(Object.keys(structured).sort()).toEqual([
+      'activeCount',
+      'assayTypeFilter',
+      'cap',
+      'cid',
+      'filteredCount',
+      'inactiveCount',
+      'nextOffset',
+      'notice',
+      'offset',
+      'outcomeFilter',
+      'results',
+      'returnedCount',
+      'shown',
+      'targetFilter',
+      'totalAssays',
+      'truncated',
+    ]);
+    expect(structured).toMatchObject({
+      cid: 2662,
+      totalAssays: 347,
+      outcomeFilter: 'active',
+      targetFilter: 'GeneID:5743 accession:P35354 accession:NP_000954',
+      assayTypeFilter: 'confirmatory',
+      filteredCount: 246,
+      returnedCount: 5,
+      offset: 0,
+      nextOffset: 5,
+      notice: 'Showing assays 1-5 of 246. Pass offset=5 for the next page.',
+    });
+    expect(structured.results.map((r) => r.aid)).toEqual([46697, 46698, 54555, 54559, 54560]);
+    expect(textOf(result)).toContain(
+      '**AID 46697** — In vitro potency against human Prostaglandin G/H synthase 2 in the human whole blood assay. (Active)\n  Assay type: Confirmatory\n  PMIDs: 10197970\n  Target: GeneID:5743 — `P35354`\n  IC50: 1 uM\n',
+    );
+  });
+
+  it('answers sort "table" exactly as a call without it', async () => {
+    const plain = await onCelecoxib({ ...COX2_ACTIVE_CONFIRMATORY, maxResults: 50, offset: 20 });
+    const table = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      maxResults: 50,
+      offset: 20,
+      sort: 'table',
+    });
+
+    expect(table.result).toEqual(plain.result);
+  });
+});
+
+/** Every page of a call, walked by nextOffset, as one list of results. */
+async function allPages(input: Record<string, unknown>) {
+  const rows: BioactivityResult['results'] = [];
+  let offset: number | undefined = 0;
+  while (offset !== undefined) {
+    const { structured } = await onCelecoxib({ ...input, maxResults: 100, offset });
+    rows.push(...structured.results);
+    offset = structured.nextOffset;
+  }
+  return rows;
+}
+
+/** The lowest value a result row reports against its target. */
+const lowest = (row: BioactivityResult['results'][number]) =>
+  Math.min(...row.activityValues.map((v) => v.value));
+
+describe('getBioactivity activityName on celecoxib against COX-2 (#102)', () => {
+  it('keeps the 241 assays reporting an IC50, each narrowed to its IC50 values', async () => {
+    const { structured } = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      activityName: ['IC50'],
+      maxResults: 5,
+    });
+    const rows = await allPages({ ...COX2_ACTIVE_CONFIRMATORY, activityName: ['IC50'] });
+
+    expect(structured).toMatchObject({
+      filteredCount: 241,
+      activityNameFilter: ['IC50'],
+      nextOffset: 5,
+    });
+    expect(structured).not.toHaveProperty('sort');
+    expect(structured.results.map((r) => r.aid)).toEqual([46697, 46698, 54555, 54559, 54560]);
+    expect(rows).toHaveLength(241);
+    expect(new Set(rows.flatMap((r) => r.activityValues.map((v) => v.name)))).toEqual(
+      new Set(['IC50']),
+    );
+  });
+
+  it('matches a name regardless of case and echoes it as passed', async () => {
+    const upper = await onCelecoxib({ ...COX2_ACTIVE_CONFIRMATORY, activityName: ['IC50'] });
+    const lower = await onCelecoxib({ ...COX2_ACTIVE_CONFIRMATORY, activityName: ['ic50'] });
+
+    expect(lower.structured.filteredCount).toBe(241);
+    expect(lower.structured.results).toEqual(upper.structured.results);
+    expect(lower.structured.activityNameFilter).toEqual(['ic50']);
+  });
+
+  it('ranks by the lowest IC50 under sort "potency": AID 362870 at 0.00052 uM', async () => {
+    const { result, structured } = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      activityName: ['IC50'],
+      sort: 'potency',
+      maxResults: 1,
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(structured).toMatchObject({
+      filteredCount: 241,
+      nextOffset: 1,
+      sort: 'potency',
+      activityNameFilter: ['IC50'],
+    });
+    expect(structured.results).toHaveLength(1);
+    expect(structured.results[0]).toMatchObject({
+      aid: 362870,
+      activityValues: [{ name: 'IC50', value: 0.00052, unit: 'uM' }],
+    });
+    expect(textOf(result)).toContain('**AID 362870** — Inhibition of COX2 (Active)');
+    expect(readTrailerValue(textOf(result), 'sort')).toBe('potency');
+  });
+
+  it('breaks the four-way 0.002 uM tie by AID', async () => {
+    const { structured } = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      activityName: ['IC50'],
+      sort: 'potency',
+      maxResults: 6,
+    });
+
+    expect(structured.results.map((r) => [r.aid, lowest(r)])).toEqual([
+      [362870, 0.00052],
+      [46698, 0.002],
+      [54560, 0.002],
+      [54712, 0.002],
+      [160743, 0.002],
+      [270014, 0.0022],
+    ]);
+  });
+
+  it('orders all 241 by lowest value then AID, AID 2017777 at its 0.04 of 0.04 and 8.77', async () => {
+    const rows = await allPages({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      activityName: ['IC50'],
+      sort: 'potency',
+    });
+    const at = rows.findIndex((r) => r.aid === 2017777);
+
+    expect(rows).toHaveLength(241);
+    for (const [i, row] of rows.slice(1).entries()) {
+      const prev = rows[i]!;
+      const inOrder =
+        lowest(prev) < lowest(row) || (lowest(prev) === lowest(row) && prev.aid < row.aid);
+      expect(inOrder, `AID ${prev.aid} before AID ${row.aid}`).toBe(true);
+    }
+    expect(rows[at]?.activityValues.map((v) => v.value)).toEqual([0.04, 8.77]);
+    expect(lowest(rows[at - 1]!)).toBeLessThanOrEqual(0.04);
+    expect(lowest(rows[at + 1]!)).toBeGreaterThanOrEqual(0.04);
+  });
+
+  it('compares the values of several names together: the Ki 0.00047 ranks above every IC50', async () => {
+    const { structured } = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      activityName: ['Ki', 'IC50'],
+      sort: 'potency',
+      maxResults: 2,
+    });
+
+    expect(structured.filteredCount).toBe(242);
+    expect(structured.results.map((r) => [r.aid, r.activityValues])).toEqual([
+      [1751838, [{ name: 'Ki', value: 0.00047, unit: 'uM' }]],
+      [362870, [{ name: 'IC50', value: 0.00052, unit: 'uM' }]],
+    ]);
+    expect(structured.activityNameFilter).toEqual(['Ki', 'IC50']);
+  });
+
+  it('pages the ranked set: offset 1 continues after the first', async () => {
+    const { structured } = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      activityName: ['IC50'],
+      sort: 'potency',
+      offset: 1,
+      maxResults: 2,
+    });
+
+    expect(structured.results.map((r) => r.aid)).toEqual([46698, 54560]);
+    expect(structured).toMatchObject({ filteredCount: 241, nextOffset: 3 });
+  });
+
+  it('explains an offset past the named assays', async () => {
+    const { structured } = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      activityName: ['IC50'],
+      offset: 241,
+    });
+
+    expect(structured.results).toEqual([]);
+    expect(structured.notice).toBe(
+      'offset 241 is past the 241 assay(s) matching the filter. Pass an offset below 241.',
+    );
+  });
+
+  it('lists the activity names the other filters kept when no assay reports the one asked for', async () => {
+    const { result, structured } = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      activityName: ['IC5O'],
+      sort: 'potency',
+    });
+    const notice =
+      'CID 2662 has 246 assay(s) matching the other filters but none reports an activity value named "IC5O" against its reported target. Activity names on those assays: AC50, IC50, INH, Inhibition, Kd, Ki. Pass one of them in activityName.';
+
+    expect(structured).toMatchObject({ filteredCount: 0, results: [] });
+    expect(structured.notice).toBe(notice);
+    expect(readBlockquotes(textOf(result)).at(-1)).toBe(notice);
+  });
+
+  it('echoes the names on both surfaces through the production parse', async () => {
+    const { result, structured } = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      activityName: [' Ki ', 'ki', 'IC50', ''],
+      maxResults: 1,
+    });
+
+    expect(structured.activityNameFilter).toEqual(['Ki', 'IC50']);
+    expect(readTrailerValue(textOf(result), 'activityNameFilter')).toBe('["Ki","IC50"]');
+    expect(readTrailerValue(textOf(result), 'sort')).toBeUndefined();
+  });
+
+  it('takes a lone string as a one-name list', async () => {
+    const { structured } = await onCelecoxib({
+      ...COX2_ACTIVE_CONFIRMATORY,
+      activityName: 'IC50',
+    });
+
+    expect(structured).toMatchObject({ filteredCount: 241, activityNameFilter: ['IC50'] });
+  });
+});
+
+describe('getBioactivity activityName matching and potency order (#102)', () => {
+  const value = (name: string | undefined, v: number) => ({
+    ...(name !== undefined && { name }),
+    value: v,
+    unit: 'uM',
+  });
+  const row = (aid: number, values: ReturnType<typeof value>[], extra = {}): BioactivityRow => ({
+    aid,
+    assayName: `Assay ${aid}`,
+    outcome: 'Active',
+    activityValues: values,
+    ...extra,
+  });
+
+  async function run(rows: BioactivityRow[], input: Record<string, unknown>) {
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary(rows));
+    const ctx = newCtx();
+    const result = await getBioactivity.handler(
+      getBioactivity.input.parse({ cid: 2244, ...input }),
+      ctx,
+    );
+    return { result, enrichment: getEnrichment(ctx), aids: result.results.map((r) => r.aid) };
+  }
+
+  it('matches whole trimmed names: a nameless value, "IC50 relative", and "pIC50" never match IC50', async () => {
+    const rows = [
+      row(1, [value(undefined, 0.1)]),
+      row(2, [value('IC50 relative', 0.2)]),
+      row(3, [value('pIC50', 7)]),
+      row(4, [value(' IC50 ', 0.4), value('Ki', 0.01)]),
+      row(5, [value('Ic50', 0.5)]),
+    ];
+
+    const { aids, result } = await run(rows, { activityName: [' iC50'] });
+
+    expect(aids).toEqual([4, 5]);
+    expect(result.results[0]!.activityValues).toEqual([value(' IC50 ', 0.4)]);
+  });
+
+  it("narrows only the reported target's values; otherTargets keep theirs", async () => {
+    const multi = row(7, [value('IC50', 1), value('Ki', 0.5)], {
+      targetGeneId: 5743,
+      otherTargets: [
+        { geneId: 5742, outcome: 'Active', activityValues: [value('Ki', 0.1), value('IC50', 2)] },
+      ],
+    });
+
+    const { result } = await run([multi], { activityName: ['IC50'] });
+
+    // Written out, not spread from `multi`: the handler holds that object, so an expectation read
+    // from it after the call would move with any change made to it in place.
+    expect(result.results).toEqual([
+      {
+        aid: 7,
+        assayName: 'Assay 7',
+        outcome: 'Active',
+        targetGeneId: 5743,
+        activityValues: [value('IC50', 1)],
+        otherTargets: [
+          { geneId: 5742, outcome: 'Active', activityValues: [value('Ki', 0.1), value('IC50', 2)] },
+        ],
+      },
+    ]);
+  });
+
+  it('reads the target a target filter reported, not the first one listed', async () => {
+    const multi = row(8, [value('IC50', 1)], {
+      targetGeneId: 5742,
+      otherTargets: [{ geneId: 5743, outcome: 'Active', activityValues: [value('Ki', 0.3)] }],
+    });
+
+    const byIc50 = await run([multi], { targetGeneId: 5743, activityName: ['IC50'] });
+    const byKi = await run([multi], { targetGeneId: 5743, activityName: ['Ki'] });
+
+    expect(byIc50.aids).toEqual([]);
+    expect(byKi.result.results).toEqual([
+      {
+        aid: 8,
+        assayName: 'Assay 8',
+        outcome: 'Active',
+        targetGeneId: 5743,
+        activityValues: [value('Ki', 0.3)],
+        otherTargets: [{ geneId: 5742, outcome: 'Active', activityValues: [value('IC50', 1)] }],
+      },
+    ]);
+  });
+
+  it('applies the name filter after the outcome filter', async () => {
+    const rows = [
+      row(1, [value('IC50', 0.1)], { outcome: 'Inactive' }),
+      row(2, [value('IC50', 0.2)]),
+    ];
+
+    const { aids, enrichment } = await run(rows, {
+      outcomeFilter: 'active',
+      activityName: ['IC50'],
+      sort: 'potency',
+    });
+
+    expect(aids).toEqual([2]);
+    expect(enrichment.filteredCount).toBe(1);
+  });
+
+  it('breaks a tie by the lower AID whatever order the table gives', async () => {
+    const rows = [
+      row(30, [value('IC50', 0.002)]),
+      row(10, [value('IC50', 0.002)]),
+      row(20, [value('IC50', 0.001)]),
+    ];
+
+    expect((await run(rows, { activityName: ['IC50'], sort: 'potency' })).aids).toEqual([
+      20, 10, 30,
+    ]);
+    expect((await run(rows, { activityName: ['IC50'] })).aids).toEqual([30, 10, 20]);
+  });
+
+  it('ranks a row by its lowest kept value, ignoring a lower value of another name', async () => {
+    const rows = [
+      row(1, [value('IC50', 0.05)]),
+      row(2, [value('IC50', 8.77), value('IC50', 0.04)]),
+      row(3, [value('IC50', 0.06), value('Ki', 0.0001)]),
+    ];
+
+    const { aids, result } = await run(rows, { activityName: ['IC50'], sort: 'potency' });
+
+    expect(aids).toEqual([2, 1, 3]);
+    expect(result.results[2]!.activityValues).toEqual([value('IC50', 0.06)]);
+  });
+
+  it('echoes names holding a comma, markup, or a backtick as one JSON code literal', async () => {
+    mockClient.getAssaySummary.mockResolvedValueOnce(summary([row(1, [value('IC50', 1)])]));
+    const names = ['Activity at 9.9, pH 7', '*x* `y`'];
+
+    const result = await runToolContract(getBioactivity, { cid: 2244, activityName: names });
+
+    expect(result.structuredContent).toMatchObject({ activityNameFilter: names });
+    expect(readTrailerValue(textOf(result), 'activityNameFilter')).toBe(JSON.stringify(names));
+  });
+
+  it('reads blank names as no filter at all', async () => {
+    const rows = [row(1, [value('IC50', 0.05)]), row(2, [])];
+
+    const blank = await run(rows, { activityName: ['', '  '] });
+
+    expect(blank.aids).toEqual([1, 2]);
+    expect(blank.enrichment.activityNameFilter).toBeUndefined();
+  });
+
+  it('says so when the assays the other filters kept carry no named value', async () => {
+    const rows = [row(1, [value(undefined, 0.3)]), row(2, [])];
+
+    const { enrichment } = await run(rows, { activityName: ['IC50', 'Ki'] });
+
+    expect(enrichment.notice).toBe(
+      'CID 2244 has 2 assay(s) but none reports an activity value named "IC50" or "Ki" against its reported target. Those assays report no named activity values; omit activityName to see them.',
+    );
+  });
+
+  it.each<[string, BioactivityRow[], string]>([
+    [
+      'spellings that differ only in case, in code-unit order',
+      [row(1, [value('ic50', 1)]), row(2, [value('IC50', 2)])],
+      'IC50, ic50',
+    ],
+    [
+      'a padded spelling trimmed and listed once',
+      [row(1, [value(' IC50 ', 1)]), row(2, [value('IC50', 2)])],
+      'IC50',
+    ],
+  ])('lists the carried names in the miss notice: %s', async (_label, rows, carried) => {
+    const { enrichment } = await run(rows, { activityName: ['Ki'] });
+
+    expect(enrichment.notice).toBe(
+      `CID 2244 has 2 assay(s) but none reports an activity value named "Ki" against its reported target. Activity names on those assays: ${carried}. Pass one of them in activityName.`,
+    );
+  });
+
+  it('keeps the existing notice when the other filters already exclude every assay', async () => {
+    const { enrichment } = await run([row(1, [value('IC50', 1)], { outcome: 'Inactive' })], {
+      outcomeFilter: 'active',
+      activityName: ['IC50'],
+    });
+
+    expect(enrichment.notice).toBe(
+      'CID 2244 has 1 assay(s) but none match outcomeFilter="active". Use outcomeFilter="all" to see them.',
+    );
+  });
+
+  it.each([
+    ['without activityName', {}],
+    ['with only blank names', { activityName: [' ', ''] }],
+  ])('fails sort "potency" %s before any request', async (_label, input) => {
+    const result = await runToolContract(getBioactivity, {
+      cid: 2662,
+      sort: 'potency',
+      ...input,
+    } as never);
+    const { error } = result.structuredContent as {
+      error: {
+        code: number;
+        message: string;
+        data?: { reason?: string; recovery?: { hint?: string } };
+      };
+    };
+
+    expect(result.isError).toBe(true);
+    expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+    expect(error.data?.reason).toBe('missing_activity_name');
+    expect(error.message).toBe(
+      'sort "potency" ranks assays by the values of the measurements activityName names, and it names none.',
+    );
+    expect(error.data?.recovery?.hint).toBe(
+      'Pass activityName with the measurement to rank by (e.g. ["IC50"]) alongside sort "potency", or omit sort for table order.',
+    );
+    expect(textOf(result)).toContain('missing_activity_name');
+    expect(mockClient.getAssaySummary).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['an empty name list', { activityName: [] }],
+    ['an unknown sort', { sort: 'value' }],
+  ])('rejects %s at the schema', async (_label, input) => {
+    const result = await runToolContract(getBioactivity, { cid: 2662, ...input } as never);
+
+    expect(result.isError).toBe(true);
+    expect((result.structuredContent as { error: { code: number } }).error.code).toBe(-32602);
+    expect(mockClient.getAssaySummary).not.toHaveBeenCalled();
   });
 });

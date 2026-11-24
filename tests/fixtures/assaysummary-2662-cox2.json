@@ -1,0 +1,6432 @@
+{
+  "Table": {
+    "Columns": {
+      "Column": [
+        "AID",
+        "Panel Member ID",
+        "SID",
+        "CID",
+        "Activity Outcome",
+        "Target Accession",
+        "Target GeneID",
+        "Activity Value [uM]",
+        "Activity Name",
+        "Assay Name",
+        "Assay Type",
+        "PubMed ID",
+        "RNAi"
+      ]
+    },
+    "Row": [
+      {
+        "Cell": [
+          "46697",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1",
+          "IC50",
+          "In vitro potency against human Prostaglandin G/H synthase 2 in the human whole blood assay.",
+          "Confirmatory",
+          "10197970",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "46698",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.002",
+          "IC50",
+          "In vitro potency against human Prostaglandin G/H synthase 2 in transfected CHO cells.",
+          "Confirmatory",
+          "10197970",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "54555",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.11",
+          "IC50",
+          "In vitro inhibition of PGE-2 generation by LPS-stimulated monocytes isolated from human blood.",
+          "Confirmatory",
+          "11844666",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "54559",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1",
+          "IC50",
+          "In vitro inhibitory potency against human COX-2 (HWB COX-2) by whole blood assay",
+          "Confirmatory",
+          "10576684",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "54560",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.002",
+          "IC50",
+          "In vitro inhibitory potency against human COX-2 in stably transfected chinese hamster ovary (CHO) cells",
+          "Confirmatory",
+          "10576684",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "54711",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1",
+          "IC50",
+          "Inhibitory potency against PGE-2 production in the human whole blood (HWB COX-2) assay",
+          "Confirmatory",
+          "10576685",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "54712",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.002",
+          "IC50",
+          "Inhibition of PGE-2 production in CHO cells expressing human COX-2.",
+          "Confirmatory",
+          "10576685",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160245",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Evaluation for percent inhibition of prostaglandin G/H synthase 2 in human whole blood (HWB) at a concentration of 10 um",
+          "Other",
+          "15084117",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160246",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Evaluation for percent inhibition of prostaglandin G/H synthase 2 in human whole blood (HWB) at a concentration of 1 um",
+          "Other",
+          "15084117",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160247",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Evaluation for percent inhibition of recombinant prostaglandin G/H synthase 2 in human whole blood (HWB) at a concentration of 10 um",
+          "Other",
+          "15084117",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160248",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Evaluation for percent inhibition of recombinant prostaglandin G/H synthase 2 in human whole blood (HWB) at a concentration of 1 um",
+          "Other",
+          "15084117",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160249",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.028",
+          "Inhibition",
+          "Compound was tested in vitro for inhibition of human recombinant Prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "9934449",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160252",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro average percent Inhibition of Prostaglandin G/H synthase 2 (COX-2) at a concentration of 1 uM in human whole blood by human whole blood assay",
+          "Other",
+          "14640557",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160257",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro average percent Inhibition of Prostaglandin G/H synthase 2 (COX-2) at a concentration of 10 uM in human whole blood by human whole blood assay",
+          "Other",
+          "14640557",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160262",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of Prostaglandin G/H synthase 2 (COX-2) in human whole blood at 10 uM",
+          "Other",
+          "12877584",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160264",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro inhibition of human Prostaglandin G/H synthase 2 (expressed in sf9 insect cells using baculovirus) enzyme at a concentration of 10 M",
+          "Other",
+          "12954051",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160265",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro inhibition of human Prostaglandin G/H synthase 2 (rexpressed in sf9 insect cells using baculo virus) enzyme at the concentration of 1 uM",
+          "Other",
+          "12954051",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160266",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro inhibitory activity against human recombinant prostaglandin G/H synthase 2 (COX-2) at 10 uM expressed in sf-9 cells infected with baculovirus",
+          "Other",
+          "15026050",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160269",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro percent Inhibition of recombinant human prostaglandin G/H synthase 2 (COX-2) at a concentration of 1 uM",
+          "Other",
+          "14640557",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160399",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro percent Inhibition of recombinant human prostaglandin G/H synthase 2 (COX-2) at a concentration of 10 uM",
+          "Other",
+          "14640557",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160400",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro percent inhibition of prostaglandin G/H synthase 2 (COX-2) in human whole blood at 1 uM",
+          "Other",
+          "12877584",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160431",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Percentage of inhibition of Prostaglandin G/H synthase 2 activity in human whole blood(HWB) at 1 uM",
+          "Other",
+          "11462976",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160432",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Percentage of inhibition of Prostaglandin G/H synthase 2 activity in human whole blood(HWB) at 10 uM",
+          "Other",
+          "11462976",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160434",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.03981",
+          "IC50",
+          "Inhibition of human Prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "11563921",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160740",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.2",
+          "IC50",
+          "Compound was tested for the inhibition of human Prostaglandin G/H synthase 2 (COX-2) in human whole blood",
+          "Confirmatory",
+          "14640557",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160742",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.0507",
+          "IC50",
+          "Inhibitory concentration against Prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "11520213",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160743",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.002",
+          "IC50",
+          "Inhibitory of human Prostaglandin G/H synthase 2 expressed in CHO cells.",
+          "Confirmatory",
+          "12643942",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "160745",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Relative free energy of binding of compound to wild-type Prostaglandin G/H synthase 2; (deltaG=RT ln IC50)",
+          "Other",
+          "11412976",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162339",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.53",
+          "IC50",
+          "Biochemical index for Prostaglandin G/H synthase 2 measured as, PGE-2 levels in lipopolysaccharide (LPS)-challenged human whole blood",
+          "Confirmatory",
+          "10937738",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162341",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.2",
+          "IC50",
+          "Compound was evaluated for inhibition concentration of prostaglandin G/H synthase 2 in human blood",
+          "Confirmatory",
+          "15084117",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162344",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "In vitro inhibitory activity against human Prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "10328307",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162472",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.054",
+          "IC50",
+          "Compound was tested for the inhibition of recombinant human Prostaglandin G/H synthase 2 (COX-2)",
+          "Confirmatory",
+          "14640557",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162482",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "In Vitro activity of compound against human recombinant Prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "10715145",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162484",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.07",
+          "IC50",
+          "In vitro inhibition against human Prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "12954051",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162489",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.079",
+          "IC50",
+          "In vitro inhibitory activity against human Prostaglandin G/H synthase 2 (COX-2) in 143982 cells",
+          "Confirmatory",
+          "12877584",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162493",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.036",
+          "IC50",
+          "In vitro inhibitory activity against human recombinant prostaglandin G/H synthase 2 expressed in sf-9 cells infected with baculovirus",
+          "Confirmatory",
+          "15026050",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162494",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1",
+          "IC50",
+          "In vitro inhibitory activity against human whole blood Prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "10406640",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162498",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.036",
+          "IC50",
+          "In vitro inhibitory activity against recombinant human Prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "12729631",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162503",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.0567",
+          "IC50",
+          "In vitro inhibitory concentration of compound required to inhibit Prostaglandin G/H synthase 2 enzyme was determined",
+          "Confirmatory",
+          "12217369",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162507",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "In vitro inhibitory concentration required to block human recombinant prostaglandin G/H synthase 2 (COX-2)",
+          "Confirmatory",
+          "9135032",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162630",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.6",
+          "IC50",
+          "In vitro percent inhibition of Prostaglandin G/H synthase 2 (COX-2) in human whole blood was determined",
+          "Confirmatory",
+          "12877584",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162635",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.12",
+          "IC50",
+          "Inhibition of PGE-2 generation in LPS-stimulated human monocytes (Prostaglandin G/H synthase 2 cell assay)",
+          "Confirmatory",
+          "11906281",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162636",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.08",
+          "IC50",
+          "Inhibition of Prostaglandin G/H synthase 2 in 143.98.2 from human osteosarcoma cells",
+          "Confirmatory",
+          "11462976",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162644",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.1",
+          "IC50",
+          "Inhibitory activity against prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "10649977",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162646",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1",
+          "IC50",
+          "Inhibition of Prostaglandin G/H synthase 2 in human whole blood",
+          "Confirmatory",
+          "10465547",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162651",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.23",
+          "IC50",
+          "Inhibition of human Prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "11906292",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162652",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.036",
+          "IC50",
+          "Inhibitory activity against human Prostaglandin G/H synthase 2 expressed in sf-9 cells infected with baculovirus",
+          "Confirmatory",
+          "14698190",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162656",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.0567",
+          "IC50",
+          "Inhibitory concentration against Prostaglandin G/H synthase 2",
+          "Confirmatory",
+          "11520200",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162659",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibitory concentration against human prostaglandin G/H synthase 2 at 25 degrees.",
+          "Confirmatory",
+          "11814774",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "162662",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "3.6",
+          "IC50",
+          "Inhibitory effect on Prostaglandin G/H synthase 2 activity was evaluated in human whole blood as LPS-induced PGE-2 generation",
+          "Confirmatory",
+          "11906281",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "226197",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1",
+          "IC50",
+          "Inhibitory concentration was measured against Cyclooxygenase-2 in human whole blood",
+          "Confirmatory",
+          "12643942",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "229164",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Selectivity of IC50 COX-2/COX-1 was determined; Not determined",
+          "Other",
+          "14640557",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "229164",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Selectivity of IC50 COX-2/COX-1 was determined; Not determined",
+          "Other",
+          "14640557",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "229414",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Selectivity ratio for COX-1 over COX-2",
+          "Other",
+          "11906292",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "229414",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Selectivity ratio for COX-1 over COX-2",
+          "Other",
+          "11906292",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "229415",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Selectivity ratio (COX-1/COX-2)",
+          "Other",
+          "11906281",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "229415",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Selectivity ratio (COX-1/COX-2)",
+          "Other",
+          "11906281",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "232419",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Ratio of inhibition of COX-1 to COX-2",
+          "Other",
+          "10821716",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "232419",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Ratio of inhibition of COX-1 to COX-2",
+          "Other",
+          "10821716",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "232500",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Selectivity ratio of COX-1/COX-2",
+          "Other",
+          "10649977",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "232500",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Selectivity ratio of COX-1/COX-2",
+          "Other",
+          "10649977",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "232766",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Selectivity index of IC50 (COX-1) to that of IC50 (COX-2) was determined",
+          "Other",
+          "12217369",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "232766",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Selectivity index of IC50 (COX-1) to that of IC50 (COX-2) was determined",
+          "Other",
+          "12217369",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "232913",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Ratio of cox-1/cox-2 was determined",
+          "Other",
+          "11520200",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "232913",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Ratio of cox-1/cox-2 was determined",
+          "Other",
+          "11520200",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "233868",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Selectivity expressed as IC50 COX-1/IC50 COX-2",
+          "Other",
+          "15050635",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "233868",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Selectivity expressed as IC50 COX-1/IC50 COX-2",
+          "Other",
+          "15050635",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "234313",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Selectivity of IC50 COX-2/COX-1 was determined",
+          "Other",
+          "14640557",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "234313",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Selectivity of IC50 COX-2/COX-1 was determined",
+          "Other",
+          "14640557",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "234761",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Ratio of inhibitory activity against COX-1 and COX-2",
+          "Other",
+          "10937738",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "234761",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Ratio of inhibitory activity against COX-1 and COX-2",
+          "Other",
+          "10937738",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "235863",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "In vitro selectivity against COX-1 to that of COX-2 was determined",
+          "Other",
+          "12954051",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "235863",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro selectivity against COX-1 to that of COX-2 was determined",
+          "Other",
+          "12954051",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "241308",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.068",
+          "IC50",
+          "Inhibition of human cyclooxygenase-2 expressed in COS cells",
+          "Confirmatory",
+          "15454242",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "241609",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.2",
+          "IC50",
+          "In vitro inhibition of Prostaglandin G/H synthase 2 in human whole blood",
+          "Confirmatory",
+          "15546727",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "242133",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.2",
+          "IC50",
+          "In vitro inhibitory concentration against Prostaglandin G/H synthase 2 (COX-2) in human whole blood",
+          "Confirmatory",
+          "15916445",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "243778",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro inhibition of Prostaglandin G/H synthase 2 in human whole blood at 1 uM",
+          "Other",
+          "15546727",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "243786",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "In vitro inhibition of Prostaglandin G/H synthase 2 in human whole blood at 10 uM",
+          "Other",
+          "15546727",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "243904",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Percentage inhibition activity at a concentration of 10 uM against cyclooxygenase 2 with the compound dissolved in DMSO",
+          "Other",
+          "15993594",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "244091",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Ratio of IC50 for human COX-1 and COX-2",
+          "Other",
+          "15454242",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "244091",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Ratio of IC50 for human COX-1 and COX-2",
+          "Other",
+          "15454242",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "244252",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Selectivity for Prostaglandin G/H synthase 2 (COX-2) and Prostaglandin G/H synthase 1 (COX-1) in human whole blood as ratio of IC50",
+          "Other",
+          "15916445",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "244252",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Selectivity for Prostaglandin G/H synthase 2 (COX-2) and Prostaglandin G/H synthase 1 (COX-1) in human whole blood as ratio of IC50",
+          "Other",
+          "15916445",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "254798",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.0068",
+          "IC50",
+          "Inhibitory concentration against COX-2; (valus obtained by Kato et al.)",
+          "Confirmatory",
+          "16250658",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "254882",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.006",
+          "IC50",
+          "Inhibitory concentration against COX-2 upon incubation for 15 minutes at 37 degree C",
+          "Confirmatory",
+          "16250658",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "269464",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 expressed in sf9 cells infected with baculovirus",
+          "Other",
+          "16730986",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "270014",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.0022",
+          "IC50",
+          "Inhibition of COX2",
+          "Confirmatory",
+          "16806914",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "270015",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Selectivity index, IC50 for COX1 over IC50 for COX2",
+          "Other",
+          "16806914",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "270015",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Selectivity index, IC50 for COX1 over IC50 for COX2",
+          "Other",
+          "16806914",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "271284",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.33",
+          "IC50",
+          "Inhibition of COX2 assessed as LPS-stimulated PGE2 production in human whole blood leukocyte",
+          "Confirmatory",
+          "16814546",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "271285",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P23219",
+          "5742",
+          "",
+          "",
+          "Selectivity index, IC50 for COX1/IC50 for COX2 in human whole blood",
+          "Other",
+          "16814546",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "271285",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Selectivity index, IC50 for COX1/IC50 for COX2 in human whole blood",
+          "Other",
+          "16814546",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "280834",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.3",
+          "IC50",
+          "Activity of COX2 in human heparinized blood assessed as inhibition of LPS-induced PGE2 production after 24 hrs",
+          "Confirmatory",
+          "17335184",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "281536",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.036",
+          "IC50",
+          "Inhibition of COX2 expressed in CHO cells assessed as inhibition of arachidonic acid-stimulated PGE2 production by enzyme immunoassay",
+          "Confirmatory",
+          "15566290",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "282432",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.35",
+          "IC50",
+          "Inhibition of COX2 in human whole blood assessed as inhibition of LPS-stimulated PGE2 production",
+          "Confirmatory",
+          "15615524",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "289279",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.035",
+          "IC50",
+          "Inhibition of human recombinant COX2 by measuring PGE2",
+          "Confirmatory",
+          "17604631",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "297563",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 by measuring PGE2 formation at 100 uM",
+          "Other",
+          "17696334",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "302417",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.54",
+          "IC50",
+          "Inhibition of COX2 in LPS-induced monocyte assessed as PGE2 production in human whole blood",
+          "Confirmatory",
+          "17915854",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "303267",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 expressed in insect sf9 cells assessed as arachidonic acid-stimulated reactive oxygen species at 10 uM after 30 mins",
+          "Other",
+          "17950600",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "304224",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.2",
+          "IC50",
+          "Inhibition of COX2 in human whole blood assessed as effect on LPS-induced thromboxane B2 production",
+          "Confirmatory",
+          "17994684",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "309450",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.06",
+          "IC50",
+          "Inhibition of COX2",
+          "Confirmatory",
+          "17822894",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "315992",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.3",
+          "IC50",
+          "Inhibition of COX2 in human whole blood assessed as effect on LPS-stimulated PGE2 production",
+          "Confirmatory",
+          "18063374",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "347222",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.8",
+          "IC50",
+          "Inhibition of COX2 in LPS-stimulated human blood",
+          "Confirmatory",
+          "19097798",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "362870",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.00052",
+          "IC50",
+          "Inhibition of COX2",
+          "Confirmatory",
+          "17714833",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "363514",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.54",
+          "IC50",
+          "Inhibition of COX2 in human whole blood assessed as inhibition of TXB2 production by radioimmunoassay",
+          "Confirmatory",
+          "18752957",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "363802",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "1",
+          "IC50",
+          "Inhibition of human COX2",
+          "Confirmatory",
+          "17976864",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "368226",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.12",
+          "IC50",
+          "Inhibition of human recombinant COX2 by enzyme immuno assay",
+          "Confirmatory",
+          "19136259",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "369089",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.07",
+          "IC50",
+          "Inhibition of COX2 by enzyme immunoassay",
+          "Confirmatory",
+          "19157881",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "382419",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 at 3 uM",
+          "Other",
+          "17467123",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "382813",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.3",
+          "IC50",
+          "Inhibition of human recombinant COX2",
+          "Confirmatory",
+          "17532544",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "392037",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 at 1 uM",
+          "Other",
+          "18262309",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "392038",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 at 10 uM",
+          "Other",
+          "18262309",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "392040",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.2",
+          "IC50",
+          "Inhibition of COX2",
+          "Confirmatory",
+          "18262309",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "393211",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "",
+          "",
+          "",
+          "Inhibition of COX2 in LPS-stimulated human whole blood assessed as inhibition of PGE2 production at 10 uM by radioimmunoassay",
+          "Other",
+          "19200742",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "393819",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.12",
+          "IC50",
+          "Inhibition of human recombinant COX2 by enzyme immunoassay",
+          "Confirmatory",
+          "19296694",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "403704",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.08",
+          "IC50",
+          "Inhibition of human COX2 expressed in sf9 cells",
+          "Confirmatory",
+          "16252917",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "406722",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 at 100 uM",
+          "Other",
+          "18513975",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "412002",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "2.9",
+          "IC50",
+          "Inhibition of PGHS2 in human whole blood assessed as inhibition of TXB2 production by radioimmunoassay",
+          "Confirmatory",
+          "19059783",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "413195",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 assessed as remaining activity at 5 uM relative to control",
+          "Other",
+          "19053751",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "432545",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.068",
+          "IC50",
+          "Inhibition of human COX2 expressed in african green monkey COS cells assessed as inhibition of arachidonic acid-stimulated PGE2 production treated 1 hr before arachidonic acid challenge by enzyme immunoassay",
+          "Confirmatory",
+          "19520573",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "432548",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.063",
+          "IC50",
+          "Inhibition of human COX2 expressed in baculovirus-infected SF9 cells assessed as inhibition of arachidonic acid-stimulated PGE2 production treated 1 hr before arachidonic acid challenge by enzyme immunoassay",
+          "Confirmatory",
+          "19520573",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "432551",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.336",
+          "IC50",
+          "Inhibition of COX2 in human whole blood assessed as inhibition of lipopolysaccharide-stimulated PGE2 production after 24 hrs by enzyme immunoassay",
+          "Confirmatory",
+          "19520573",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "447529",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.12",
+          "IC50",
+          "Inhibition of human recombinant COX2 by enzyme immunoassay",
+          "Confirmatory",
+          "19500994",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "453627",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 at 5 uM",
+          "Other",
+          "19884011",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "453640",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 in IL1-beta induced human A549 cells assessed as reduction of 6-keto-PGF1-alpha formation up to 5 uM preincubated for 15 mins by ELISA",
+          "Other",
+          "19884011",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "456481",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.54",
+          "IC50",
+          "Inhibition of COX2 in human whole blood assessed as inhibition of LPS-induced PGE2 production by RIA",
+          "Confirmatory",
+          "19957931",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "457535",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 in human THP1 cells at 10 uM by enzyme immunoassay",
+          "Other",
+          "20056549",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "457929",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.12",
+          "IC50",
+          "Inhibition of human recombinant COX2 by enzyme immunoassay",
+          "Confirmatory",
+          "20097072",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "460898",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human COX2 at 10 uM",
+          "Other",
+          "20138770",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "471117",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.35",
+          "IC50",
+          "Inhibition of COX2 in LPS-stimulated human whole blood assessed as PGE2 production by enzyme immunoassay",
+          "Confirmatory",
+          "19791801",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "488203",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.8",
+          "IC50",
+          "Inhibition of COX2 in human whole blood assessed as inhibition of 12-hydroxyheptadecatrienoic acid production by HPLC method",
+          "Confirmatory",
+          "20451397",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "493017",
+          "",
+          "103853303",
+          "2662",
+          "Active",
+          "",
+          "5743",
+          "",
+          "",
+          "Wombat Data for BeliefDocking",
+          "Other",
+          "10937738",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "494635",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.065",
+          "IC50",
+          "Inhibition of human COX2 by enzyme immunoassay",
+          "Confirmatory",
+          "20576432",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "497209",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human COX2 at 10 uM",
+          "Other",
+          "20609589",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "501379",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.065",
+          "IC50",
+          "Inhibition of human recombinant COX2 by EIA",
+          "Confirmatory",
+          "20655211",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "547628",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.3",
+          "IC50",
+          "Inhibition of human recombinant COX2 after 45 mins",
+          "Confirmatory",
+          "20970223",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "568555",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human COX2",
+          "Confirmatory",
+          "21215625",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "579474",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.03",
+          "IC50",
+          "Inhibition of human recombinant COX-2 by fluorescence assay",
+          "Confirmatory",
+          "21316237",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "580341",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 at 30 uM",
+          "Other",
+          "21345672",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "580343",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.15",
+          "IC50",
+          "Inhibition of COX2",
+          "Confirmatory",
+          "21345672",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "587232",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human COX2 assessed as PGE2 formation at 46 nM by LC-MS-MS analysis",
+          "Other",
+          "21261296",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "587236",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human COX2 assessed as PGE2 formation at 33 uM by LC-MS-MS analysis",
+          "Other",
+          "21261296",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "592802",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.01",
+          "IC50",
+          "Inhibition of human recombinant COX-2 after 2 mins by fluorescence assay",
+          "Confirmatory",
+          "21434686",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "603429",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.07",
+          "IC50",
+          "Inhibition of human recombinant COX2 by enzyme immuno assay",
+          "Confirmatory",
+          "21641217",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "612058",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.19",
+          "IC50",
+          "Inhibition of human whole blood COX-2 assessed as production of PGE2 after 24 hrs by EIA",
+          "Confirmatory",
+          "21570308",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "625244",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.484",
+          "IC50",
+          "DRUGMATRIX: Cyclooxygenase COX-2 enzyme inhibition (substrate: Arachidonic acid)",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "625244",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "",
+          "",
+          "Ki",
+          "DRUGMATRIX: Cyclooxygenase COX-2 enzyme inhibition (substrate: Arachidonic acid)",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "629712",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.12",
+          "IC50",
+          "Inhibition of COX2 by chemiluminescent enzyme assay",
+          "Confirmatory",
+          "22000948",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "633795",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.1",
+          "IC50",
+          "Inhibition of human recombinant COX-2 assessed as PGF2alpha production by enzyme immunoassay",
+          "Confirmatory",
+          "22119153",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "639980",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.2",
+          "IC50",
+          "Inhibition of COX2 assessed as inhibition of PGE2 production using arachidonic acid as substrate after 10 mins by ELISA",
+          "Confirmatory",
+          "22217871",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "641779",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.54",
+          "IC50",
+          "Inhibition of COX2-mediated PGE2 production in LPS-induced human whole blood after 60 mins by radioimmunoassay",
+          "Confirmatory",
+          "21992176",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "648187",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human recombinant COX2 by fluorescence assay",
+          "Confirmatory",
+          "22386983",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "648562",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.06",
+          "IC50",
+          "Competitive inhibition of human recombinant COX2 by enzyme immunoassay",
+          "Confirmatory",
+          "22341941",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "649270",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.07",
+          "IC50",
+          "Inhibition of human recombinant COX-2 by enzyme immuno assay",
+          "Confirmatory",
+          "22361134",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "657493",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of recombinant human COX2 using arachidonic acid as substrate at 100 nM preincubated for 10 mins prior substrate addition measured after 2 mins by EIA",
+          "Other",
+          "22494844",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "660181",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 at 5 uM by fluorescence assay",
+          "Other",
+          "22516282",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "660182",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.03",
+          "IC50",
+          "Inhibition of COX2 by fluorescence assay",
+          "Confirmatory",
+          "22516282",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "665184",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.06",
+          "IC50",
+          "Inhibition of human recombinant COX2 by enzymatic fluorescence assay",
+          "Confirmatory",
+          "22560838",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "667791",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of recombinant human COX2 assessed as PGE2 formation at 10 uM by enzyme immunoassay",
+          "Other",
+          "22796043",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "669529",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 in LPS-stimulated human whole blood assessed as residual PGE2 level at 5 uM preincubated for 15 mins prior to LPS-stimulation measured after 24 hrs by LC-MS/MS analysis relative to control",
+          "Other",
+          "22449023",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "669530",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 in LPS-stimulated human whole blood assessed as residual PGF2alpha level at 5 uM preincubated for 15 mins prior to LPS-stimulation measured after 24 hrs by LC-MS/MS analysis relative to control",
+          "Other",
+          "22449023",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "673510",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.14",
+          "IC50",
+          "Inhibition of COX2 in human whole blood assessed as inhibition of LPS-induced PGE2 synthesis up to 24 hrs by radioimmunoassay",
+          "Confirmatory",
+          "22749420",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "675696",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of COX2",
+          "Confirmatory",
+          "22263894",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "675704",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.054",
+          "IC50",
+          "Inhibition of COX-2 in human HNSCC 1483 cells using [14C] arachidonic acid as substrate preincubated for 30 mins before substrate addition measured after 30 mins",
+          "Confirmatory",
+          "22263894",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "683132",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 assessed as PGE2 production using arachidonic acid as substrate at 5 nM by EIA",
+          "Other",
+          "23047231",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "694220",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.1",
+          "IC50",
+          "Inhibition of COX-2 by chemiluminescent assay",
+          "Confirmatory",
+          "23062711",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "695144",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.042",
+          "IC50",
+          "Inhibition of human recombinant COX2 expressed in insect cells using arachidonic acid as substrate incubated for 1 min prior to substrate addition measured for 25 secs by TMPD-based chromogenic assay",
+          "Confirmatory",
+          "23010270",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "724444",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.07",
+          "IC50",
+          "Inhibition of human recombinant COX2",
+          "Confirmatory",
+          "23200247",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "734522",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.1",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) by chemiluminescence assay",
+          "Confirmatory",
+          "23353741",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "738675",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.87",
+          "IC50",
+          "Inhibition of COX2 in human blood assessed as TxB2 level after 1 hr by enzyme immunoassay",
+          "Confirmatory",
+          "23473947",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "753950",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "390",
+          "IC50",
+          "Inhibition of monocyte COX2 in human whole blood assessed as inhibition of LPS-induced plasma PGE2 production after 24 hrs by radioimmunoassay",
+          "Confirmatory",
+          "23680444",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "755521",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.02",
+          "IC50",
+          "Inhibition of human recombinant COX2 by fluorescence assay",
+          "Confirmatory",
+          "23706267",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1055837",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.32",
+          "IC50",
+          "Inhibition of human recombinant COX2 expressed in insect cell expression system using TMPD and arachidonic acid as substrate incubated for 1 min prior to substrate addition by spectrophotometry",
+          "Confirmatory",
+          "24211633",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1055837",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "Inhibition",
+          "Inhibition of human recombinant COX2 expressed in insect cell expression system using TMPD and arachidonic acid as substrate incubated for 1 min prior to substrate addition by spectrophotometry",
+          "Confirmatory",
+          "24211633",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1057592",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 using arachidonic acid as substrate at 10 uM incubated 5 mins prior to substrate addition measured after 5 mins by HPLC analysis",
+          "Other",
+          "24171493",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1057875",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of LPS-stimulated COX2 in human whole blood assessed as reduction in PGF2alpha production by measuring remaining activity at 5 uM preincubated for 15 mins followed by LPS addition measured after 24 hrs by LC-MS/MS analysis",
+          "Other",
+          "24183739",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1057877",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of LPS-stimulated COX2 in human whole blood assessed as reduction in PGE2 production by measuring remaining activity at 5 uM preincubated for 15 mins followed by LPS addition measured after 24 hrs by LC-MS/MS analysis",
+          "Other",
+          "24183739",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1060962",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.057",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) by ELISA",
+          "Confirmatory",
+          "24295787",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1061774",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human recombinant COX2 using arachidonic acid as substrate incubated for 10 mins prior to substrate addition measured after 2 mins by spectrophotometry",
+          "Confirmatory",
+          "24332492",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1064080",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.54",
+          "IC50",
+          "Inhibition of COX-2 in human whole blood assessed as prostaglandin E2 production by RIA",
+          "Confirmatory",
+          "24373735",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1069522",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.35",
+          "IC50",
+          "Inhibition of COX-2 in human whole blood assessed as PGE2 level in plasma after 5 mins by enzyme immunoassay",
+          "Confirmatory",
+          "24440378",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1077203",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human COX2 using arachidonic acid as substrate assessed as PGE2 formation incubated for 10 mins prior to substrate addition measured after 10 mins by ELISA",
+          "Confirmatory",
+          "24602792",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1077240",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.28",
+          "IC50",
+          "Inhibition of human recombinant COX2 using arachidonic acid as substrate incubated for 10 mins prior to substrate addition measured after 2 mins by enzyme immunoassay",
+          "Confirmatory",
+          "24607877",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1107227",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.057",
+          "IC50",
+          "Inhibition of COX2 (unknown origin)",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1125534",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.07",
+          "IC50",
+          "Inhibition of human recombinant COX-2 by enzyme immunoassay",
+          "Confirmatory",
+          "24650702",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1125685",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.072",
+          "IC50",
+          "Inhibition of human recombinant COX-2 assessed as decrease in PGH2 production using arachidonic acid as substrate treated with enzyme for 10 mins prior to substrate challenge for 2 mins by enzyme immunoassay",
+          "Confirmatory",
+          "24656662",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1125894",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 (unknown origin) at 100 uM by colorimetric method",
+          "Other",
+          "24661847",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1125896",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "2.66",
+          "IC50",
+          "Inhibition of COX2 (unknown origin) by colorimetric method",
+          "Confirmatory",
+          "24661847",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1140776",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human recombinant COX-2 expressed in insect cell system using arachidonic acid as substrate assessed as reduction of PGG2 to PGH2 incubated for 1 min prior to substrate addition measured after 25 secs by chromogenic assay",
+          "Confirmatory",
+          "24745964",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1142445",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.28",
+          "IC50",
+          "Inhibition of human recombinant COX2 after 2 mins by EIA",
+          "Confirmatory",
+          "24780593",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1143530",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.27",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "24836072",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1143905",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 assessed as residual activity preincubated at 5 uM for 5 mins by HPLC analysis",
+          "Other",
+          "24871899",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1153845",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX-2 using arachidonic acid as substrate assessed as residual activity at 5 uM preincubated for 5 mins followed by substrate addition measured after 5 mins by HPLC analysis relative to control",
+          "Other",
+          "24844534",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1154874",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 using arachidonic acid as substrate at 10 uM",
+          "Other",
+          "24900871",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1154879",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.29",
+          "IC50",
+          "Inhibition of human recombinant COX2 using arachidonic acid as substrate",
+          "Confirmatory",
+          "24900871",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1164203",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.05",
+          "IC50",
+          "Inhibition of human recombinant COX2 pre-treated for 1 hr before 10-acetyl-3,7-dihydroxyphenoxazin substrate addition in absence of porcine liver esterase by fluorescence assay",
+          "Confirmatory",
+          "25221653",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1168908",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX-2 expressed in insect cell system using arachidonic acid as substrate assessed as rate of TMPD oxidation incubated for 1 min prior to substrate addition by spectrophotometry",
+          "Other",
+          "25311566",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1177989",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human recombinant COX-2 assessed as decrease in prostaglandin production using arachidonic acid as substrate incubated with enzyme for 10 mins prior to substrate challenge by enzyme immunoassay",
+          "Confirmatory",
+          "24631898",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1177996",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Binding affinity to COX-2 (unknown origin) by ESI mass spectrometry",
+          "Other",
+          "24631898",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1179977",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of COX2 (unknown origin) by solid phase ELISA method",
+          "Confirmatory",
+          "24934992",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1183335",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 using fluorometric substrate at 10 mM by fluorescent inhibitor screening assay",
+          "Other",
+          "25016374",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1192236",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 at 10 uM by TMPD oxidation based colorimetric assay",
+          "Other",
+          "25708616",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1194588",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.019",
+          "IC50",
+          "Inhibition of human recombinant COX2 using fluorometric substrate after 15 mins",
+          "Confirmatory",
+          "25819096",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1198999",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.052",
+          "IC50",
+          "Inhibition of human recombinant COX2 by ELISA",
+          "Confirmatory",
+          "25866240",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1204713",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.016",
+          "IC50",
+          "Inhibition of human recombinant COX2 pre-incubated for 15 mins followed by addition of heme and fluorometric substrate and further incubated for 15 mins in presence of arachidonic acid by fluorescence based assay",
+          "Confirmatory",
+          "25980909",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1226815",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human recombinant COX-2 assessed as PGF2 alpha formation using arachidonic acid as substrate pretreated with compound for 20 mins prior to substrate addition by spectrophotometric analysis",
+          "Confirmatory",
+          "25956953",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1238184",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.13",
+          "IC50",
+          "Inhibition of recombinant human COX-2 assessed as reduction of prostaglandin-G2 to prostaglandin-H2 and oxidation of 10-acetyl-3,7-dihydroxyphenoxazine to resorufin after 5 mins by fluorescence based assay",
+          "Confirmatory",
+          "26081289",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1241379",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 using arachidonic acid as substrate at 1 uM preincubated for 5 mins measured after 2 mins by colorimetric analysis",
+          "Other",
+          "26277757",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1250474",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.019",
+          "IC50",
+          "Inhibition of human recombinant COX-2 using arachidonic acid after 15 mins by fluorescence based assay",
+          "Confirmatory",
+          "26316467",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1262449",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.9",
+          "IC50",
+          "Inhibition of human recombinant COX-2 preincubated for 2 mins prior to arachidonic acid addition by enzyme immuno assay",
+          "Confirmatory",
+          "26546221",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1268137",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.26",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "26638042",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1268957",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.87",
+          "IC50",
+          "Inhibition of human recombinant COX2 by enzyme immuno assay",
+          "Confirmatory",
+          "26691756",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1279386",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of COX2 (unknown origin)",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1285029",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "26898334",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1285032",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of recombinant human COX-2 preincubated for 5 mins followed by addition of arachidonic acid as substrate measured after 2 mins by fluorescence analysis",
+          "Confirmatory",
+          "26898334",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1301937",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human recombinant COX2 assessed as reduction in PGH2-derived PGF2alpha using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition measured after 2 mins by enzyme immunoassay",
+          "Confirmatory",
+          "27019010",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1311601",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.31",
+          "IC50",
+          "Inhibition of human COX2 using arachidonic acid assessed as production of PGF2alpha after 5 mins by ELISA",
+          "Confirmatory",
+          "27349331",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1334717",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.34",
+          "IC50",
+          "Inhibition of human recombinant COX-2 assessed as reduction in oxidation of TMPD using arachidonic acid as substrate preincubated for 5 mins followed by substrate and TMPD addition measured after 5 mins by colorimetric assay",
+          "Confirmatory",
+          "27916468",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1345206",
+          "",
+          "178100241",
+          "2662",
+          "Active",
+          "NP_000954",
+          "5743",
+          "",
+          "",
+          "Human COX-2  (Cyclooxygenase)",
+          "Other",
+          "12643942",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1345206",
+          "",
+          "178100241",
+          "2662",
+          "Active",
+          "NP_000954",
+          "5743",
+          "",
+          "",
+          "Human COX-2  (Cyclooxygenase)",
+          "Other",
+          "29031075",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1357040",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human COX2 pre-incubated for 10 mins before arachidonic acid addition and measured after 2 mins by EIA method",
+          "Confirmatory",
+          "30095904",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1368422",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.012",
+          "IC50",
+          "Inhibition of human COX2 assessed as reduction in PGF2alpha level using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition by ELISA",
+          "Confirmatory",
+          "29191502",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1373661",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.15",
+          "IC50",
+          "Inhibition of recombinant human N-terminal His-tagged COX2 expressed in baculovirus infected Sf21 cells assessed as reduction in prostaglandin production by enzyme immunoassay",
+          "Confirmatory",
+          "29373271",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1398037",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.36",
+          "IC50",
+          "Inhibition of COX2 (unknown origin) using arachidonic acid as substrate pretreated for 10 mins followed by substrate addition and measured after 2 mins by ELISA",
+          "Confirmatory",
+          "30031652",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1403472",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.05",
+          "IC50",
+          "Inhibition of recombinant human COX2 assessed as reduction in PGF2alpha production using arachidonic acid as substrate by colorimetric method",
+          "Confirmatory",
+          "29289887",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1409074",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.26",
+          "IC50",
+          "Inhibition of recombinant N-terminal His6-tagged human COX-2 expressed in Baculovirus infected Sf21 cells using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition measured after 1 hr",
+          "Confirmatory",
+          "30293795",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1426401",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.78",
+          "IC50",
+          "Inhibition of human COX2 using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition measured after 2 mins by enzyme immunoassay",
+          "Confirmatory",
+          "28038322",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1434440",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human COX2 at 100 uM using arachidonic acid as substrate after 2 mins by fluorometric substrate-based fluorescence assay relative to control",
+          "Other",
+          "28025003",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1436692",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.64",
+          "IC50",
+          "Inhibition of COX2 (unknown origin)",
+          "Confirmatory",
+          "28089698",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1437454",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.88",
+          "IC50",
+          "Inhibition of recombinant human COX2 using arachidonic acid as substrate assessed as decrease in PGF2 production preincubated for 15 mins followed by substrate addition measured after 2 mins by enzyme immunoassay",
+          "Confirmatory",
+          "27837994",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1443234",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX2 at 60 uM using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition measured after 2 mins by ADHP probe-based fluorescence assay relative to control",
+          "Other",
+          "28284805",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1443235",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.03",
+          "IC50",
+          "Inhibition of human recombinant COX2 using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition measured after 2 mins by ADHP probe-based fluorescence assay",
+          "Confirmatory",
+          "28284805",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1461599",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.87",
+          "IC50",
+          "Inhibition of human COX-2 preincubated for 5 mins followed by arachidonic acid substrate addition by colorimetric enzyme immunoassay",
+          "Confirmatory",
+          "28669741",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1464060",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.14",
+          "IC50",
+          "Inhibition of recombinant human COX2 using arachidonic acid as substrate by colorimetric enzyme immune assay",
+          "Confirmatory",
+          "28844389",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1464291",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.05",
+          "IC50",
+          "Inhibition of human recombinant COX2 assessed as reduction in PGH2 formation by measuring PGF2alpha by colorimetric assay",
+          "Confirmatory",
+          "28916158",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1474824",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.0048",
+          "IC50",
+          "Inhibition of COX2 (unknown origin) using arachidonic acid as substrate pretreated for 10 mins followed by substrate addition measured after 2 mins by enzyme-immunoassay",
+          "Confirmatory",
+          "28427813",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1483247",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.007",
+          "IC50",
+          "Inhibition of recombinant human COX-2 preincubated for 15 mins followed by fluorometric substrate/heme addition for 15 mins subsequently incubated with arachidonic acid for 2 mins by fluorescence analysis",
+          "Confirmatory",
+          "28475316",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1488611",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.41",
+          "IC50",
+          "Inhibition of COX2 (unknown origin) assessed as reduction in PGE2 level using arachidonic acid as substrate after 5 mins in presence of heme by ELISA",
+          "Confirmatory",
+          "28720504",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1498930",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.36",
+          "IC50",
+          "Inhibition of human COX2 using [14C]arachidonic acid as substrate preincubated for 5 mins followed by substrate addition measured after 45 mins by TLC",
+          "Confirmatory",
+          "30017112",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1501906",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "1.31",
+          "IC50",
+          "Inhibition of human COX2 expressed in insect cells using arachidonic acid as substrate pretreated for 3 mins followed by substrate addition measured immediately",
+          "Confirmatory",
+          "28885836",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1503672",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.3",
+          "IC50",
+          "Inhibition of human COX-2 using [14C]-arachidonic acid as substrate preincubated for 5 mins followed by substrate addition measured after 45 mins by thin layer chromatographic method",
+          "Confirmatory",
+          "29031075",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1503676",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P23219",
+          "5742",
+          "0.089",
+          "IC50",
+          "Inhibition of human kidney microsomal COX assessed as PGE2 level using arachidonic acid as substrate preincubated for 5 to 15 mins followed by substrate addition measured after 40 mins by radio immunoassay",
+          "Confirmatory",
+          "29031075",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1503676",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.089",
+          "IC50",
+          "Inhibition of human kidney microsomal COX assessed as PGE2 level using arachidonic acid as substrate preincubated for 5 to 15 mins followed by substrate addition measured after 40 mins by radio immunoassay",
+          "Confirmatory",
+          "29031075",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1506618",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.87",
+          "IC50",
+          "Inhibition of human recombinant COX2 by enzyme immuno assay",
+          "Confirmatory",
+          "30108767",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1506619",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.07",
+          "IC50",
+          "Inhibition of human COX2 assessed as reduction in PGE2 production incubated for 2 mins using arachidonic acid substrate by enzyme immuno assay",
+          "Confirmatory",
+          "30108767",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1506622",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.06",
+          "IC50",
+          "Inhibition of human COX2 by fluorescence based assay",
+          "Confirmatory",
+          "30108767",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1517246",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.049",
+          "IC50",
+          "Inhibition of human recombinant COX-2 by EIA method",
+          "Confirmatory",
+          "31539778",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1519090",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.25",
+          "IC50",
+          "Inhibition of human COX2 using arachidonic acid as substrate incubated for 2 mins by ELISA method",
+          "Confirmatory",
+          "31655429",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1532167",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of recombinant human COX-2 expressed in Baculovirus infected sf9 cells using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition measured after 10 mins by ELISA",
+          "Confirmatory",
+          "30396033",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1532668",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX2 in LPS-induced human whole blood at 10 uM after 24 hrs by EIA relative to control",
+          "Other",
+          "30469039",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1549678",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.25",
+          "IC50",
+          "Inhibition of COX2 (unknown origin) using arachidonic acid as substrate incubated for 10 mins by Ellman's reagent based COX-1/COX-2 ELISA assay",
+          "Confirmatory",
+          "30877972",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1550471",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.01779",
+          "IC50",
+          "Inhibition of human COX2 assessed as reduction in PGF2alpha production using arachidonic acid as substrate preincubated with enzyme for 10 mins followed by substrate addition by ELISA",
+          "Confirmatory",
+          "30904755",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1559629",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.07",
+          "IC50",
+          "Inhibition of human COX2",
+          "Confirmatory",
+          "31820982",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1559630",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.09",
+          "IC50",
+          "Inhibition of COX2 human HCA7 cells",
+          "Confirmatory",
+          "31820982",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1568918",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of recombinant human COX-2 assessed as reduction in prostaglandin production preincubated for 10 mins followed by arachidonic acid addition and measured after 2 mins by EIA method",
+          "Confirmatory",
+          "31244108",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1569918",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.0112",
+          "IC50",
+          "Inhibition of human COX-2 using arachidonic acid as substrate incubated for 5 mins by fluorescence-based assay",
+          "Confirmatory",
+          "31299586",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1576161",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.07",
+          "IC50",
+          "Inhibition of human recombinant COX2 assessed as decrease in prostaglandin production using arachidonic acid as substrate pretreated for 15 mins followed by substrate addition and measured after 2 mins by enzyme immunoassay",
+          "Confirmatory",
+          "31803395",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1591463",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.22",
+          "IC50",
+          "Inhibition of COX2 (unknown origin)",
+          "Confirmatory",
+          "31160177",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1592998",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.05",
+          "IC50",
+          "Inhibition of human recombinant COX2 catalytic activity using arachidonic acid as substrate pre-incubated for 10 mins followed by substrate addition and measured after 2 mins by ELISA method",
+          "Confirmatory",
+          "30818268",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1595292",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.03556",
+          "IC50",
+          "Inhibition of human recombinant COX-2 assessed as reduction in PGF2alpha formation using arachidonic acid as substrate preincubated with enzyme for 10 mins followed by substrate addition for 30 secs and measured after 1 hr by microplate reader based enzyme immunoassay",
+          "Confirmatory",
+          "30928706",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1607870",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "430",
+          "IC50",
+          "Inhibition of COX2 (unknown origin)",
+          "Confirmatory",
+          "31255927",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1608177",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.31",
+          "IC50",
+          "Inhibition of recombinant human COX2 using arachidonic acid as substrate pretreated for 5 mins followed by substrate addition and measured after 2 mins by fluorescence based enzyme immunoassay",
+          "Confirmatory",
+          "31301566",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1608416",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.84",
+          "IC50",
+          "Inhibition of COX2 (unknown origin) by EIA",
+          "Confirmatory",
+          "31330449",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1632807",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.02",
+          "IC50",
+          "Inhibition of recombinant human COX2 assessed as PGH2 formation preincubated for 10 mins followed by addition of arachidonic acid as substrate measured after 2 mins by ELISA",
+          "Confirmatory",
+          "27567369",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1650564",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human COX2 using arachidonic acid as substrate incubated for 10 mins followed by substrate addition and measured after 2 mins by EIA assay",
+          "Confirmatory",
+          "31843462",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1662955",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "",
+          "",
+          "",
+          "Inhibition of COX2 (unknown origin) up to 10 uM by ELISA",
+          "Other",
+          "32386981",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1667492",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.045",
+          "IC50",
+          "Inhibition of human recombinant COX2 using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition and measured after 2 mins by EIA",
+          "Confirmatory",
+          "32127262",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1674494",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Activation of COX2 in LPS-induced mouse RAW264.7 cells at 10 uM preincubated for 90 mins followed by LPS administration measured after 3 hrs by fluorimetric analysis relative to control",
+          "Other",
+          "32672964",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1684450",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.24",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) assessed as reduction in PGH2 formation using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition and measured after 2 mins by enzyme immunoassay",
+          "Confirmatory",
+          "33316405",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1689633",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.7",
+          "IC50",
+          "Inhibition of human COX2 assessed as reduction in PGF2alpha formation using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition and measured after 2 mins by ELISA",
+          "Confirmatory",
+          "31982653",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1709975",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.09",
+          "IC50",
+          "Inhibition of recombinant human COX2",
+          "Confirmatory",
+          "34055228",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1721659",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.27",
+          "IC50",
+          "Inhibition of COX2 (unknown origin)",
+          "Confirmatory",
+          "32738961",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1727719",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate at 1000 uM measured after 10 mins by fluorometric based multimode microplate reader relative to control",
+          "Other",
+          "33071054",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1727720",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate at 100 uM measured after 10 mins by fluorometric based multimode microplate reader relative to control",
+          "Other",
+          "33071054",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1727721",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.132",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate measured after 10 mins by fluorometric based multimode microplate reader",
+          "Confirmatory",
+          "33071054",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1727723",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate at 10 uM measured after 10 mins by fluorometric based multimode microplate reader relative to control",
+          "Other",
+          "33071054",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1727724",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate at 1 uM measured after 10 mins by fluorometric based multimode microplate reader relative to control",
+          "Other",
+          "33071054",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1727725",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate at 0.1 uM measured after 10 mins by fluorometric based multimode microplate reader relative to control",
+          "Other",
+          "33071054",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1727726",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate at 0.01 uM measured after 10 mins by fluorometric based multimode microplate reader relative to control",
+          "Other",
+          "33071054",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1727727",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate at 0.001 uM measured after 10 mins by fluorometric based multimode microplate reader relative to control",
+          "Other",
+          "33071054",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1739493",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.05",
+          "IC50",
+          "Inhibition of human recombinant COX2 by colorimetric analysis",
+          "Confirmatory",
+          "32485532",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1742032",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.95",
+          "IC50",
+          "Inhibition of recombinant human COX2 using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition and measured after 2 mins by Ellman's reagent based enzyme immunoassay",
+          "Confirmatory",
+          "32763463",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1751817",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.057",
+          "IC50",
+          "Inhibition of COX2 (unknown origin) expressed in HEK293 TRex cells assessed as reduction in PGE2 production using arachidonic acid as substrate preincubated for 60 mins followed by substrate addition for 1 hr in presence of 10% FBS by RapidFire High-Throughput Mass Spectrometry",
+          "Confirmatory",
+          "34279934",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1751819",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.028",
+          "IC50",
+          "Inhibition of human recombinant COX-2 assessed as reduction in peroxidase activity using arachidonic acid as substrate preincubated for 60 mins followed by substrate addition for 2 secs by ADPH based fluorometric analysis",
+          "Confirmatory",
+          "34279934",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1751838",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.00047",
+          "Ki",
+          "Inhibition of human recombinant COX-2 using arachidonic acid as substrate preincubated for 60 mins followed by substrate addition for 2 secs by ADPH based fluorometric analysis",
+          "Confirmatory",
+          "34279934",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1751851",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Protein occupancy at human recombinant COX-2 assessed as dissociation half life",
+          "Other",
+          "34279934",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1751852",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.44",
+          "IC50",
+          "Inhibition of COX2 in human whole blood assessed as reduction in LPS stimulated PGE2 production incubated for 1 hr by ELISA",
+          "Confirmatory",
+          "34279934",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1752426",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX-2 assessed as production of PGE2 using arachidonic acid as a substrate preincubated for 60 mins at 10 uM followed by substrate addition and measured after 2 mins by ELISA analysis relative to control",
+          "Other",
+          "34438337",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1752427",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX-2 assessed as production of PGE2 using arachidonic acid as a substrate preincubated for 60 mins at 1 uM followed by substrate addition and measured after 2 mins by ELISA analysis relative to control",
+          "Other",
+          "34438337",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1752428",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX-2 assessed as production of PGE2 using arachidonic acid as a substrate preincubated for 60 mins at 0.1 uM followed by substrate addition and measured after 2 mins by ELISA analysis relative to control",
+          "Other",
+          "34438337",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1752429",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human recombinant COX-2 assessed as production of PGE2 using arachidonic acid as a substrate preincubated for 60 mins at 0.01 uM followed by substrate addition and measured after 2 mins by ELISA analysis relative to control",
+          "Other",
+          "34438337",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1752430",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.056",
+          "IC50",
+          "Inhibition of human recombinant COX-2 assessed as production of PGE2 using arachidonic acid as a substrate preincubated for 60 mins followed by substrate addition and measured after 2 mins by ELISA analysis",
+          "Confirmatory",
+          "34438337",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1763091",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.045",
+          "IC50",
+          "Inhibition of human recombinant COX-2 using arachidonic acid as substrate preincubated with enzyme for 5 mins followed by substrate addition by colorimetric analysis",
+          "Confirmatory",
+          "33892270",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1767344",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.16",
+          "IC50",
+          "Inhibition of human COX2 assessed as fluorescence by microplate reader",
+          "Confirmatory",
+          "34091208",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1783173",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "",
+          "",
+          "",
+          "Inhibition of human recombinant COX-2 at 1 uM using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition",
+          "Other",
+          "34077833",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1783311",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.006",
+          "IC50",
+          "Inhibition of human recombinant COX-2 using arachidonic acid as substrate by fluorescence assay",
+          "Confirmatory",
+          "34245948",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1798182",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.07",
+          "IC50",
+          "COX Inhibitor Screening Assay from Article 10.1021/jm0510474: \"Synthesis and structure-activity relationship studies of 1,3-diarylprop-2-yn-1-ones: dual inhibitors of cyclooxygenases and lipoxygenases.\"",
+          "Confirmatory",
+          "16509583",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1798182",
+          "",
+          "46512162",
+          "2662",
+          "Inactive",
+          "P05979",
+          "443551",
+          "33.1",
+          "IC50",
+          "COX Inhibitor Screening Assay from Article 10.1021/jm0510474: \"Synthesis and structure-activity relationship studies of 1,3-diarylprop-2-yn-1-ones: dual inhibitors of cyclooxygenases and lipoxygenases.\"",
+          "Confirmatory",
+          "16509583",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1799729",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.3",
+          "IC50",
+          "Enzyme Inhibition Assay from Article 10.1080/14756360802188404: \"Synthesis of some pyrazolyl benzenesulfonamide derivatives as dual anti-inflammatory antimicrobial agents.\"",
+          "Confirmatory",
+          "18951238",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1799729",
+          "",
+          "46512162",
+          "2662",
+          "Inactive",
+          "P23219",
+          "5742",
+          "100",
+          "IC50",
+          "Enzyme Inhibition Assay from Article 10.1080/14756360802188404: \"Synthesis of some pyrazolyl benzenesulfonamide derivatives as dual anti-inflammatory antimicrobial agents.\"",
+          "Confirmatory",
+          "18951238",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1799883",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.06",
+          "IC50",
+          "In Vitro COX Inhibition Assay from Article 10.1007/s00044-009-9230-8: \"Design and synthesis of new 2-aryl, 3-benzyl- (1,3-oxazolidine or 1,3-thiazolidine)-4-ones as selective cyclooxygenase (COX-2) inhibitor\"",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1799883",
+          "",
+          "46512162",
+          "2662",
+          "Inactive",
+          "P23219",
+          "5742",
+          "24.3",
+          "IC50",
+          "In Vitro COX Inhibition Assay from Article 10.1007/s00044-009-9230-8: \"Design and synthesis of new 2-aryl, 3-benzyl- (1,3-oxazolidine or 1,3-thiazolidine)-4-ones as selective cyclooxygenase (COX-2) inhibitor\"",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1801480",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P05979",
+          "443551",
+          "6.7",
+          "IC50",
+          "In vitro Cyclooxygenase (COX) Inhibition Assay from Article 10.1016/j.bioorg.2015.09.002: \"1-(4-Methane(amino)sulfonylphenyl)-3-(4-substituted-phenyl)-5-(4-trifluoromethylphenyl)-1H-2-pyrazolines/pyrazoles as potential anti-inflammatory agents.\"",
+          "Confirmatory",
+          "26398140",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1801480",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.87",
+          "IC50",
+          "In vitro Cyclooxygenase (COX) Inhibition Assay from Article 10.1016/j.bioorg.2015.09.002: \"1-(4-Methane(amino)sulfonylphenyl)-3-(4-substituted-phenyl)-5-(4-trifluoromethylphenyl)-1H-2-pyrazolines/pyrazoles as potential anti-inflammatory agents.\"",
+          "Confirmatory",
+          "26398140",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1801526",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P05979",
+          "443551",
+          "9.7",
+          "IC50",
+          "In vitro Cyclooxygenase Inhibition Assay from Article 10.1016/j.bioorg.2015.11.001: \"Design, synthesis and biological screening of new 4-thiazolidinone derivatives with promising COX-2 selectivity, anti-inflammatory activity and gastric safety profile.\"",
+          "Confirmatory",
+          "26561742",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1801526",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.33",
+          "IC50",
+          "In vitro Cyclooxygenase Inhibition Assay from Article 10.1016/j.bioorg.2015.11.001: \"Design, synthesis and biological screening of new 4-thiazolidinone derivatives with promising COX-2 selectivity, anti-inflammatory activity and gastric safety profile.\"",
+          "Confirmatory",
+          "26561742",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1802573",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.036",
+          "IC50",
+          "COX Inhibition Assay from Article 10.1016/j.bioorg.2016.11.014: \"In vivo anti-inflammatory activity and docking study of newly synthesized benzimidazole derivatives bearing oxadiazole and morpholine rings.\"",
+          "Confirmatory",
+          "27923497",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1802573",
+          "",
+          "46512162",
+          "2662",
+          "Inactive",
+          "P05979",
+          "443551",
+          "14.4",
+          "IC50",
+          "COX Inhibition Assay from Article 10.1016/j.bioorg.2016.11.014: \"In vivo anti-inflammatory activity and docking study of newly synthesized benzimidazole derivatives bearing oxadiazole and morpholine rings.\"",
+          "Confirmatory",
+          "27923497",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1802596",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.78909",
+          "Kd",
+          "In Vitro COX Inhibition Assay from Article 10.1016/j.bioorg.2017.02.006: \"Synthesis, molecular docking and biological evaluation of some newer 2-substituted-4-(benzo[d][1,3]dioxol-5-yl)-6-phenylpyridazin-3(2H)-ones as potential anti-inflammatory and analgesic agents.\"",
+          "Confirmatory",
+          "28236449",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1802612",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P05979",
+          "443551",
+          "7.23",
+          "IC50",
+          "Cyclooxygenase Inhibition Assay from Article 10.1016/j.bioorg.2017.04.002: \"New 1,2-diaryl-4-substituted-benzylidene-5-4H-imidazolone derivatives: Design, synthesis and biological evaluation as potential anti-inflammatory and analgesic agents.\"",
+          "Confirmatory",
+          "28411407",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1802612",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.84",
+          "IC50",
+          "Cyclooxygenase Inhibition Assay from Article 10.1016/j.bioorg.2017.04.002: \"New 1,2-diaryl-4-substituted-benzylidene-5-4H-imidazolone derivatives: Design, synthesis and biological evaluation as potential anti-inflammatory and analgesic agents.\"",
+          "Confirmatory",
+          "28411407",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1803099",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.5",
+          "IC50",
+          "Colorimetric Assay from US Patent US9388139B2: \"Derivatives of celeboxib, use thereof and preparation thereof\"",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1803099",
+          "",
+          "46512162",
+          "2662",
+          "Inactive",
+          "P23219",
+          "5742",
+          "23",
+          "IC50",
+          "Colorimetric Assay from US Patent US9388139B2: \"Derivatives of celeboxib, use thereof and preparation thereof\"",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1806937",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.045",
+          "IC50",
+          "Enzyme (COXs) Inhibition Assay from US Patent US11478464B1: \"Method for treating inflammation\"",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1806937",
+          "",
+          "46512162",
+          "2662",
+          "Inactive",
+          "P23219",
+          "5742",
+          "14.7",
+          "IC50",
+          "Enzyme (COXs) Inhibition Assay from US Patent US11478464B1: \"Method for treating inflammation\"",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1810792",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of human COX-2 using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition and measured after 2 mins by EIA",
+          "Confirmatory",
+          "34137625",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1854723",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.0122",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate and measured by fluorometric assay",
+          "Confirmatory",
+          "35931005",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1859071",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.28",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "34998058",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1896014",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of COX2 (unknown origin)",
+          "Confirmatory",
+          "34905377",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1896939",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX-2 in human NALM-6 cells assessed as downregulation of COX-2 expression by measuring COX-2 expression at 10 to 30 uM incubated for 48 hrs by DAPI staining based immunofluorescence based analysis relative to control",
+          "Other",
+          "36395680",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1902040",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human COX-2 at 5 uM using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition and measured after 2 mins by colorimetry relative to control",
+          "Other",
+          "35134642",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1902041",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of human COX-2 at 50 uM using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition and measured after 2 mins by colorimetry relative to control",
+          "Other",
+          "35134642",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1902043",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.4",
+          "IC50",
+          "Inhibition of human COX-2 using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition and measured after 2 mins by colorimetry",
+          "Confirmatory",
+          "35134642",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1919876",
+          "",
+          "46512162",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.045",
+          "IC50",
+          "Enzyme (COXs) Inhibition Assay from US Patent US11786535B1: \"Methods of inhibiting cyclooxygenase\"",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1919876",
+          "",
+          "46512162",
+          "2662",
+          "Inactive",
+          "P23219",
+          "5742",
+          "14.7",
+          "IC50",
+          "Enzyme (COXs) Inhibition Assay from US Patent US11786535B1: \"Methods of inhibiting cyclooxygenase\"",
+          "Confirmatory",
+          "",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1929445",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.38",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "34655985",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1931392",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.78",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) at 20 uM",
+          "Confirmatory",
+          "32485533",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1931404",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.07",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "32485533",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1931408",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.11",
+          "IC50",
+          "Inhibition of human recombinant COX-2",
+          "Confirmatory",
+          "32485533",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1931413",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.048",
+          "IC50",
+          "Inhibition of human COX-2",
+          "Confirmatory",
+          "32485533",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1931444",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.87",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) by EIA kit method",
+          "Confirmatory",
+          "32485533",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1931521",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.3",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) at 0.5 uM by colorimetric assay",
+          "Confirmatory",
+          "32485533",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1939573",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate at 2 to 10 nM incubated for 1 min by absorbance based analysis relative to control",
+          "Other",
+          "35685617",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1939574",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.01025",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate incubated for 1 min by absorbance based analysis",
+          "Confirmatory",
+          "35685617",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1939575",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.83",
+          "IC50",
+          "Inhibition of recombinant human COX-2 by colorimetric enzyme immunoassay",
+          "Confirmatory",
+          "35685617",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1939578",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.045",
+          "INH",
+          "Inhibition of human COX-2 using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition and measured after 2 mins by ELISA",
+          "Confirmatory",
+          "35685617",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1939581",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.12",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate incubated for 5 to 10 mins by fluorometric analysis",
+          "Confirmatory",
+          "35685617",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1939582",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.055",
+          "IC50",
+          "Inhibition of recombinant human COX-2 by enzyme immunoassay",
+          "Confirmatory",
+          "35685617",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1939584",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "2.27",
+          "IC50",
+          "Inhibition of human recombinant COX-2 using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition and measured after 2 mins by enzyme immunoassay",
+          "Confirmatory",
+          "35685617",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1939594",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.11",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition and measured after 1 hr by absorbance based analysis",
+          "Confirmatory",
+          "35685617",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1939596",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.049",
+          "IC50",
+          "Inhibition of human recombinant COX-2",
+          "Confirmatory",
+          "35685617",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1939612",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.115",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate preincubated for 5 mins followed by substrate addition and measured after 1 hr by spectrophotometer based analysis",
+          "Confirmatory",
+          "35685617",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1954299",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.79",
+          "IC50",
+          "Inhibition of recombinant human COX-2 using arachidonic acid as substrate preincubated with compound for 5 mins followed by substrate addition and measured after 2 mins by fluorescence spectrum analysis",
+          "Confirmatory",
+          "36880830",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1961827",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.0484",
+          "AC50",
+          "Compound was evaluated for inhibition of human PTGS2 in an in vitro cell free assay measured by fluorescence spectroscopy",
+          "Confirmatory",
+          "37468498",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "1974907",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "5743",
+          "",
+          "",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate assessed as residual enzymatic activity at 20 uM incubated for 10 mins by fluorescence based plate reader analysis relative to control",
+          "Other",
+          "37320993",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2003166",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "3.6",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) incubated for 5 to 10 mins by fluorometric analysis",
+          "Confirmatory",
+          "36696764",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2003169",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.08",
+          "IC50",
+          "Inhibition of COX-2 in human Osteosarcoma cell incubated for 15 mins",
+          "Confirmatory",
+          "36696764",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2003170",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "1.11",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "36696764",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2017777",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "37182334",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2017777",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "8.77",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "37182334",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2017781",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04",
+          "IC50",
+          "Inhibition of recombinant human COX-2",
+          "Confirmatory",
+          "37182334",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2033697",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.045",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition measured after 2 mins by ELISA method",
+          "Confirmatory",
+          "36796297",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2037272",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.04095",
+          "IC50",
+          "Inhibition of human recombinant COX-2 using arachidonic acid as substrate preincubated for 15 mins followed by substrate addition and measured after 2 mins by fluorescence based analysis",
+          "Confirmatory",
+          "37856864",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2037277",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "5743",
+          "0.015",
+          "IC50",
+          "Inhibition of COX2 (unknown origin) fluorescence based analysis",
+          "Confirmatory",
+          "37856864",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2068751",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.71",
+          "IC50",
+          "Inhibition of human recombinant COX-2 using arachidonic acid as substrate pretreated for 5 mins followed by substrate addition and measured after 2 mins by fluorescence based analysis",
+          "Confirmatory",
+          "38382390",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2084171",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.028",
+          "IC50",
+          "Inhibition of human recombinant COX-2 by EIA method",
+          "Confirmatory",
+          "38626522",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2100659",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.049",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "37862815",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2101035",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.045",
+          "IC50",
+          "Inhibition of human COX-2 by colorimetric assay",
+          "Confirmatory",
+          "38219658",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2115050",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "2.16",
+          "IC50",
+          "Inhibition of human COX-2 using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition and measured after 5 mins by ELISA",
+          "Confirmatory",
+          "39149111",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2131971",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.063",
+          "IC50",
+          "Inhibition of human recombinant COX2 by fluorometric assay",
+          "Confirmatory",
+          "37224762",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2138448",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.048",
+          "IC50",
+          "Inhibition of recombinant human COX-2 using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition and measured after 2 mins by ELISA",
+          "Confirmatory",
+          "37611534",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2211771",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.06386",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "39642579",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2221902",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.0426",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) by EIA method",
+          "Confirmatory",
+          "39217686",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2232294",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "",
+          "",
+          "",
+          "Inhibition of COX-2 (unknown origin) at 20 uM preincubated for 10 mins followed by substrate addition and measured after 5 mins by fluorescence based analysis relative to control",
+          "Other",
+          "39854941",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2232296",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.062",
+          "IC50",
+          "Inhibition of recombinant human COX-2 using arachidonic acid as substrate preincubated for 10 mins followed by substrate addition and measured after 2 mins by ELISA",
+          "Confirmatory",
+          "39854941",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2232922",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "3.332",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate by fluorescence based analysis",
+          "Confirmatory",
+          "39914141",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2232975",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.031",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) using arachidonic acid as substrate and in presence of TMPD preincubated for 5 mins followed by substrate addition and measured after 5 mins by UV visible spectrophotometric analysis",
+          "Confirmatory",
+          "39914143",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2246953",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "",
+          "",
+          "",
+          "Inhibition of recombinant human COX-2 using arachidonic acid as substrate at 50 uM incubated for 10 mins by fluorescence based plate reader analysis relative to control",
+          "Other",
+          "40331971",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2246954",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.5",
+          "IC50",
+          "Inhibition of recombinant human COX-2 using arachidonic acid as substrate incubated for 10 mins by fluorescence based plate reader analysis",
+          "Confirmatory",
+          "40331971",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2271422",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "",
+          "",
+          "",
+          "Inhibition of human recombinant COX-2 assessed as residual activity using arachidonic acid as substrate at 10 uM preincubated for 10 mins followed by substrate addition and measured after 30 secs relative to control",
+          "Other",
+          "39507615",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2271423",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "",
+          "",
+          "",
+          "Inhibition of human recombinant COX-2 assessed as residual activity using arachidonic acid as substrate at 1 uM preincubated for 10 mins followed by substrate addition and measured after 30 secs relative to control",
+          "Other",
+          "39507615",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2271425",
+          "",
+          "103181002",
+          "2662",
+          "Unspecified",
+          "P35354",
+          "",
+          "",
+          "",
+          "Inhibition of human recombinant COX-2 using arachidonic acid as substrate at 10 uM preincubated for 10 mins followed by substrate addition and measured after 30 secs relative to control",
+          "Other",
+          "39507615",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2271427",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.06",
+          "IC50",
+          "Inhibition of human recombinant COX-2 using arachidonic acid as substrate at 10 uM preincubated for 10 mins followed by substrate addition and measured after 30 secs",
+          "Confirmatory",
+          "39507615",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2276243",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "1.14",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin)",
+          "Confirmatory",
+          "39601022",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2276716",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.04673",
+          "IC50",
+          "Inhibition of COX-2 (unknown origin) by colorimetric assay",
+          "Confirmatory",
+          "40101450",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2276727",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.09502",
+          "IC50",
+          "Inhibition of human COX-2 using acetylcholinesterase as substrate preincubated for 10 mins followed by substrate addition and measured after 30 sec by Ellman's method",
+          "Confirmatory",
+          "40101450",
+          ""
+        ]
+      },
+      {
+        "Cell": [
+          "2276729",
+          "",
+          "103181002",
+          "2662",
+          "Active",
+          "P35354",
+          "",
+          "0.08",
+          "IC50",
+          "Inhibition of COX-2 in human 143.98.2 cells preincubated for 15 mins followed by arachidonic acid addition and measured after 10 mins by by enzyme immunoassay",
+          "Confirmatory",
+          "40101450",
+          ""
+        ]
+      }
+    ]
+  }
+}

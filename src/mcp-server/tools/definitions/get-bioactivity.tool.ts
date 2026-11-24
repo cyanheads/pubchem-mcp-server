@@ -5,6 +5,7 @@
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
+import { JsonRpcErrorCode } from '@cyanheads/mcp-ts-core/errors';
 import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import {
@@ -134,10 +135,47 @@ function resolveTargetFilter(
   return { kind: 'match', geneIds, accessions, label: describeTargetIds(geneIds, accessions) };
 }
 
+/** A measurement name as the activity-name filter compares it: trimmed, case folded. */
+const nameKey = (name: string): string => name.trim().toLowerCase();
+
+/** Orders measurement names by code unit regardless of case, then by code unit as written for
+ * spellings that differ only in case — the same order on every runtime, as a locale compare is
+ * not. */
+function compareNames(a: string, b: string): number {
+  const [x, y] = [a.toLowerCase(), b.toLowerCase()];
+  if (x !== y) return x < y ? -1 : 1;
+  if (a !== b) return a < b ? -1 : 1;
+  return 0;
+}
+
+/**
+ * The record with its reported target's values narrowed to those whose name `names` holds (by
+ * {@link nameKey}); undefined when none is. `otherTargets` are left as they are.
+ */
+function keepNamedValues(
+  row: BioactivityRow,
+  names: Map<string, string>,
+): BioactivityRow | undefined {
+  const kept = row.activityValues.filter((v) => v.name !== undefined && names.has(nameKey(v.name)));
+  return kept.length > 0 ? { ...row, activityValues: kept } : undefined;
+}
+
+/** Rows ordered by their lowest activity value, ascending, ties to the lower AID. Every row
+ * holds at least one value, and every value in a compound's table shares one unit. */
+function byPotency(rows: BioactivityRow[]): BioactivityRow[] {
+  return rows
+    .map((row) => ({
+      row,
+      lowest: row.activityValues.reduce((min, v) => Math.min(min, v.value), Infinity),
+    }))
+    .sort((a, b) => a.lowest - b.lowest || a.row.aid - b.row.aid)
+    .map(({ row }) => row);
+}
+
 export const getBioactivity = tool('pubchem_get_bioactivity', {
   title: 'Get Bioactivity',
   description:
-    'Get a compound\'s bioactivity profile: which assays tested it, activity outcomes (Active/Inactive/Inconclusive), target identifiers (NCBI Gene ID, UniProt/GenBank accession), quantitative values (IC50, EC50, Ki, etc.), each assay\'s type (confirmatory, screening, summary, other), and the PubMed IDs it cites. Filter by outcome, a specific molecular target (NCBI Gene ID or protein accession), and/or assay type to focus the profile — e.g. "is this compound active against target T in confirmatory assays?".',
+    'Get a compound\'s bioactivity profile: which assays tested it, activity outcomes (Active/Inactive/Inconclusive), target identifiers (NCBI Gene ID, UniProt/GenBank accession), quantitative values (IC50, EC50, Ki, etc.), each assay\'s type (confirmatory, screening, summary, other), and the PubMed IDs it cites. Filter by outcome, a specific molecular target (NCBI Gene ID or protein accession), assay type, and/or activity name (e.g. IC50) to focus the profile, and rank by potency within the named measurements — e.g. "is this compound active against target T in confirmatory assays?" or "what is its lowest IC50 against T?".',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -178,13 +216,26 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       .describe(
         'Keep only assays of these types: "confirmatory" (dose-response and other follow-up assays), "screening" (primary high-throughput screens), "summary" (records summarizing a project\'s assays), "other". Matched against PubChem\'s Assay Type regardless of case; an assay with no recorded type matches none. Combines with outcomeFilter and the target filters — an assay must pass all of them. Omit to keep every type.',
       ),
+    activityName: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .describe(
+        'Keep only assays whose reported target has an activity value with one of these measurement names (e.g. ["IC50"], ["Ki", "Kd"]), and narrow that target\'s activityValues to the matching values; otherTargets are left as they are. Names match whole and regardless of case ("ic50" matches "IC50", not "IC50 relative"); a value with no name never matches; blank entries are ignored. Applied after the outcome, target, and assay-type filters, so filteredCount and paging count only the assays it keeps.',
+      ),
+    sort: z
+      .enum(['table', 'potency'])
+      .default('table')
+      .describe(
+        '"table" (default) keeps PubChem\'s assay order (by AID). "potency" orders assays by their lowest matching activity value, ascending (most potent first), ties to the lower AID; every value in a compound\'s table shares one unit (uM). "potency" requires activityName: the value column also holds non-potency measurements (Cmax, solubility, rate constants, unnamed values), so a name-blind order would rank them as potencies.',
+      ),
     offset: z
       .number()
       .int()
       .min(0)
       .default(0)
       .describe(
-        'Zero-based index of the first assay to return, applied after the outcome and target filters. Pass the nextOffset from a previous call to read the following page. Default: 0.',
+        'Zero-based index of the first assay to return, applied after every filter and the sort order. Pass the nextOffset from a previous call to read the following page. Default: 0.',
       ),
     maxResults: z
       .number()
@@ -294,10 +345,20 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       .describe(
         'Assay types kept, comma-separated (e.g. "confirmatory, summary"), when assayType is set.',
       ),
+    activityNameFilter: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Activity names applied, when activityName is set: each as passed, trimmed, with a repeat in another case dropped.',
+      ),
+    sort: z
+      .string()
+      .optional()
+      .describe('"potency" when assays are ordered by potency; omitted for table order.'),
     filteredCount: z
       .number()
       .describe(
-        'Exact number of assays matching the outcome, target, and assay-type filters, across all pages.',
+        'Exact number of assays matching the outcome, target, assay-type, and activity-name filters, across all pages.',
       ),
     returnedCount: z.number().describe('Assays returned on this page.'),
     offset: z.number().describe('Zero-based index of the first assay returned.'),
@@ -325,20 +386,48 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
   },
   enrichmentTrailer: {
     cappedInputs: { render: renderCappedInputs },
+    // As a JSON array in a code literal: a name may hold a comma, and the literal is a value
+    // an agent can pass back as activityName.
+    activityNameFilter: {
+      render: (names: string[]) => `**activityNameFilter:** ${literalData(JSON.stringify(names))}`,
+    },
     notice: { render: renderNotice },
   },
+  errors: [
+    {
+      reason: 'missing_activity_name',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'sort is "potency" and activityName names no measurement',
+      recovery:
+        'Pass activityName with the measurement to rank by (e.g. ["IC50"]) alongside sort "potency", or omit sort for table order.',
+    },
+  ],
 
   async handler(input, ctx) {
+    // The names the activity-name filter keeps, keyed by nameKey: each as passed, trimmed, the
+    // first spelling of a name repeated in another case.
+    const activityNames = new Map<string, string>();
+    for (const raw of input.activityName ?? []) {
+      const name = raw.trim();
+      if (name && !activityNames.has(nameKey(name))) activityNames.set(nameKey(name), name);
+    }
+    if (input.sort === 'potency' && activityNames.size === 0) {
+      throw ctx.fail(
+        'missing_activity_name',
+        'sort "potency" ranks assays by the values of the measurements activityName names, and it names none.',
+      );
+    }
+
     const client = getPubChemClient();
     const { rows: allRows, targetGroups } = await client.getAssaySummary(input.cid, ctx.signal);
 
     const activeCount = allRows.filter((r) => r.outcome === 'Active').length;
     const inactiveCount = allRows.filter((r) => r.outcome === 'Inactive').length;
 
-    // Filter by target, then by outcome, then by assay type — pure filters on rows already in
-    // hand. The target filter expands each identifier through the pairs the compound's own
-    // table records, matches any target an assay names, and reports the matching one; the
-    // outcome filter then reads the reported target's outcome.
+    // Filter by target, then by outcome, then by assay type, then by activity name — pure
+    // filters on rows already in hand. The target filter expands each identifier through the
+    // pairs the compound's own table records, matches any target an assay names, and reports
+    // the matching one; the outcome and activity-name filters then read the reported target.
     const targetAccession = input.targetAccession
       ? normalizeProteinAccession(input.targetAccession)
       : undefined;
@@ -361,6 +450,21 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     }
     const assayTypeFilter = assayTypes.join(', ');
     const targetLabel = target.kind === 'none' ? '' : target.label;
+    const outcomeSet = input.outcomeFilter !== 'all';
+    // The filters that narrowed the rows before the name filter, as a notice names them.
+    const filters = [
+      ...(target.kind === 'match'
+        ? [`the target filter (${describeTargetIds(target.geneIds, target.accessions, clipEcho)})`]
+        : []),
+      ...(outcomeSet ? [`outcomeFilter="${input.outcomeFilter}"`] : []),
+      ...(assayTypeFilter ? [`assayType="${assayTypeFilter}"`] : []),
+    ];
+    // What the outcome, target, and assay-type filters kept, before the name filter narrows it.
+    const keptByOtherFilters = filtered;
+    if (activityNames.size > 0) {
+      filtered = filtered.flatMap((r) => keepNamedValues(r, activityNames) ?? []);
+    }
+    if (input.sort === 'potency') filtered = byPotency(filtered);
 
     // Offset is applied client-side: PubChem's assay summary endpoint accepts no
     // offset/start/limit/page parameter, so getAssaySummary already holds every row.
@@ -387,6 +491,8 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
     });
     if (targetLabel) ctx.enrich({ targetFilter: targetLabel });
     if (assayTypeFilter) ctx.enrich({ assayTypeFilter });
+    if (activityNames.size > 0) ctx.enrich({ activityNameFilter: [...activityNames.values()] });
+    if (input.sort === 'potency') ctx.enrich({ sort: input.sort });
     if (hasMore) ctx.enrich({ nextOffset });
     if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
     if (allRows.length === 0) {
@@ -397,17 +503,7 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       ctx.enrich.notice(
         `targetGeneId ${input.targetGeneId} and targetAccession ${targetAccession} name different targets in CID ${input.cid}'s assays: GeneID ${input.targetGeneId} belongs to [${describeTargetIds(target.geneGroup.geneIds, target.geneGroup.accessions)}], accession ${targetAccession} belongs to [${describeTargetIds(target.accessionGroup.geneIds, target.accessionGroup.accessions)}]. Pass one of the two, or call once per target.`,
       );
-    } else if (filtered.length === 0) {
-      const outcomeSet = input.outcomeFilter !== 'all';
-      const filters = [
-        ...(target.kind === 'match'
-          ? [
-              `the target filter (${describeTargetIds(target.geneIds, target.accessions, clipEcho)})`,
-            ]
-          : []),
-        ...(outcomeSet ? [`outcomeFilter="${input.outcomeFilter}"`] : []),
-        ...(assayTypeFilter ? [`assayType="${assayTypeFilter}"`] : []),
-      ];
+    } else if (keptByOtherFilters.length === 0) {
       const recovery =
         target.kind === 'match'
           ? "Verify the target identifier appears in this compound's assays, or widen the filter."
@@ -417,6 +513,22 @@ export const getBioactivity = tool('pubchem_get_bioactivity', {
       const [first, ...rest] = filters;
       ctx.enrich.notice(
         `CID ${input.cid} has ${allRows.length} assay(s) but none match ${first}${rest.length > 0 ? ` with ${rest.join(' and ')}` : ''}. ${recovery}`,
+      );
+    } else if (filtered.length === 0) {
+      // The name filter removed every assay the others kept: name what those assays carry, the
+      // only way a caller learns a table's spelling of a measurement.
+      const asked = [...activityNames.values()].map((n) => `"${clipEcho(n)}"`).join(' or ');
+      const carried = [
+        ...new Set(
+          keptByOtherFilters.flatMap((r) => r.activityValues.flatMap((v) => v.name?.trim() || [])),
+        ),
+      ].sort(compareNames);
+      const recovery =
+        carried.length > 0
+          ? `Activity names on those assays: ${carried.join(', ')}. Pass one of them in activityName.`
+          : 'Those assays report no named activity values; omit activityName to see them.';
+      ctx.enrich.notice(
+        `CID ${input.cid} has ${keptByOtherFilters.length} assay(s)${filters.length > 0 ? ' matching the other filters' : ''} but none reports an activity value named ${asked} against its reported target. ${recovery}`,
       );
     } else if (results.length === 0) {
       ctx.enrich.notice(
