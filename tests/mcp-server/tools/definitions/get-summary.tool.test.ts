@@ -314,6 +314,143 @@ describe('getSummary assay method, targets, compound counts, and data date (#68)
   });
 });
 
+describe('getSummary assay comment and depositor source ID (#100)', () => {
+  /** Live /assay/aid/{aid}/summary/JSON records, verbatim: AID 1751838 (ChEMBL — active
+   * threshold, citation, target notes), 410 (no Comment), 1259407 (Comment `[""]`), 1 (a
+   * free-text SourceID), and 2284432 (the longest Comment across 71 sampled AIDs). */
+  const LIVE = (
+    JSON.parse(
+      readFileSync(
+        new URL('../../../fixtures/assay-summaries-comment.json', import.meta.url),
+        'utf8',
+      ),
+    ) as { AssaySummaries: { AssaySummary: Array<Record<string, unknown> & { AID: number }> } }
+  ).AssaySummaries.AssaySummary;
+  const record = (aid: number) => LIVE.find((r) => r.AID === aid)!;
+
+  type AssayData = { description?: string; comment?: string; sourceId?: string };
+  const dataOf = (result: Awaited<ReturnType<typeof runToolContract>>) =>
+    (result.structuredContent as { summaries: Array<{ data?: AssayData }> }).summaries[0]!.data!;
+  /** The mock answers with a copy, so a handler that edits the record in place cannot move an
+   * expectation read from the fixture along with its result. */
+  const summarize = (raw: Record<string, unknown>) => {
+    mockClient.getEntitySummary.mockResolvedValueOnce(structuredClone(raw));
+    return runToolContract(getSummary, { entityType: 'assay', identifiers: [String(raw.AID)] });
+  };
+
+  it('AID 1751838 → sourceId CHEMBL4810382 and the comment, threshold line first, on both surfaces', async () => {
+    const raw = record(1751838);
+    const result = await summarize(raw);
+    const data = dataOf(result);
+    const text = formatBlock(result);
+
+    expect(result.isError).toBeFalsy();
+    expect(data.sourceId).toBe('CHEMBL4810382');
+    expect(data.comment?.split('\n')[0]).toBe(
+      'Compounds with activity <= 10uM or explicitly reported as active by ChEMBL are flagged as active in this PubChem assay presentation.',
+    );
+    // Every Comment line, the blank paragraph separators included, joined as description is.
+    expect(data.comment).toBe((raw.Comment as string[]).join('\n'));
+    expect(data.comment).toContain('\n\nJournal: J Med Chem\n');
+    // The target notes close the comment, after the citation block.
+    const lines = data.comment!.split('\n');
+    expect(lines).toHaveLength(15);
+    expect(lines.slice(9)).toEqual([
+      '',
+      'Target ChEMBL ID: CHEMBL230',
+      'ChEMBL Target Name: Cyclooxygenase-2',
+      'ChEMBL Target Type: SINGLE PROTEIN - Target is a single protein chain',
+      'Relationship Type: D - Direct protein target assigned',
+      'Confidence: Direct single protein target assigned',
+    ]);
+    expect(readBlockquotes(text)).toEqual([data.description, data.comment]);
+    expect(readCommonMark(text)).toContain('Source Id: ⟨code_inline:CHEMBL4810382⟩');
+  });
+
+  it('AID 1 → a free-text sourceId reads back as one code span', async () => {
+    const result = await summarize(record(1));
+    const data = dataOf(result);
+
+    expect(data.sourceId).toBe(
+      'NCI human tumor cell line growth inhibition assay. Data for the NCI-H23 Non-Small Cell Lung cell line',
+    );
+    expect(readCommonMark(formatBlock(result))).toContain(
+      `Source Id: ⟨code_inline:${data.sourceId}⟩`,
+    );
+  });
+
+  it.each([
+    [410, 'absent', 'p450-cyp1a2'],
+    [1259407, '[""]', 'CCRIS-mstu'],
+  ])(
+    'AID %d (Comment %s) → no comment on either surface, sourceId kept',
+    async (aid, _shape, sourceId) => {
+      const result = await summarize(record(aid));
+      const data = dataOf(result);
+
+      expect(data).not.toHaveProperty('comment');
+      expect(data.sourceId).toBe(sourceId);
+      expect(formatBlock(result)).not.toContain('Comment:');
+    },
+  );
+
+  it.each([
+    ['two empty lines', ['', '']],
+    ['whitespace-only lines', [' ', '\t']],
+  ])('a Comment of %s reads as blank: no comment on either surface', async (_shape, lines) => {
+    const result = await summarize({ AID: 1, Name: 'n', Comment: lines, SourceID: 's' });
+    const data = dataOf(result);
+
+    expect(data).not.toHaveProperty('comment');
+    expect(data.sourceId).toBe('s');
+    expect(formatBlock(result)).not.toContain('Comment:');
+  });
+
+  it('AID 2284432 → the longest sampled comment whole, its quote closed before the next field', async () => {
+    const raw = record(2284432);
+    const result = await summarize(raw);
+    const data = dataOf(result);
+    const text = formatBlock(result);
+
+    expect(data.comment).toBe((raw.Comment as string[]).join('\n'));
+    expect(readBlockquotes(text)).toEqual([data.description, data.comment]);
+    expect(readCommonMark(text)).toContain('⟨blockquote_close⟩\n\nSource Name: 30476');
+  });
+
+  it('frames a comment and a sourceId holding markdown as data, keeping structuredContent raw', async () => {
+    const comment = 'Active below 10 uM.\n\n# INJECTED **x**';
+    const result = await summarize({
+      AID: 1,
+      Name: 'n',
+      Comment: comment.split('\n'),
+      SourceID: 'a`b',
+    });
+    const data = dataOf(result);
+    const read = readCommonMark(formatBlock(result));
+
+    expect(data).toMatchObject({ comment, sourceId: 'a`b' });
+    expect(readBlockquotes(formatBlock(result))).toEqual([comment]);
+    expect(read).toContain('Source Id: ⟨code_inline:a`b⟩');
+    expect(read).not.toMatch(/⟨heading_open⟩\n\n[^⟨]*INJECTED/);
+  });
+
+  it.each([
+    ['gene', '1956', { GeneID: 1956, Symbol: 'EGFR' }],
+    ['protein', 'P00533', { ProteinAccession: 'P00533', Name: 'EGFR' }],
+    ['taxonomy', '9606', { TaxonomyID: 9606, ScientificName: 'Homo sapiens' }],
+  ] as const)(
+    'a %s summary maps no comment or sourceId from Comment/SourceID keys',
+    async (entityType, id, raw) => {
+      mockClient.getEntitySummary.mockResolvedValueOnce({ ...raw, Comment: ['c'], SourceID: 's' });
+      const result = await runToolContract(getSummary, { entityType, identifiers: [id] });
+      const data = dataOf(result);
+
+      expect(data).not.toHaveProperty('comment');
+      expect(data).not.toHaveProperty('sourceId');
+    },
+  );
+});
+
 describe('getSummary handler — enrichment', () => {
   it('echoes requested and found counts with no notice when all resolve', async () => {
     mockClient.getEntitySummary.mockResolvedValueOnce({ AID: 1000, Name: 'Found assay' });

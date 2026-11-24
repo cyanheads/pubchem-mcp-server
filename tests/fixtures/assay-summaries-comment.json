@@ -1,0 +1,217 @@
+{
+  "AssaySummaries": {
+    "AssaySummary": [
+      {
+        "AID": 1,
+        "SourceName": "DTP/NCI",
+        "SourceID": "NCI human tumor cell line growth inhibition assay. Data for the NCI-H23 Non-Small Cell Lung cell line",
+        "Name": "NCI human tumor cell line growth inhibition assay. Data for the NCI-H23 Non-Small Cell Lung cell line",
+        "Description": [
+          "Growth inhibition of the NCI-H23 human Non-Small Cell Lung tumor cell line is measured as a screen for anti-cancer activity. Cells are grown in 96 well plates and exposed to the test compound for 48 hours. Compounds are tested at 5 different concentrations and three endpoints are estimated from this dose response curve: GI50, concentration required for 50% inhibition of growth, TGI, the concentration requires for complete inhibition of growth, and LC50, the concentration required for 50% reduction in cell number. These estimates are done by simple linear interpolation between the concentrations that surround the approriate level. If a compound doesn't cause inhibition to the appropriate level, the endpoint is set to the highest concentration tested."
+        ],
+        "Protocol": [""],
+        "Comment": [
+          "These data are a subset of the data from the NCI human tumor cell line screen. Compounds are identified by the NCI NSC number. In the NCI numbering system, NCI-H23 is panel number 1, cell number 1",
+          "Basically compounds  with LogGI50 (unit M) less than -6 were considered as active. Activity score was based on increasing values of -LogGI50."
+        ],
+        "NumberOfTIDs": 10,
+        "HasScore": true,
+        "Method": "confirmatory",
+        "Version": 12,
+        "Revision": 1,
+        "LastDataChange": {
+          "Year": 2026,
+          "Month": 7,
+          "Day": 10
+        },
+        "SIDCountAll": 57568,
+        "SIDCountActive": 3596,
+        "SIDCountInactive": 54101,
+        "SIDCountInconclusive": 0,
+        "SIDCountUnspecified": 0,
+        "SIDCountProbe": 0,
+        "CIDCountAll": 55532,
+        "CIDCountActive": 3370,
+        "CIDCountInactive": 52324,
+        "CIDCountInconclusive": 0,
+        "CIDCountUnspecified": 0,
+        "CIDCountProbe": 0
+      },
+      {
+        "AID": 410,
+        "SourceName": "NCGC",
+        "SourceID": "p450-cyp1a2",
+        "Name": "p450-cyp1a2",
+        "Description": [
+          "NCGC Assay Overview:",
+          "",
+          "The P450 gene superfamily is involved in metabolism and the clearance of xenobiotics. This assay used human CYP1A2 to measure the demethylation of luciferin 6' methyl ether (Luciferin-ME; Promega-Glo) to luciferin. The luciferin is then measured by luminescence after the addition of a luciferase detection regeant.  Luciferin-ME concentration in the assay was equal to its Km for CYP1A2."
+        ],
+        "Protocol": [
+          "NCGC Assay Protocol Summary:",
+          "",
+          "Two uL of enzyme and substrate mix (final concentrations: 20nM CYP1A2, 100uM Luciferin-ME, 100mM KPO4) were dispensed into a white, solid bottom 1536-well microtiter plate. 23nL of compound was transferred by a pin tool. The plate was incubated at room temperature for 10 min.  Two uL of an NADPH regeneration solution (Promega supplied reagent) was dispensed and the reaction was allowed to continue for 60 min at room temperature. Then the reaction was stopped by reconstituted detection reagent. After another 20 min of incubation the plate was read on the ViewLux (Perkin Elmer) at 60 sec exposure and 2x2 binning. This protocol was carried out with Promega-Glo reagents and further information can be found at http://www.promega.com/tbs/tb325/tb325.pdf. Data were normalized to the to AC100 inhibition (57 uM furafylline)."
+        ],
+        "NumberOfTIDs": 34,
+        "HasScore": true,
+        "Method": "confirmatory",
+        "Target": [
+          {
+            "Accession": "NP_000752",
+            "Name": "cytochrome P450 1A2"
+          }
+        ],
+        "Version": 1,
+        "Revision": 5,
+        "LastDataChange": {
+          "Year": 2007,
+          "Month": 10,
+          "Day": 3
+        },
+        "SIDCountAll": 9198,
+        "SIDCountActive": 4446,
+        "SIDCountInactive": 4019,
+        "SIDCountInconclusive": 733,
+        "SIDCountUnspecified": 0,
+        "SIDCountProbe": 0,
+        "CIDCountAll": 8354,
+        "CIDCountActive": 4176,
+        "CIDCountInactive": 3676,
+        "CIDCountInconclusive": 713,
+        "CIDCountUnspecified": 0,
+        "CIDCountProbe": 0
+      },
+      {
+        "AID": 1259407,
+        "SourceName": "22070",
+        "SourceID": "CCRIS-mstu",
+        "Name": "CCRIS mutagenicity studies",
+        "Description": [
+          "The CCRIS database contains chemical records with carcinogenicity, mutagenicity, tumor promotion, and tumor inhibition test results. It was developed by the National Cancer Institute (NCI). Data are derived from studies cited in primary journals, current awareness tools, NCI reports, and other sources. Test results have been reviewed by experts in carcinogenesis and mutagenesis.",
+          "",
+          "CCRIS provides historical information from the years 1985 - 2011. It is no longer updated.",
+          "",
+          "This is an archive assay for CCRIS mutagenicity studies."
+        ],
+        "Protocol": [""],
+        "Comment": [""],
+        "NumberOfTIDs": 12,
+        "HasScore": false,
+        "Method": "other",
+        "Version": 1,
+        "Revision": 1,
+        "LastDataChange": {
+          "Year": 2018,
+          "Month": 5,
+          "Day": 23
+        },
+        "SIDCountAll": 8266,
+        "SIDCountActive": 4929,
+        "SIDCountInactive": 6177,
+        "SIDCountInconclusive": 0,
+        "SIDCountUnspecified": 41,
+        "SIDCountProbe": 0,
+        "CIDCountAll": 7692,
+        "CIDCountActive": 4671,
+        "CIDCountInactive": 5752,
+        "CIDCountInconclusive": 0,
+        "CIDCountUnspecified": 39,
+        "CIDCountProbe": 0
+      },
+      {
+        "AID": 1751838,
+        "SourceName": "ChEMBL",
+        "SourceID": "CHEMBL4810382",
+        "Name": "Inhibition of human recombinant COX-2 using arachidonic acid as substrate preincubated for 60 mins followed by substrate addition for 2 secs by ADPH based fluorometric analysis",
+        "Description": [
+          "Title: Gut-Restricted Selective Cyclooxygenase-2 (COX-2) Inhibitors for Chemoprevention of Colorectal Cancer.",
+          "",
+          "Abstract: Selective cyclooxygenase (COX)-2 inhibitors have been extensively studied for colorectal cancer (CRC) chemoprevention. Celecoxib has been reported to reduce the incidence of colorectal adenomas and CRC but is also associated with an increased risk of cardiovascular events. Here, we report a series of gut-restricted, selective COX-2 inhibitors characterized by high colonic exposure and minimized systemic exposure. By establishing acute ex vivo <sup>18</sup>F-FDG uptake attenuation as an efficacy proxy, we identified a subset of analogues that demonstrated statistically significant in vivo dose-dependent inhibition of adenoma progression and survival extension in an APC<sup>min/+</sup> mouse model. However, in vitro-in vivo correlation analysis showed their chemoprotective effects were driven by residual systemic COX-2 inhibition, rationalizing their less than expected efficacies and highlighting the challenges associated with COX-2-mediated CRC disease chemoprevention."
+        ],
+        "Comment": [
+          "Compounds with activity <= 10uM or explicitly reported as active by ChEMBL are flagged as active in this PubChem assay presentation.",
+          "",
+          "Journal: J Med Chem",
+          "Year: 2021",
+          "Volume: 64",
+          "Issue: 15.0",
+          "First Page: 11570",
+          "Last Page: 11596",
+          "DOI: 10.1021/acs.jmedchem.1c00890",
+          "",
+          "Target ChEMBL ID: CHEMBL230",
+          "ChEMBL Target Name: Cyclooxygenase-2",
+          "ChEMBL Target Type: SINGLE PROTEIN - Target is a single protein chain",
+          "Relationship Type: D - Direct protein target assigned",
+          "Confidence: Direct single protein target assigned"
+        ],
+        "NumberOfTIDs": 5,
+        "HasScore": false,
+        "Method": "confirmatory",
+        "Target": [
+          {
+            "Accession": "P35354",
+            "Name": "Prostaglandin G/H synthase 2"
+          }
+        ],
+        "Version": 1,
+        "Revision": 1,
+        "LastDataChange": {
+          "Year": 2022,
+          "Month": 8,
+          "Day": 30
+        },
+        "SIDCountAll": 8,
+        "SIDCountActive": 8,
+        "SIDCountInactive": 0,
+        "SIDCountInconclusive": 0,
+        "SIDCountUnspecified": 0,
+        "SIDCountProbe": 0,
+        "CIDCountAll": 8,
+        "CIDCountActive": 8,
+        "CIDCountInactive": 0,
+        "CIDCountInconclusive": 0,
+        "CIDCountUnspecified": 0,
+        "CIDCountProbe": 0
+      },
+      {
+        "AID": 2284432,
+        "SourceName": "30476",
+        "SourceID": "3210",
+        "Name": "TOX21_hERG_U2OS_Antagonist: Tox21 Human Ether-a-go-go-Related Gene (hERG) channel small molecule antagonists: fluorescence cell-based Assay",
+        "Description": [
+          "TOX21_hERG_U2OS_Antagonist is a cell-based, single-readout assay that uses U2OS, a human osteosarcoma cell line, to measure inhibition of hERG channel activity by continuously measuring fluorescence intensity once per second for two minutes, taken 10 minutes after chemical dosing in a 1536-well plate. See tox21-herg-u2os-p1.TOX21_hERG_U2OS_Antagonist is an assay readout measured from the TOX21_hERG_U2OS_Antagonist assay. It is designed to make measurements of hERG ion channel inhibition, a form of functional reporter, as detected with fluorescence signals.Data from the assay component TOX21_hERG_U2OS_Antagonist was analyzed into 1 assay endpoint. This assay endpoint, TOX21_hERG_U2OS_Antagonist, was analyzed in the positive analysis fitting direction relative to DMSO as the negative control and baseline of activity. Using a type of inducible reporter, loss-of-signal activity can be used to understand changes in binding. To generalize the intended target to other relatable targets, this assay endpoint is annotated to the ion channel intended target family, where the subfamily is potassium channel."
+        ],
+        "Protocol": [
+          "Quality Control Precautions: Handle the 1536-well, black-wall, clear-bottom assay plate by the sides; do not touch the clear bottom of the assay plate.Cell Media Required: Growth Medium (89% DMEM with Glutamin, 10% Fetal Bovine Serum, 1% NEAA, 50U/ml-50ug/ml Penn-strep, 1ug/mL Puromycin), Thaw Medium (90% DMEM with Glutamin, 10% Fetal Bovine Serum, 50U/ml-50ug/ml Penn-strep), Freezing Medium (100% Recovery Cell Culture Freezing Medium)Cell Thawing Method: Place 14 mL of pre-warmed thaw medium into a 15 mL of conical tub. Remove the vial of cells from liquid nitrogen and thaw rapidly by placing at 37C in a water bath with gentle agitation for 1-2 minutes. Decontaminate the vial by wiping with 70% ethanol before opening in a biological safety cabinet. Transfer cells into 14 mL of thaw medium in a sterile 15 mL conical tube. Centrifuge cells at 900 rpm for 4 minutes and resuspend in thaw medium. Transfer cells to the T225 tissue culture flask and place flask in a humidified 37C/5% CO2 incubator. Switch to growth medium at first passage.Cell Propagation Method: Aspirate medium, rinse once in DPBS, add 0.25% Trypsin/EDTA and swirl to coat the cell evenly. Add an equal volume of Growth Medium to inactivate Trypsin after 2-3 minutes incubation at 37C. Centrifuge cells at 900 rpm for 4 minutes and resuspend in growth medium. Cell should be passage or fed at least twice a week.Assay Protocol: hERG-U2OS cells were resuspended in culture medium and dispensed into 1536-well, black wall/clear-bottom plates at 1000cells/well/3uL using a Multidrop Combi dispenser (Thermo Fisher, Waltham, MA). After plates were incubated at 37 C overnight, 3 uL of Loading Buffer provided by FluxOR II Potassium Ion Channel Assay kit (Thermo, Carlsbad, CA) was added to each well. The assay plates were then incubated at room temperature in the dark for 1h. Following incubation, 23 nL of compound dissolved in DMSO, positive control (astemizole), or DMSO only was transferred to the assay plate. Astemizole purchased from Sigma-Aldrich (St. Louis, MO, USA), a known hERG channel blocker, was used as the positive control to monitor assay performance. After the assay plates were incubated at room temperature for 10 min, 1 uL of Stimulus Buffer provided by FluxOR II Potassium Ion Channel Assay kit was added into each well and fluorescence intensity (480nm excitation/540nm emission) was continuously measured for 2 min at 1 second intervals using a Functional Drug Screening System (FDSS) 7000EX kinetic plate reader (Hamamatsu, Japan)."
+        ],
+        "Comment": [
+          "The US Environmental Protection Agency (US EPA)'s Toxicity Forecaster (ToxCast) program makes in vitro medium- and high-throughput screening assay data publicly available for prioritization and hazard characterization of thousands of chemicals. Please review the vignette for the ToxCast Data Analysis Pipeline (tcpl) R package https://cran.r-project.org/web/packages/tcpl/index.html for comprehensive documentation describing ToxCast data processing, retrieval, and interpretation. This information is sourced from ToxCast's invitrodb v4.3. The continuous hit call value (hitc), fit category (fitc), and cautionary flags can be used to understand the goodness-of-fit, enabling the user to decide the stringency with which to filter and interpret results. Hitc may be further binarized into active or inactive, depending on the level of stringency required by the user; herein, hitc greater than or equal to 0.90 is active, hitc between 0 and 0.90 is inactive, and hitc less than 0 is not applicable (i.e. response is biologically irrelevant), but different thresholds may be used. Fitc summarize curve behavior by examining relative activity, efficacy, and potency comparisons between the AC50 and the concentration range screened. Cautionary flags, stored in mc6, are programmatically generated and indicate characteristics of a curve that may need extra attention or potential anomalies in the data. Users may review filtered groupings to understand high-confidence curves. Each assay may utilize different acceptance criteria and quality assurance methods as it pertains to the individual assay platform and implementation. ToxCast data can provide initial screening information about the capacity for a chemical to elicit a biological response; caution is advised with extrapolation of these results to organism-level responses. The potential for a chemical to result in adverse health outcomes in living systems is a function of multiple factors, and this assay is not intended to provide predictive details regarding long term or indirect adverse effects in complex biological systems but can aid in the prioritization of compound selection for more resource intensive toxicity studies.",
+          "Disclaimer: This is a work of the U.S. Government and is not subject to copyright protection in the U.S. Any mention of trade names, manufacturers or products does not imply an endorsement by the US Government or the United States Environmental Protection Agency. EPA and its employees do not endorse any commercial products, services, or enterprises."
+        ],
+        "NumberOfTIDs": 3,
+        "HasScore": false,
+        "Method": "other",
+        "Version": 1,
+        "Revision": 1,
+        "LastDataChange": {
+          "Year": 2026,
+          "Month": 9,
+          "Day": 16
+        },
+        "SIDCountAll": 9667,
+        "SIDCountActive": 1289,
+        "SIDCountInactive": 6260,
+        "SIDCountInconclusive": 2118,
+        "SIDCountUnspecified": 0,
+        "SIDCountProbe": 0,
+        "CIDCountAll": 7668,
+        "CIDCountActive": 1105,
+        "CIDCountInactive": 5207,
+        "CIDCountInconclusive": 1945,
+        "CIDCountUnspecified": 0,
+        "CIDCountProbe": 0
+      }
+    ]
+  }
+}

@@ -84,7 +84,19 @@ const entitySummaryDataSchema = z.object({
   aid: z.number().optional().describe('Assay ID — present on assay summaries.'),
   name: z.string().optional().describe('Primary display name.'),
   description: z.string().optional().describe('Descriptive text when available.'),
+  comment: z
+    .string()
+    .optional()
+    .describe(
+      "The depositor's comment on the assay (assay summaries): often the activity threshold behind its Active calls, the source citation, and target notes. Lines joined with line breaks; omitted when PubChem records none or it is blank.",
+    ),
   sourceName: z.string().optional().describe('Data source attribution (assay summaries).'),
+  sourceId: z
+    .string()
+    .optional()
+    .describe(
+      "The depositor's own ID for the assay (assay summaries), e.g. the ChEMBL assay ID CHEMBL4810382; some depositors use a free-text label.",
+    ),
   numSubstances: z.number().optional().describe('Substances tested (assay summaries).'),
   numActive: z.number().optional().describe('Substances marked active (assay summaries).'),
   method: z
@@ -324,9 +336,9 @@ export const getSummary = tool('pubchem_get_summary', {
       for (const [key, value] of Object.entries(s.data)) {
         if (value == null) continue;
         const label = `  ${formatKey(key)}:`;
-        // description is upstream prose — framed as a blockquote, closed by a blank line so the
-        // next field cannot continue the quote's paragraph.
-        if (key === 'description' && typeof value === 'string') {
+        // description and comment are upstream prose — each framed as a blockquote, closed by a
+        // blank line so the next field cannot continue the quote's paragraph.
+        if ((key === 'description' || key === 'comment') && typeof value === 'string') {
           lines.push(
             label,
             ...quoteData(value)
@@ -391,7 +403,8 @@ function toStr(v: unknown): string | undefined {
   if (typeof v === 'number') return String(v);
   if (Array.isArray(v)) {
     const joined = v.filter((x) => typeof x === 'string').join('\n');
-    return joined.length > 0 ? joined : undefined;
+    // Multi-line upstream prose of only empty or whitespace lines records nothing.
+    return joined.trim().length > 0 ? joined : undefined;
   }
   return;
 }
@@ -470,7 +483,9 @@ function extractSummary(entityType: EntityType, raw: Record<string, unknown>): E
       put(data, 'aid', toNum(raw.AID));
       put(data, 'name', toStr(raw.Name ?? raw.AssayName));
       put(data, 'description', toStr(raw.Description));
+      put(data, 'comment', toStr(raw.Comment));
       put(data, 'sourceName', toStr(raw.SourceName));
+      put(data, 'sourceId', toStr(raw.SourceID));
       put(data, 'numSubstances', toNum(raw.SIDCountAll));
       put(data, 'numActive', toNum(raw.SIDCountActive));
       put(data, 'method', toStr(raw.Method));
@@ -513,12 +528,16 @@ function extractSummary(entityType: EntityType, raw: Record<string, unknown>): E
 /**
  * Whether a scalar summary field is one an agent may send back to a `pubchem_*` tool — a gene
  * symbol, a gene or protein name (`pubchem_search_assays` genesymbol and proteinname targets), a
- * protein accession — and so renders as a code literal. Assay names, source names, methods, and
+ * protein accession — or carry to the depositor's database (an assay's source ID, such as a
+ * ChEMBL assay ID), and so renders as a code literal. Assay names, source names, methods, and
  * taxonomy names are labels, rendered as escaped text.
  */
 function isCopyBack(entityType: string, key: string): boolean {
   return (
-    key === 'symbol' || key === 'proteinAccession' || (key === 'name' && entityType !== 'assay')
+    key === 'symbol' ||
+    key === 'proteinAccession' ||
+    key === 'sourceId' ||
+    (key === 'name' && entityType !== 'assay')
   );
 }
 
