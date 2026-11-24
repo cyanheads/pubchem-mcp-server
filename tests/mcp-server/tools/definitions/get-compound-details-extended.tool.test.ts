@@ -604,64 +604,104 @@ describe('getCompoundDetails format — additional cases', () => {
   it('renders every MeSH class structuredContent carries (#37)', () => {
     // structuredContent applies no cap to meshClasses, so format() must not either.
     const meshClasses = [
-      'Anti-Inflammatory Agents, Non-Steroidal',
-      'Antipyretics',
-      'Cyclooxygenase Inhibitors',
-      'Fibrinolytic Agents',
-      'Platelet Aggregation Inhibitors',
+      { name: 'Anti-Inflammatory Agents, Non-Steroidal', description: 'NSAID note.' },
+      { name: 'Antipyretics', description: 'Antipyretic note.' },
+      { name: 'Cyclooxygenase Inhibitors', description: 'COX note.' },
+      { name: 'Fibrinolytic Agents', description: 'Fibrinolytic note.' },
+      { name: 'Platelet Aggregation Inhibitors', description: 'Platelet note.' },
     ];
-    const blocks = getCompoundDetails.format!({
-      compounds: [
-        {
-          cid: 2244,
-          found: true,
-          properties: {},
-          classification: { atcCodes: [], fdaClasses: [], fdaMechanisms: [], meshClasses },
-        },
-      ],
-    });
-    const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    for (const cls of meshClasses) expect(text).toContain(cls);
+    const text = meshText(meshClasses);
+    expect(readCommonMark(text)).toContain(meshListRead(meshClasses));
     expect(text).not.toContain('more)');
   });
 
-  it('keeps a MeSH class containing "; " as one recoverable entry', () => {
-    // Aspirin's real NSAID scope note ends "...platelet-inhibitory actions; other mechanisms
-    // may contribute...". Under the old '; ' joiner that internal semicolon was
-    // indistinguishable from an entry boundary.
+  it('keeps MeSH names and notes holding ", " and "; " as one recoverable entry each (#95)', () => {
+    // Aspirin's real NSAID class: the name carries ", ", the scope note ", " and "; ". Under
+    // an inline joiner either would be indistinguishable from an entry boundary.
     const meshClasses = [
-      'Anti-inflammatory agents that are non-steroidal in nature. They act by blocking the synthesis of prostaglandins; other mechanisms may contribute to their anti-inflammatory effects.',
-      'Drugs that are used to reduce body temperature in fever.',
+      NSAID_MESH,
+      { name: 'Agents; Other', description: 'Drugs that are used to reduce body temperature.' },
     ];
-    const blocks = getCompoundDetails.format!({
-      compounds: [
-        {
-          cid: 2244,
-          found: true,
-          properties: {},
-          classification: { atcCodes: [], fdaClasses: [], fdaMechanisms: [], meshClasses },
-        },
-      ],
-    });
-    const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    // Two inputs must round-trip to exactly two list items, each intact.
-    expect(readCommonMark(text)).toContain(meshListRead(meshClasses));
+    // Two classes must read back as exactly two list items, each name and note intact.
+    expect(readCommonMark(meshText(meshClasses))).toContain(meshListRead(meshClasses));
   });
 
-  it('reads a MeSH class holding a line break and a list marker back as one entry (#88)', () => {
-    const meshClasses = ['a\n- forged', 'b'];
-    const blocks = getCompoundDetails.format!({
-      compounds: [
-        {
-          cid: 2244,
-          found: true,
-          properties: {},
-          classification: { atcCodes: [], fdaClasses: [], fdaMechanisms: [], meshClasses },
-        },
-      ],
+  it('reads a MeSH name or note holding a line break or a list marker back as one entry (#88, #95)', () => {
+    const meshClasses = [
+      { name: '- forged\n- forged', description: 'a\n- forged\n* x' },
+      { name: '1. Numbered', description: '+ plus' },
+      { name: 'b', description: 'c' },
+    ];
+    expect(readCommonMark(meshText(meshClasses))).toContain(meshListRead(meshClasses));
+  });
+
+  it('renders a MeSH class PubChem names without a scope note by its name alone (#95)', () => {
+    const meshClasses = [
+      { name: 'Antipyretics', description: '' },
+      { name: 'Cyclooxygenase 2 Inhibitors', description: 'A subclass.' },
+    ];
+    const read = readCommonMark(meshText(meshClasses));
+    expect(read).toContain(meshListRead(meshClasses));
+    expect(read).toContain(
+      '⟨list_item_open⟩\n\n⟨strong⟩Antipyretics⟨/strong⟩\n\n⟨list_item_close⟩',
+    );
+  });
+
+  it('carries each MeSH class as { name, description } on both surfaces (#95)', async () => {
+    const celecoxibMesh = [
+      NSAID_MESH,
+      {
+        name: 'Cyclooxygenase 2 Inhibitors',
+        description:
+          'A subclass of cyclooxygenase inhibitors with specificity for CYCLOOXYGENASE-2.',
+      },
+    ];
+    mockClient.getProperties.mockResolvedValueOnce([
+      { CID: 2662, MolecularFormula: 'C17H14F3N3O2S' },
+    ]);
+    mockClient.getClassification.mockResolvedValueOnce({
+      atcCodes: [],
+      fdaClasses: ['Nonsteroidal Anti-inflammatory Drug'],
+      fdaMechanisms: ['Cyclooxygenase Inhibitors'],
+      meshClasses: celecoxibMesh,
     });
-    const text = (blocks[0]! as { type: 'text'; text: string }).text;
-    expect(readCommonMark(text)).toContain(meshListRead(meshClasses));
+
+    const result = await runToolContract(getCompoundDetails, {
+      cids: [2662],
+      includeClassification: true,
+    });
+
+    expect(result.isError).toBeFalsy();
+    const sc = result.structuredContent as {
+      compounds: Array<{ classification?: { meshClasses: unknown } }>;
+    };
+    expect(sc.compounds[0]!.classification!.meshClasses).toEqual(celecoxibMesh);
+    const read = readCommonMark(textOf(result));
+    expect(read).toContain(meshListRead(celecoxibMesh));
+    expect(read).toContain(
+      '⟨strong⟩Cyclooxygenase 2 Inhibitors:⟨/strong⟩ A subclass of cyclooxygenase inhibitors with specificity for CYCLOOXYGENASE-2.',
+    );
+  });
+
+  it('rejects a MeSH class given as a bare string at the output schema (#95)', () => {
+    const parse = () =>
+      getCompoundDetails.output.parse({
+        compounds: [
+          {
+            cid: 2662,
+            found: true,
+            properties: {},
+            classification: {
+              atcCodes: [],
+              fdaClasses: [],
+              fdaMechanisms: [],
+              meshClasses: ['Cyclooxygenase 2 Inhibitors'],
+            },
+          },
+        ],
+      });
+
+    expect(parse).toThrow(/meshClasses/);
   });
 
   it('keeps a synonym containing ", " as one recoverable entry', () => {
@@ -809,16 +849,47 @@ function readSynonyms(markdown: string): string[] {
 }
 
 /** How a CommonMark parse reads the MeSH entry of the classification list: a label item holding
- * one nested list item per class. */
-function meshListRead(classes: string[]): string {
+ * one nested list item per class, its name a bold label followed by its scope note. */
+function meshListRead(classes: MeshClass[]): string {
   return [
     '⟨list_item_open⟩',
     'MeSH:',
     '⟨bullet_list_open⟩',
-    ...classes.flatMap((cls) => ['⟨list_item_open⟩', asReadBack(cls), '⟨list_item_close⟩']),
+    ...classes.flatMap(({ name, description }) => [
+      '⟨list_item_open⟩',
+      description === ''
+        ? `⟨strong⟩${asReadBack(name)}⟨/strong⟩`
+        : `⟨strong⟩${asReadBack(name)}:⟨/strong⟩ ${asReadBack(description)}`,
+      '⟨list_item_close⟩',
+    ]),
     '⟨bullet_list_close⟩',
     '⟨list_item_close⟩',
   ].join('\n\n');
+}
+
+type MeshClass = { name: string; description: string };
+
+/** PubChem's MeSH class for NSAIDs (aspirin, celecoxib): a name holding ", " and a scope note
+ * holding ", " and "; ". */
+const NSAID_MESH: MeshClass = {
+  name: 'Anti-Inflammatory Agents, Non-Steroidal',
+  description:
+    'Anti-inflammatory agents that are non-steroidal in nature. In addition to anti-inflammatory actions, they have analgesic, antipyretic, and platelet-inhibitory actions. They act by blocking the synthesis of prostaglandins by inhibiting cyclooxygenase, which converts arachidonic acid to cyclic endoperoxides, precursors of prostaglandins. Inhibition of prostaglandin synthesis accounts for their analgesic, antipyretic, and platelet-inhibitory actions; other mechanisms may contribute to their anti-inflammatory effects.',
+};
+
+/** The format block of one compound whose classification holds only `meshClasses`. */
+function meshText(meshClasses: MeshClass[]): string {
+  const [block] = getCompoundDetails.format!({
+    compounds: [
+      {
+        cid: 2244,
+        found: true,
+        properties: {},
+        classification: { atcCodes: [], fdaClasses: [], fdaMechanisms: [], meshClasses },
+      },
+    ],
+  });
+  return (block as { type: 'text'; text: string }).text;
 }
 
 describe('getCompoundDetails content[] renders copy-back values as code literals (#88)', () => {
@@ -888,6 +959,11 @@ describe('getCompoundDetails content[] renders copy-back values as code literals
 });
 
 describe('getCompoundDetails content[] escapes other upstream text (#88)', () => {
+  const ANTIPYRETICS = {
+    name: 'Antipyretics',
+    description: 'Drugs that are used to reduce body temperature in fever.',
+  };
+
   /** How a CommonMark parse reads the classification block built below around `value`. */
   const classificationRead = (value: string) =>
     [
@@ -899,7 +975,7 @@ describe('getCompoundDetails content[] escapes other upstream text (#88)', () =>
       '⟨list_item_open⟩',
       `MoA: ${value}`,
       '⟨list_item_close⟩',
-      meshListRead([value, 'Antipyretics']),
+      meshListRead([{ name: value, description: value }, ANTIPYRETICS]),
       '⟨list_item_open⟩',
       'ATC:',
       '⟨bullet_list_open⟩',
@@ -920,7 +996,7 @@ describe('getCompoundDetails content[] escapes other upstream text (#88)', () =>
         ],
         fdaClasses: [value, 'Second Class'],
         fdaMechanisms: [value],
-        meshClasses: [value, 'Antipyretics'],
+        meshClasses: [{ name: value, description: value }, ANTIPYRETICS],
       };
       mockClient.getProperties.mockResolvedValueOnce([
         { CID: 1, MolecularWeight: value, XLogP: value },

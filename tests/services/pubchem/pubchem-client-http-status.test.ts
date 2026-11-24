@@ -530,6 +530,67 @@ describe('PubChem fast-search failures other than a rejected query (#52 regressi
   });
 });
 
+describe('a mass search PubChem cannot finish in time is tagged mass_search_timeout (#98)', () => {
+  const massSearch = () =>
+    new PubChemClient().getMassRangeCidPage('monoisotopic_mass', 200, 500, 0, 20);
+
+  it('tags a 504 PUGREST.Timeout once its retry is spent, keeping code, status, and fault', async () => {
+    fetchMock.mockImplementation(async () =>
+      pugRestFault('PUGREST.Timeout', 'Request timed out', 504),
+    );
+
+    const { error } = await settle(massSearch());
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(error).toMatchObject({
+      code: JsonRpcErrorCode.Timeout,
+      message: 'PubChem did not finish the mass search in time.',
+      data: {
+        status: 504,
+        fault: 'PUGREST.Timeout: Request timed out',
+        retryAttempts: 2,
+        reason: 'mass_search_timeout',
+      },
+    });
+  });
+
+  it('tags a search that outruns the call budget the same way', async () => {
+    fetchMock.mockImplementation(hangUntilAborted);
+
+    const { error } = await settle(massSearch());
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(error).toMatchObject({
+      code: JsonRpcErrorCode.Timeout,
+      message: 'PubChem did not finish the mass search in time.',
+      data: { retryAttempts: 2, reason: 'mass_search_timeout' },
+    });
+    expectNoRequestTrace(error);
+  });
+
+  it('leaves a timeout on the page request, after the search answered, untagged', async () => {
+    fetchMock
+      .mockResolvedValueOnce(Response.json({ IdentifierList: { ListKey: 'k', Size: 30 } }))
+      .mockImplementation(async () => pugRestFault('PUGREST.Timeout', 'Request timed out', 504));
+
+    const { error } = await settle(massSearch());
+
+    expect(error).toMatchObject({ code: JsonRpcErrorCode.Timeout, data: { status: 504 } });
+    expect((error as { data?: object }).data).not.toHaveProperty('reason');
+  });
+
+  it('leaves a 503 on the search untagged', async () => {
+    fetchMock.mockImplementation(async () =>
+      pugRestFault('PUGREST.ServerBusy', 'Too many requests or server too busy', 503),
+    );
+
+    const { error } = await settle(massSearch());
+
+    expect(error).toMatchObject({ code: JsonRpcErrorCode.ServiceUnavailable });
+    expect((error as { data?: object }).data).not.toHaveProperty('reason');
+  });
+});
+
 describe('an HTTP 400 on a caller-built query is a typed rejection (#81, #87)', () => {
   /** PubChem's front-end answer to a path segment carrying a line break or other control
    * character: an HTML page, no PUG-REST fault. */

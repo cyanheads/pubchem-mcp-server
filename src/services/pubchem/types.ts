@@ -20,15 +20,19 @@ export interface AidListResponse {
   IdentifierList: { AID: number[] };
 }
 
-/** An assay's CID list stored server-side (`list_return=listkey`): the key to page it with
- * and the exact number of CIDs it holds. */
-export interface AssayCidListKeyResponse {
+/** A CID list stored server-side (`list_return=listkey`): the key to page it with and the
+ * number of CIDs it holds, which PubChem stops counting at {@link LISTKEY_SIZE_CAP}. */
+export interface StoredCidListResponse {
   IdentifierList: { ListKey: string; Size: number };
 }
 
-/** One page of an assay's CIDs. `total` is the exact count across all pages. */
-export interface AssayCidPage {
+/** One page of a CID list stored behind a ListKey. */
+export interface CidListPage {
+  /** PubChem stopped counting at {@link LISTKEY_SIZE_CAP}: `total` is a floor, and the list
+   * holds, and pages, only its first `total` matches. */
+  capped: boolean;
   cids: number[];
+  /** CIDs in the list across all pages: an exact count unless `capped`. */
   total: number;
 }
 
@@ -292,6 +296,10 @@ export interface InteractionKindPage {
   kind: 'drug-drug' | 'drug-food' | 'target';
   /** Set when a target page's name lookup failed: its entries name their identifier alone. */
   namesUnavailable?: true;
+  /** Set when PubChem has no record for the CID. Only the drug-food page can carry it: PUG View
+   * answers a missing CID 404 "No record found" and a compound without the heading "No data
+   * found", while assaysummary answers both alike and SDQ refuses automated requests. */
+  recordMissing?: true;
   /** Source records this page read, starting at the requested offset. The next page resumes
    * at the first record it did not read. */
   recordsConsumed: number;
@@ -307,6 +315,8 @@ export interface InteractionKindFetch {
   entries: InteractionEntry[];
   /** Set when a target page's name lookup failed: its entries name their identifier alone. */
   namesUnavailable?: true;
+  /** Set when PubChem has no record for the CID (drug-food only; see {@link InteractionKindPage}). */
+  recordMissing?: true;
   /** Source records this page read, starting at the requested offset. */
   recordsConsumed: number;
   /** Source records available for this kind, across all pages. */
@@ -351,12 +361,15 @@ export interface Sdf3DBond {
   order: number;
 }
 
-/** Parsed atoms and bonds from a V2000 SDF connection table. */
+/** Parsed atoms and bonds from a V2000 SDF connection table, with the record's conformer ID. */
 export interface Sdf3DStructure {
   atomCount: number;
   atoms: Sdf3DAtom[];
   bondCount: number;
   bonds: Sdf3DBond[];
+  /** The record's `PUBCHEM_CONFORMER_ID` data item, which every PubChem 3D record carries —
+   * the default record and a conformer fetched by ID alike. Absent when the record has none. */
+  conformerId?: string;
 }
 
 /** Pharmacological classification from PUG View */
@@ -375,8 +388,12 @@ export interface CompoundClassification {
   fdaClasses: string[];
   /** FDA Mechanisms of Action (e.g. "Cyclooxygenase Inhibitors") */
   fdaMechanisms: string[];
-  /** MeSH pharmacological class descriptions */
-  meshClasses: string[];
+  /**
+   * MeSH pharmacological action classes in PubChem's order: the MeSH heading
+   * (e.g. "Cyclooxygenase 2 Inhibitors") and its scope note, `""` when PubChem names the class
+   * without one.
+   */
+  meshClasses: Array<{ name: string; description: string }>;
 }
 
 /** Drug-likeness rule evaluation */
@@ -412,6 +429,18 @@ export const MAX_INT32 = 2147483647;
 
 /** Largest valid CID. */
 export const MAX_CID = MAX_INT32;
+
+/** The most entries PubChem counts into a stored CID list: a search matching more reports this
+ * `Size` and pages only its first this-many CIDs. */
+export const LISTKEY_SIZE_CAP = 1_000_000;
+
+/** The masses PUG REST's mass-range search takes, named by its path segments: the mass from each
+ * element's most abundant isotope, the mass of the most likely isotopic composition (the most
+ * intense peak, which differs from the monoisotopic mass for compounds rich in Cl or Br and for
+ * molecules of about 90 or more carbons), and the isotope-averaged molecular weight. */
+export const MASS_TYPES = ['monoisotopic_mass', 'exact_mass', 'molecular_weight'] as const;
+
+export type MassType = (typeof MASS_TYPES)[number];
 
 /** All valid PubChem compound property names */
 export const COMPOUND_PROPERTIES = [
@@ -458,8 +487,11 @@ export const PROPERTY_NAME_MAP: ReadonlyMap<string, CompoundProperty> = new Map(
   ['ConnectivitySMILES', 'CanonicalSMILES'],
 ]);
 
-/** Default properties when none specified */
+/** Default properties when none specified. `Title` is PubChem's display name for the record and
+ * is absent on some; `MolecularFormula` is on every compound, so a default row for a real CID
+ * always holds more than the CID. */
 export const DEFAULT_PROPERTIES = [
+  'Title',
   'MolecularFormula',
   'MolecularWeight',
   'IUPACName',

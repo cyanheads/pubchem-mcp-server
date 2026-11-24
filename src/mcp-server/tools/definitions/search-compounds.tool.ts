@@ -1,14 +1,22 @@
 /**
  * @fileoverview Search PubChem for chemical compounds by name, SMILES, InChI, InChIKey,
- * formula, substructure, superstructure, or 2D similarity, or list a bioassay's compounds.
+ * formula, substructure, superstructure, 2D similarity, or an accurate mass or molecular weight
+ * range, or list a bioassay's compounds.
  * @module mcp-server/tools/definitions/search-compounds
  */
 
 import { tool, z } from '@cyanheads/mcp-ts-core';
 import { JsonRpcErrorCode, McpError } from '@cyanheads/mcp-ts-core/errors';
 import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
-import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
-import { MAX_CID, MAX_INT32 } from '@/services/pubchem/types.js';
+import { fingerprintSimilarity, isFingerprint2D } from '@/services/pubchem/fingerprint.js';
+import { getPubChemClient, type PubChemClient } from '@/services/pubchem/pubchem-client.js';
+import {
+  type CidListPage,
+  LISTKEY_SIZE_CAP,
+  MASS_TYPES,
+  MAX_CID,
+  MAX_INT32,
+} from '@/services/pubchem/types.js';
 import { normalizeInchiKey } from './identifier-case.js';
 import {
   type CappedInput,
@@ -42,6 +50,7 @@ const searchTypeEnum = z.enum([
   'superstructure',
   'similarity',
   'assay',
+  'mass',
 ]);
 
 const identifierTypeEnum = z.enum(['name', 'smiles', 'inchi', 'inchikey']);
@@ -73,6 +82,10 @@ const NARROWING: Record<
     threshold < 100 ? `raise threshold above ${threshold}` : 'use a different query structure',
 };
 
+/** How a mass search reaches a window PubChem counts in full once its list stops at
+ * {@link LISTKEY_SIZE_CAP}. */
+const MASS_NARROWING = `narrow the mass window (raise massMin or lower massMax) to one with fewer than ${LISTKEY_SIZE_CAP} matches`;
+
 /** How identifier-mode notices and errors name each identifierType, and what to check when
  * PubChem rejects one as unreadable. SMILES and InChI are the forms seen to draw that
  * rejection: a structure PubChem cannot standardize, or for InChI a string whose case changed. */
@@ -103,10 +116,132 @@ const IDENTIFIER_FORMS: Record<
 /** Caller identifiers as a notice or error message lists them, each cut. */
 const echoList = (identifiers: readonly string[]): string => identifiers.map(clipEcho).join(', ');
 
+/** A similarity search's query, as the structure branch validated it. */
+type SimilarityQuery = { query: string; queryType: z.infer<typeof queryTypeEnum> };
+
+/** Why a similarity page carries no scores, as its notice states it. */
+const UNSCORED = {
+  lookupFailed:
+    'PubChem did not return the fingerprints to score this page against the query, so its hits carry no similarity score. Retry the call to score them.',
+  queryNotInPubChem:
+    'The query SMILES is not a compound in PubChem, which publishes no fingerprint for a structure it has no record of, so these hits carry no similarity score.',
+  noQueryFingerprint:
+    'PubChem returned no fingerprint for the query, so these hits carry no similarity score.',
+} as const;
+
+/** What a page's property request returned: each hit's requested properties, when requested, and
+ * on a similarity page each scored hit's similarity, or why none is scored. */
+interface PageDetail {
+  properties?: Map<number, Record<string, unknown>>;
+  similarity?: Map<number, number>;
+  unscored?: (typeof UNSCORED)[keyof typeof UNSCORED];
+}
+
+/** A best-effort lookup's value, or undefined when PubChem failed it. The caller's cancellation,
+ * and any failure that is not PubChem's, still end the call. */
+async function unlessFailed<T>(lookup: Promise<T>): Promise<T | undefined> {
+  try {
+    return await lookup;
+  } catch (error) {
+    if (error instanceof McpError && error.code !== JsonRpcErrorCode.RequestCancelled) return;
+    throw error;
+  }
+}
+
+/**
+ * Hydrates a page with `properties` and scores a similarity page against its query (#97), from
+ * one property request. On a similarity page that request also carries each hit's
+ * `Fingerprint2D`, and a CID query's own, its CID added when the page lacks it; a SMILES query's
+ * fingerprint comes from its own side lookup, sent beside it. With `properties` the request is
+ * the call's, as hydration always was; scoring alone makes it a best-effort side lookup, so a page
+ * PubChem has already answered survives a failed one, unscored and saying so. Scores are
+ * PubChem's own Tanimoto, rounded to three decimals; a hit with no fingerprint carries none.
+ */
+async function readPage(
+  client: PubChemClient,
+  cids: number[],
+  properties: readonly string[],
+  similarityQuery: SimilarityQuery | undefined,
+  signal: AbortSignal,
+): Promise<PageDetail> {
+  if (cids.length === 0 || (properties.length === 0 && !similarityQuery)) return {};
+  const queryCid = similarityQuery?.queryType === 'cid' ? Number(similarityQuery.query) : undefined;
+  const batch = queryCid === undefined || cids.includes(queryCid) ? cids : [...cids, queryCid];
+  const names = similarityQuery ? [...properties, 'Fingerprint2D'] : [...properties];
+  const [rowsOutcome, smilesOutcome] = await Promise.allSettled([
+    properties.length > 0
+      ? client.getProperties(batch, names, signal)
+      : unlessFailed(client.getProperties(batch, names, signal, { sideLookup: true })),
+    similarityQuery?.queryType === 'smiles'
+      ? unlessFailed(client.getSmilesFingerprint(similarityQuery.query, signal))
+      : undefined,
+  ]);
+  if (rowsOutcome.status === 'rejected') throw rowsOutcome.reason;
+  if (smilesOutcome.status === 'rejected') throw smilesOutcome.reason;
+  const rows = rowsOutcome.value;
+  const smilesQuery = smilesOutcome.value;
+
+  const detail: PageDetail = {};
+  if (properties.length > 0 && rows) {
+    detail.properties = new Map(
+      rows.map(({ CID, Fingerprint2D: _fingerprint, ...props }) => [CID, props]),
+    );
+  }
+  if (!similarityQuery) return detail;
+  if (!rows || (similarityQuery.queryType === 'smiles' && !smilesQuery)) {
+    detail.unscored = UNSCORED.lookupFailed;
+    return detail;
+  }
+  const fingerprints = new Map(
+    rows.flatMap((row) =>
+      typeof row.Fingerprint2D === 'string' ? [[row.CID, row.Fingerprint2D] as const] : [],
+    ),
+  );
+  const queryFingerprint =
+    queryCid === undefined ? smilesQuery?.fingerprint : fingerprints.get(queryCid);
+  // A query fingerprint out of PubChem's layout scores no hit, so it reads as none.
+  if (queryFingerprint === undefined || !isFingerprint2D(queryFingerprint)) {
+    detail.unscored =
+      smilesQuery?.cid === 0 ? UNSCORED.queryNotInPubChem : UNSCORED.noQueryFingerprint;
+    return detail;
+  }
+  detail.similarity = new Map(
+    cids.flatMap((cid) => {
+      const fingerprint = fingerprints.get(cid);
+      const score =
+        fingerprint === undefined
+          ? undefined
+          : fingerprintSimilarity(queryFingerprint, fingerprint);
+      return score === undefined ? [] : [[cid, Math.round(score * 1000) / 1000] as const];
+    }),
+  );
+  return detail;
+}
+
+/** One matching compound, as every mode returns it; the handler builds rows of this type. */
+const resultEntrySchema = z
+  .object({
+    cid: z.number().describe('PubChem Compound ID.'),
+    identifier: z.string().optional().describe('Echoed input identifier (identifier mode only).'),
+    similarity: z
+      .number()
+      .optional()
+      .describe(
+        "Similarity search only: this hit's Tanimoto similarity to the query, from 0 to 1, rounded to three decimals, computed from PubChem's 881-bit substructure fingerprint (Fingerprint2D), the one its threshold applies to. 1 means a fingerprint identical to the query's, not an identical compound: isotopologues and some positional isomers of the query score 1. Absent when PubChem returned no fingerprint for this hit, and on every hit when it returned none for the query or the fingerprint lookup failed (the notice says which).",
+      ),
+    properties: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        'Compound properties keyed by name (echoes input.properties; only present when requested). A property requested under its current PubChem name is keyed by the older one: SMILES as IsomericSMILES, ConnectivitySMILES as CanonicalSMILES.',
+      ),
+  })
+  .describe('Matching compound entry.');
+
 export const searchCompounds = tool('pubchem_search_compounds', {
   title: 'Search Compounds',
   description:
-    'Search PubChem for chemical compounds by identifier (name, SMILES, InChI, or InChIKey, up to 25 per call), molecular formula in Hill notation, substructure or superstructure containment, 2D Tanimoto similarity, or the compounds a bioassay (AID) found active or tested. Returns a page of CIDs — reach matches past maxResults with offset. Optionally hydrate results with properties to avoid a follow-up pubchem_get_compound_details call.',
+    'Search PubChem for chemical compounds by identifier (name, SMILES, InChI, or InChIKey, up to 25 per call), molecular formula in Hill notation, substructure or superstructure containment, 2D Tanimoto similarity, the compounds a bioassay (AID) found active or tested, or an accurate mass or molecular weight range. Returns a page of CIDs, each similarity hit with its Tanimoto score — reach matches past maxResults with offset. Optionally hydrate results with properties to avoid a follow-up pubchem_get_compound_details call.',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -114,7 +249,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
   },
   input: z.object({
     searchType: searchTypeEnum.describe(
-      'Search strategy; each mode needs its own fields. "identifier": name/SMILES/InChI/InChIKey lookup — requires identifierType and identifiers. "formula": molecular formula — requires formula. "substructure": find compounds containing the query as a substructure. "superstructure": find compounds that are themselves substructures of the query. "similarity": 2D Tanimoto similarity to the query. substructure, superstructure, and similarity require query and queryType. "assay": compounds tested in a PubChem bioassay — requires aid; activeOnly (default true) keeps only the compounds the assay marked active.',
+      'Search strategy; each mode needs its own fields. "identifier": name/SMILES/InChI/InChIKey lookup — requires identifierType and identifiers. "formula": molecular formula — requires formula. "substructure": find compounds containing the query as a substructure. "superstructure": find compounds that are themselves substructures of the query. "similarity": 2D Tanimoto similarity to the query, each hit with its score — hits come in PubChem\'s order, not ranked by score, so raise threshold to narrow to closer analogs. substructure, superstructure, and similarity require query and queryType. "assay": compounds tested in a PubChem bioassay — requires aid; activeOnly (default true) keeps only the compounds the assay marked active. "mass": compounds whose monoisotopic mass, exact mass, or molecular weight lies in an inclusive range — requires massType, massMin, and massMax; matches come in PubChem\'s order, not ranked by closeness to a target mass.',
     ),
     identifierType: identifierTypeEnum
       .optional()
@@ -161,7 +296,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .max(100)
       .default(90)
       .describe(
-        'Similarity search only. Minimum Tanimoto similarity (70-100). 90+ for close analogs, 70-80 for scaffold hops. Default: 90.',
+        "Similarity search only. Minimum Tanimoto similarity (70-100). 90+ for close analogs, 70-80 for scaffold hops. Hits come in PubChem's order, not ranked by score, so raising threshold is how to narrow a page to closer analogs. 100 means a fingerprint identical to the query's, not an identical compound: isotopologues and some positional isomers match at 100. Default: 90.",
       ),
     aid: z
       .number()
@@ -178,13 +313,33 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .describe(
         'Assay search only. When true (default), lists only the compounds the assay marked active; false lists every compound it tested.',
       ),
+    massType: z
+      .enum(MASS_TYPES)
+      .optional()
+      .describe(
+        'Required for mass search. The mass that massMin and massMax bound: "monoisotopic_mass" (from each element\'s most abundant isotope; the usual high-resolution MS target), "exact_mass" (the most likely isotopic composition, which gives the most intense peak; differs from monoisotopic_mass for compounds rich in Cl or Br and for molecules of about 90 or more carbons), or "molecular_weight" (isotope-averaged, in g/mol).',
+      ),
+    massMin: z
+      .number()
+      .min(0)
+      .optional()
+      .describe(
+        'Required for mass search. Lower bound of the mass window, inclusive, in daltons (g/mol for molecular_weight): 0 or more, and no greater than massMax. E.g. 180.063.',
+      ),
+    massMax: z
+      .number()
+      .min(0)
+      .optional()
+      .describe(
+        `Required for mass search. Upper bound of the mass window, inclusive, in daltons (g/mol for molecular_weight); equal to massMin for one exact value. E.g. 180.064. PubChem counts at most ${LISTKEY_SIZE_CAP} matches in a window and can time out on one hundreds of Da wide; narrow the window if either happens.`,
+      ),
     offset: z
       .number()
       .int()
       .min(0)
       .default(0)
       .describe(
-        `Zero-based index of the first CID to return. Pass the nextOffset from a previous call to read the following page. Identifier lookups resolve every match up front, so paging them is free, and assay searches fetch only the requested page, so both page to the end of their matches. Formula, substructure, superstructure, and similarity searches have to ask PubChem for offset + maxResults records to reach a page, so deep pages cost progressively more upstream: those four accept an offset up to ${OFFSET_CEILING}. Default: 0.`,
+        `Zero-based index of the first CID to return. Pass the nextOffset from a previous call to read the following page. Identifier lookups resolve every match up front, so paging them is free, and assay and mass searches fetch only the requested page, so all three page to the end of their matches; a mass search reaches the first ${LISTKEY_SIZE_CAP}, the most PubChem counts. Formula, substructure, superstructure, and similarity searches have to ask PubChem for offset + maxResults records to reach a page, so deep pages cost progressively more upstream: those four accept an offset up to ${OFFSET_CEILING}. Default: 0.`,
       ),
     maxResults: z
       .number()
@@ -203,25 +358,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       ),
   }),
   output: z.object({
-    results: z
-      .array(
-        z
-          .object({
-            cid: z.number().describe('PubChem Compound ID.'),
-            identifier: z
-              .string()
-              .optional()
-              .describe('Echoed input identifier (identifier mode only).'),
-            properties: z
-              .record(z.string(), z.unknown())
-              .optional()
-              .describe(
-                'Compound properties keyed by name (echoes input.properties; only present when requested). A property requested under its current PubChem name is keyed by the older one: SMILES as IsomericSMILES, ConnectivitySMILES as CanonicalSMILES.',
-              ),
-          })
-          .describe('Matching compound entry.'),
-      )
-      .describe('Matching compounds.'),
+    results: z.array(resultEntrySchema).describe('Matching compounds.'),
     unresolvedIdentifiers: z
       .array(z.string())
       .optional()
@@ -249,7 +386,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     searchType: z
       .string()
       .describe(
-        'Search strategy used: identifier, formula, substructure, superstructure, similarity, or assay.',
+        'Search strategy used: identifier, formula, substructure, superstructure, similarity, assay, or mass.',
       ),
     activeOnly: z
       .boolean()
@@ -261,20 +398,20 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .number()
       .optional()
       .describe(
-        'Exact number of matching CIDs across all pages. Omitted when a formula, substructure, superstructure, or similarity search saturated the records it requested — PubChem returns no match count for those, so totalFoundAtLeast reports a floor instead.',
+        `Exact number of matching CIDs across all pages. Omitted when a formula, substructure, superstructure, or similarity search saturated the records it requested — PubChem returns no match count for those — and when a mass search reached the ${LISTKEY_SIZE_CAP} matches PubChem counts at most; totalFoundAtLeast reports a floor instead.`,
       ),
     totalFoundAtLeast: z
       .number()
       .optional()
       .describe(
-        'Lower bound on matching CIDs, reported in place of totalFound when the exact count is unavailable. At least this many match, and the true total may be higher; page further with offset to observe more.',
+        'Lower bound on matching CIDs, reported in place of totalFound when the exact count is unavailable. At least this many match, and the true total may be higher. A formula or structure search shows more by paging further with offset; a mass search pages only this many, and a narrower window reaches the rest.',
       ),
     offset: z.number().describe('Zero-based index of the first CID returned.'),
     nextOffset: z
       .number()
       .optional()
       .describe(
-        `Offset to pass on the next call to continue past this page. Omitted when no further matches remain, and when a formula, substructure, superstructure, or similarity page would continue past the ${OFFSET_CEILING} offset ceiling (truncated stays true, and the notice says how to narrow the search and names the page at offset ${OFFSET_CEILING} when it still reaches further matches).`,
+        `Offset to pass on the next call to continue past this page. Omitted when no further matches remain; when a formula, substructure, superstructure, or similarity page would continue past the ${OFFSET_CEILING} offset ceiling (truncated stays true, and the notice says how to narrow the search and names the page at offset ${OFFSET_CEILING} when it still reaches further matches); and when a mass search page reaches the last of the ${LISTKEY_SIZE_CAP} matches PubChem counts (truncated stays true, and the notice says how to narrow the window).`,
       ),
     truncated: z.boolean().optional().describe('True when matching CIDs remain past this page.'),
     shown: z.number().optional().describe('CIDs returned on this page.'),
@@ -289,7 +426,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       .string()
       .optional()
       .describe(
-        'Recovery guidance when no compounds matched (for an assay search, when the assay recorded none of the requested kind), when the offset runs past the matches observed, when identifiers had no match or could not be interpreted, when identifiers collided on one CID, when further pages remain, or when a bounded search reached the offset ceiling. Absent when this page is complete and every identifier resolved to its own CID.',
+        'Recovery guidance when no compounds matched (for an assay search, when the assay recorded none of the requested kind; for a mass search, naming the mass type and window), when the offset runs past the matches observed, when identifiers had no match or could not be interpreted, when identifiers collided on one CID, when further pages remain, when a bounded search reached the offset ceiling, when a mass search reached the most matches PubChem counts, or when a similarity page carries no scores, saying why. Absent when this page is complete, every identifier resolved to its own CID, and a similarity page carries its scores.',
       ),
   },
   enrichmentTrailer: {
@@ -342,6 +479,29 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       when: 'assay search where PubChem has no live assay with the given AID',
       recovery:
         'Check the AID with pubchem_get_summary (entityType "assay"), or find AIDs for a biological target with pubchem_search_assays.',
+    },
+    {
+      reason: 'missing_mass_args',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'searchType is "mass" but massType, massMin, or massMax was omitted',
+      recovery:
+        'Set massType ("monoisotopic_mass", "exact_mass", or "molecular_weight") and both massMin and massMax, for example massType "monoisotopic_mass" with massMin 180.063 and massMax 180.064.',
+    },
+    {
+      reason: 'inverted_mass_window',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'mass search with massMin greater than massMax',
+      recovery:
+        'Pass massMin no greater than massMax, swapping the two if they were given in reverse; an equal pair matches one exact value.',
+    },
+    {
+      reason: 'mass_search_timeout',
+      code: JsonRpcErrorCode.Timeout,
+      // Raised by PubChemClient.getMassRangeCidPage, which sees the search request time out.
+      thrownBy: 'service',
+      when: 'mass search PubChem did not finish in time — HTTP 504 PUGREST.Timeout, or no answer within the call time limit — as happens for a window hundreds of Da wide',
+      recovery:
+        'Narrow the mass window (raise massMin or lower massMax) so PubChem can finish the search, then retry.',
     },
     {
       reason: 'identifier_rejected',
@@ -408,11 +568,13 @@ export const searchCompounds = tool('pubchem_search_compounds', {
     // ordering is a stable prefix, so reaching page N means asking for everything up to it.
     const recordCap = input.offset + pageSize + 1;
     let boundedSearch = false;
-    // Assay searches fetch only the requested page, with PubChem's exact count beside it. The
-    // page is a window on PubChem's list, so the next one starts past every entry it held,
-    // a CID listed twice included.
-    let assayTotal: number | undefined;
-    let assayPageLength: number | undefined;
+    // Assay and mass searches fetch only the requested page of the list PubChem stores for them,
+    // with its count beside it. The page is a window on that list, so the next one starts past
+    // every entry it held, a CID listed twice included. `narrowing` is how the mode reaches a
+    // list PubChem counts in full once the list stops at its count cap, when it has one.
+    let list: { page: CidListPage; narrowing: string | undefined } | undefined;
+    // The query a similarity page is scored against (#97).
+    let similarityQuery: SimilarityQuery | undefined;
     const identifierMap = new Map<number, string>();
     // Identifier-mode resolution tracking (#29): every input that resolved to no CID, whether
     // PubChem had no match or rejected the input as unreadable (#55).
@@ -574,6 +736,9 @@ export const searchCompounds = tool('pubchem_search_compounds', {
           recordCap,
           ctx.signal,
         );
+        if (input.searchType === 'similarity') {
+          similarityQuery = { query: input.query, queryType: input.queryType };
+        }
         break;
       }
       case 'assay': {
@@ -591,8 +756,12 @@ export const searchCompounds = tool('pubchem_search_compounds', {
           throw ctx.fail('aid_not_found', `PubChem has no live assay with AID ${input.aid}.`);
         }
         allCids = page.cids;
-        assayTotal = page.total;
-        assayPageLength = page.cids.length;
+        list = {
+          page,
+          narrowing: input.activeOnly
+            ? undefined
+            : 'pass activeOnly: true for the shorter list of compounds the assay marked active',
+        };
         ctx.enrich({ activeOnly: input.activeOnly });
         if (page.total === 0) {
           noticeParts.push(
@@ -603,25 +772,62 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         }
         break;
       }
+      case 'mass': {
+        const { massType, massMin, massMax } = input;
+        if (massType === undefined || massMin === undefined || massMax === undefined) {
+          const missing = Object.entries({ massType, massMin, massMax })
+            .filter(([, value]) => value === undefined)
+            .map(([field]) => field);
+          throw ctx.fail(
+            'missing_mass_args',
+            `A mass search needs massType, massMin, and massMax; ${missing.join(', ')} missing.`,
+          );
+        }
+        // PubChem answers an inverted window with the same 404 as an empty one, so it is caught
+        // here; a negative bound, answered the same way, never passes the schema.
+        if (massMin > massMax) {
+          throw ctx.fail(
+            'inverted_mass_window',
+            `massMin ${massMin} is greater than massMax ${massMax}.`,
+          );
+        }
+        const page = await client.getMassRangeCidPage(
+          massType,
+          massMin,
+          massMax,
+          input.offset,
+          pageSize,
+          ctx.signal,
+        );
+        allCids = page.cids;
+        list = { page, narrowing: MASS_NARROWING };
+        if (page.total === 0) {
+          noticeParts.push(
+            `No compounds have ${massType} from ${massMin} to ${massMax}. Widen the window (lower massMin or raise massMax), or check massType: exact_mass differs from monoisotopic_mass for compounds rich in Cl or Br and for molecules of about 90 or more carbons, and molecular_weight is the isotope-averaged weight.`,
+          );
+        }
+        break;
+      }
     }
 
-    // Deduplicate, then take the requested page — an assay search already fetched only it.
+    // Deduplicate, then take the requested page — a list-paged search already fetched only it.
     const uniqueCids = [...new Set(allCids)];
-    const observedTotal = assayTotal ?? uniqueCids.length;
+    const observedTotal = list?.page.total ?? uniqueCids.length;
     const pagedCids =
-      assayTotal === undefined
-        ? uniqueCids.slice(input.offset, input.offset + pageSize)
-        : uniqueCids;
+      list === undefined ? uniqueCids.slice(input.offset, input.offset + pageSize) : uniqueCids;
 
-    // A bounded search that came back short of its cap returned everything PubChem had, so
-    // the count is exact. A saturated one only proves a floor.
-    const totalIsExact = !boundedSearch || allCids.length < recordCap;
+    // A stored list's count is exact unless PubChem stopped counting at its cap. A bounded
+    // search that came back short of its cap returned everything PubChem had, so the count is
+    // exact; a saturated one only proves a floor.
+    const totalIsExact =
+      list === undefined ? !boundedSearch || allCids.length < recordCap : !list.page.capped;
     // The stride comes from the page that was returned, never from maxResults — that input
     // accepts a fractional value, which would emit a nextOffset this tool's own integer
     // offset validator then rejects.
-    const nextOffset = input.offset + (assayPageLength ?? pagedCids.length);
-    // A saturated bounded search proved a record beyond the window it asked for, so more
-    // remain even though observedTotal cannot say how many.
+    const nextOffset = input.offset + (list?.page.cids.length ?? pagedCids.length);
+    // A saturated bounded search proved a record beyond the window it asked for, and a capped
+    // list holds matches PubChem stopped counting, so more remain even though observedTotal
+    // cannot say how many.
     const hasMore = !totalIsExact || nextOffset < observedTotal;
     // A bounded search cannot serve an offset past the ceiling, so a page that would continue
     // there hands over no nextOffset — one the next call would only reject — and says how to
@@ -630,6 +836,21 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       isBoundedSearch(searchType) && hasMore && nextOffset > OFFSET_CEILING
         ? NARROWING[searchType](input)
         : undefined;
+    // A capped list pages only its first observedTotal entries, so a page that reaches its end
+    // hands over no nextOffset either — the next call would find nothing.
+    const cappedList = list?.page.capped ? list : undefined;
+    const listEnded = cappedList !== undefined && nextOffset >= observedTotal;
+    const orNarrow = cappedList?.narrowing ? `, or ${cappedList.narrowing}` : '';
+
+    // Read before the notices below, which say why a similarity page carries no scores.
+    const page = await readPage(
+      client,
+      pagedCids,
+      input.properties ? dedupeProperties(input.properties) : [],
+      similarityQuery,
+      ctx.signal,
+    );
+    if (page.unscored) noticeParts.push(page.unscored);
 
     ctx.log.info('Search completed', {
       searchType: input.searchType,
@@ -645,7 +866,7 @@ export const searchCompounds = tool('pubchem_search_compounds', {
         ? { searchType: input.searchType, totalFound: observedTotal, offset: input.offset }
         : { searchType: input.searchType, totalFoundAtLeast: observedTotal, offset: input.offset },
     );
-    if (hasMore && ceilingNarrowing === undefined) ctx.enrich({ nextOffset });
+    if (hasMore && ceilingNarrowing === undefined && !listEnded) ctx.enrich({ nextOffset });
     if (capped.length > 0) ctx.enrich({ cappedInputs: capped });
 
     if (pagedCids.length === 0) {
@@ -657,11 +878,15 @@ export const searchCompounds = tool('pubchem_search_compounds', {
             `No compounds matched the ${input.searchType} search. Try a different identifier, broaden the formula, lower the similarity threshold, or verify the SMILES/CID.`,
           );
         }
-      } else {
-        // Reachable only with an exact total: a saturated bounded search observed
-        // offset + maxResults + 1 records, so its page is never empty.
+      } else if (totalIsExact) {
         noticeParts.push(
           `offset ${input.offset} is past the ${observedTotal} match(es) found. Pass an offset below ${observedTotal}.`,
+        );
+      } else {
+        // Only a capped list: a saturated bounded search observed offset + maxResults + 1
+        // records, so its page is never empty.
+        noticeParts.push(
+          `offset ${input.offset} is past the ${observedTotal} matches PubChem pages for this search, the most it counts. Pass an offset below ${observedTotal}${orNarrow}.`,
         );
       }
       ctx.enrich.notice(noticeParts.join(' '));
@@ -671,12 +896,16 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       // "of N" to quote — say more exist, and still hand over the next offset.
       const shownRange = totalIsExact
         ? `Showing matches ${input.offset + 1}-${nextOffset} of ${observedTotal}.`
-        : `Showing matches ${input.offset + 1}-${nextOffset}; more exist, but PubChem reports no match count for a ${input.searchType} search.`;
-      // Past the ceiling, a full page at the ceiling offset still shows matches this page
-      // stopped short of, up to DEEPEST_MATCH; only a page that already reached it has none.
-      const nextStep =
-        ceilingNarrowing === undefined
-          ? `Pass offset=${nextOffset} for the next page.`
+        : cappedList
+          ? `Showing matches ${input.offset + 1}-${nextOffset} of at least ${observedTotal}; PubChem stops counting this search at ${observedTotal} matches and pages only those.`
+          : `Showing matches ${input.offset + 1}-${nextOffset}; more exist, but PubChem reports no match count for a ${input.searchType} search.`;
+      // A capped list that reached its end has no further page. Past the ceiling, a full page at
+      // the ceiling offset still shows matches this page stopped short of, up to DEEPEST_MATCH;
+      // only a page that already reached it has none.
+      const nextStep = listEnded
+        ? `No further page can be requested${cappedList?.narrowing ? `; ${cappedList.narrowing}` : ''}.`
+        : ceilingNarrowing === undefined
+          ? `Pass offset=${nextOffset} for the next page${orNarrow}.`
           : nextOffset < DEEPEST_MATCH
             ? `A ${input.searchType} search pages only to offset ${OFFSET_CEILING}, so pass offset=${OFFSET_CEILING} with maxResults=${MAX_RESULTS_CAP} to reach matches through ${DEEPEST_MATCH}; past ${DEEPEST_MATCH}, narrow it to fewer matches: ${ceilingNarrowing}.`
             : `A ${input.searchType} search pages only to offset ${OFFSET_CEILING}, so no further page can be requested; narrow it to fewer matches: ${ceilingNarrowing}.`;
@@ -693,31 +922,15 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       ctx.enrich.notice(noticeParts.join(' '));
     }
 
-    // Optionally hydrate with properties
-    let propsMap: Map<number, Record<string, unknown>> | undefined;
-    if (input.properties && input.properties.length > 0 && pagedCids.length > 0) {
-      const rows = await client.getProperties(
-        pagedCids,
-        dedupeProperties(input.properties),
-        ctx.signal,
-      );
-      propsMap = new Map(rows.map((r) => [r.CID, r]));
-    }
-
     const results = pagedCids.map((cid) => {
-      const result: {
-        cid: number;
-        identifier?: string;
-        properties?: Record<string, unknown>;
-      } = { cid };
+      const result: z.infer<typeof resultEntrySchema> = { cid };
 
       const identifier = identifierMap.get(cid);
       if (identifier) result.identifier = identifier;
-      const rawProps = propsMap?.get(cid);
-      if (rawProps) {
-        const { CID: _CID, ...props } = rawProps;
-        result.properties = props;
-      }
+      const similarity = page.similarity?.get(cid);
+      if (similarity !== undefined) result.similarity = similarity;
+      const props = page.properties?.get(cid);
+      if (props) result.properties = props;
       return result;
     });
 
@@ -733,15 +946,18 @@ export const searchCompounds = tool('pubchem_search_compounds', {
 
     // Identifier echoes and string property values are code literals (#88); one holding a line
     // break is a fenced block on lines of its own, so each label opens an unindented line — an
-    // indented line after a block would read as code.
+    // indented line after a block would read as code. A similarity score precedes the echo, so
+    // a fenced echo still ends its line.
+    const score = (r: (typeof result.results)[number]) =>
+      r.similarity === undefined ? '' : ` (similarity ${r.similarity})`;
     if (result.results.length === 0) {
       lines.push('No results.');
     } else if (result.results.some((r) => r.properties)) {
       for (const r of result.results) {
         lines.push(
           r.identifier === undefined
-            ? `**CID ${r.cid}**`
-            : `**CID ${r.cid}** — ${literalData(r.identifier)}`,
+            ? `**CID ${r.cid}**${score(r)}`
+            : `**CID ${r.cid}**${score(r)} — ${literalData(r.identifier)}`,
         );
         if (r.properties) {
           lines.push('**Properties:**');
@@ -753,7 +969,9 @@ export const searchCompounds = tool('pubchem_search_compounds', {
       }
     } else {
       const items = result.results.map((r) =>
-        r.identifier === undefined ? String(r.cid) : `${r.cid} (${literalData(r.identifier)})`,
+        r.identifier === undefined
+          ? `${r.cid}${score(r)}`
+          : `${r.cid}${score(r)} (${literalData(r.identifier)})`,
       );
       lines.push(`CIDs: ${items.join(', ')}`);
     }

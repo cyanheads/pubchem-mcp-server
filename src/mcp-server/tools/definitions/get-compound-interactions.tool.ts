@@ -149,7 +149,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       .string()
       .optional()
       .describe(
-        'Guidance when a kind failed, when no interaction data was found, when the offset runs past every requested kind, when target names could not be retrieved, or when further pages remain. Absent when this page is complete and every kind resolved.',
+        'Guidance when a kind failed, when PubChem has no record for the CID (told apart only when drug-food is requested and answers), when no interaction data was found, when the offset runs past every requested kind, when target names could not be retrieved, or when further pages remain. Absent when this page is complete and every kind resolved.',
       ),
     cappedInputs: cappedInputsField,
   },
@@ -247,8 +247,18 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
       if (entries.length > 0) noticeParts.push('Returned the kinds that succeeded.');
     }
 
+    // Only the drug-food request tells a CID with no record from a compound with no data (the
+    // client's `recordMissing`). When it says so, that replaces every kind's no-data reading;
+    // when no drug-food page answered, an empty result can still mean a CID with no record.
+    // Entries from another kind show the CID has data, so the claim is made only on an empty page.
+    const food = paging.find((p) => p.kind === 'drug-food');
+    const recordMissing = entries.length === 0 && pages.some((p) => p.recordMissing);
     const largestTotal = paging.reduce((max, p) => Math.max(max, p.totalRecords), 0);
-    if (entries.length === 0 && paging.length > 0) {
+    if (recordMissing) {
+      noticeParts.push(
+        `PubChem has no record for CID ${input.cid} — verify the CID with pubchem_search_compounds.`,
+      );
+    } else if (entries.length === 0 && paging.length > 0) {
       if (largestTotal === 0) {
         const kinds = paging.map((p) => p.kind);
         noticeParts.push(`No ${kinds.join('/')} interaction data found for CID ${input.cid}.`);
@@ -260,6 +270,11 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
         if (kinds.includes('target')) {
           noticeParts.push(
             'None of its assays names a molecular target, or PubChem holds no assay data for it.',
+          );
+        }
+        if (!food) {
+          noticeParts.push(
+            'PubChem may also have no record for this CID — verify the CID with pubchem_search_compounds.',
           );
         }
       } else if (input.offset >= largestTotal) {
@@ -274,8 +289,7 @@ export const getCompoundInteractions = tool('pubchem_get_compound_interactions',
     }
 
     // Drug-food answers for approved drugs only; target answers for any assayed compound.
-    const food = paging.find((p) => p.kind === 'drug-food');
-    if (food?.totalRecords === 0 && !input.kinds.includes('target')) {
+    if (!recordMissing && food?.totalRecords === 0 && !input.kinds.includes('target')) {
       noticeParts.push(
         `For the molecular targets CID ${input.cid}'s assays name, request kinds: ["target"].`,
       );

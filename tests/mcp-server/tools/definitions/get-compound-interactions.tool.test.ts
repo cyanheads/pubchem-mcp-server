@@ -218,8 +218,10 @@ describe('getCompoundInteractions handler', () => {
       ctx,
     );
 
+    // #96: only the drug-food request tells a CID with no record apart, so without it the
+    // empty page also points at verifying the CID.
     expect(getEnrichment(ctx).notice).toBe(
-      'No drug-drug interaction data found for CID 962. PubChem has no deposited interaction records for this compound — coverage is richest for approved drugs.',
+      'No drug-drug interaction data found for CID 962. PubChem has no deposited interaction records for this compound — coverage is richest for approved drugs. PubChem may also have no record for this CID — verify the CID with pubchem_search_compounds.',
     );
   });
 

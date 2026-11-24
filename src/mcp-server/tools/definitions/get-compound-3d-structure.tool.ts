@@ -1,5 +1,6 @@
 /**
- * @fileoverview Fetch the 3D conformer (atomic coordinates + bonds) for a PubChem compound.
+ * @fileoverview Fetch a 3D conformer (atomic coordinates + bonds) for a PubChem compound: its
+ * default conformer, or one named by conformer ID.
  * @module mcp-server/tools/definitions/get-compound-3d-structure
  */
 
@@ -9,21 +10,24 @@ import { escapeMarkdownInline } from '@cyanheads/mcp-ts-core/utils';
 import { getPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { parseSdfV2000 } from '@/services/pubchem/sdf-parser.js';
 import { MAX_CID } from '@/services/pubchem/types.js';
-import { fencedData, literalData } from './untrusted-text.js';
+import { clipEcho, fencedData, literalData } from './untrusted-text.js';
 
 /**
  * Safe-default ceilings applied when the caller sets no explicit cap. Sized to
- * pass small drug-like conformers (aspirin: 21 atoms/bonds, ~60 SDF lines)
+ * pass small drug-like conformers (aspirin: 21 atoms/bonds, ~200 SDF lines)
  * through unchanged while bounding pathologically large records.
  */
 const DEFAULT_ATOM_CAP = 200;
 const DEFAULT_BOND_CAP = 200;
 const DEFAULT_SDF_LINE_CAP = 500;
 
+/** A PubChem conformer ID: 16 hexadecimal digits, the first 8 being the compound's CID. */
+const CONFORMER_ID = /^[0-9a-f]{16}$/i;
+
 export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', {
   title: 'Get Compound 3D Structure',
   description:
-    'Get a compound\'s default 3D conformer — atomic coordinates and bonds — for one CID. format="json" (default) returns atoms and bonds parsed into structured fields; format="sdf" returns the raw V2000 SDF text for passthrough to docking, rendering, or conformer tools. Optionally lists alternate conformer IDs. Not every compound has computed 3D coordinates (large molecules, mixtures, and some salts do not).',
+    'Get one 3D conformer of a compound — atomic coordinates and bonds — for one CID: its default conformer, or the one conformerId names. format="json" (default) returns atoms and bonds parsed into structured fields; format="sdf" returns the raw V2000 SDF text for passthrough to docking, rendering, or conformer tools. Optionally lists the compound\'s other conformer IDs, each one a value for conformerId. Not every compound has computed 3D coordinates (large molecules, mixtures, and some salts do not).',
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -36,6 +40,12 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       .min(1)
       .max(MAX_CID)
       .describe('PubChem Compound ID. Resolve from name/SMILES with pubchem_search_compounds.'),
+    conformerId: z
+      .string()
+      .optional()
+      .describe(
+        'Fetch this conformer of the compound instead of its default: a conformer ID from alternateConformerIds (includeAlternateConformerIds: true), 16 hexadecimal digits whose first 8 are the CID in hexadecimal (e.g. "000008C40000000B" for CID 2244). Either case is accepted. Omit, or leave blank, for the default conformer.',
+      ),
     format: z
       .enum(['sdf', 'json'])
       .default('json')
@@ -46,7 +56,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       .boolean()
       .default(false)
       .describe(
-        'List the IDs of additional computed conformers beyond the default. Slower than the default response. Default: false.',
+        "List the IDs of the compound's other computed conformers, each one a value for conformerId. Slower than the default response. Default: false.",
       ),
     maxAtoms: z
       .number()
@@ -77,7 +87,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       .string()
       .optional()
       .describe(
-        'Default (primary) conformer ID. Present when includeAlternateConformerIds is set.',
+        "ID of the conformer returned: the requested conformerId, or the compound's default conformer. Read from the record's PUBCHEM_CONFORMER_ID data item; omitted when the record carries none.",
       ),
     atomCount: z.number().describe('Number of atoms in the conformer.'),
     bondCount: z.number().describe('Number of bonds in the conformer.'),
@@ -111,7 +121,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       .array(z.string())
       .optional()
       .describe(
-        'Conformer IDs beyond the default. Present when includeAlternateConformerIds is set and alternates exist.',
+        "The compound's other conformer IDs — every listed ID except the one returned, the default included when another was requested. Pass one as conformerId to fetch that conformer. Present when includeAlternateConformerIds is set and other conformers exist.",
       ),
   }),
   // Agent-facing context — truncation disclosure when a preview is capped below
@@ -172,13 +182,58 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       recovery:
         'Use pubchem_get_compound_image for the 2D structure; if the CID itself may be wrong, verify it with pubchem_search_compounds.',
     },
+    {
+      reason: 'invalid_conformer_id',
+      code: JsonRpcErrorCode.ValidationError,
+      when: 'conformerId is not 16 hexadecimal digits whose first 8 name a CID, or the CID they name is not cid',
+      recovery:
+        'Pass a conformer ID listed for this CID by includeAlternateConformerIds: true, or omit conformerId for the default conformer.',
+    },
+    {
+      reason: 'conformer_not_found',
+      code: JsonRpcErrorCode.NotFound,
+      // Raised by PubChemClient.getConformerSdf on PubChem's 404 for the conformer path.
+      thrownBy: 'service',
+      when: 'PubChem returned 404 for the requested conformerId, its answer both for an ID the compound has no conformer under and for any ID of a compound with no computed 3D conformer',
+      recovery:
+        'Call again without conformerId and with includeAlternateConformerIds: true to list the conformer IDs PubChem holds for this CID.',
+    },
   ],
 
   async handler(input, ctx) {
     const client = getPubChemClient();
 
-    // getSdf3d throws a typed no_3d_structure not-found when PubChem has no 3D record.
-    const sdf = await client.getSdf3d(input.cid, ctx.signal);
+    // A blank conformerId reads as omitted. Any other is checked before a request is sent, so
+    // a conformer of another compound never comes back under this CID.
+    const requested = input.conformerId?.trim();
+    let conformerId: string | undefined;
+    if (requested) {
+      const owner = Number.parseInt(requested.slice(0, 8), 16);
+      if (!CONFORMER_ID.test(requested) || owner < 1 || owner > MAX_CID) {
+        throw ctx.fail(
+          'invalid_conformer_id',
+          `conformerId "${clipEcho(requested)}" is not a PubChem conformer ID: 16 hexadecimal digits, the first 8 being the CID.`,
+        );
+      }
+      conformerId = requested.toUpperCase();
+      if (owner !== input.cid) {
+        throw ctx.fail(
+          'invalid_conformer_id',
+          `Conformer ID ${conformerId} belongs to CID ${owner} (its first 8 hexadecimal digits), not CID ${input.cid}.`,
+          {
+            recovery: {
+              hint: `Call again with cid ${owner} to fetch this conformer, or list CID ${input.cid}'s own conformer IDs with includeAlternateConformerIds: true.`,
+            },
+          },
+        );
+      }
+    }
+
+    // getSdf3d throws a typed no_3d_structure not-found when PubChem has no 3D record;
+    // getConformerSdf a typed conformer_not_found when it holds none under the requested ID.
+    const sdf = conformerId
+      ? await client.getConformerSdf(conformerId, ctx.signal)
+      : await client.getSdf3d(input.cid, ctx.signal);
     const parsed = parseSdfV2000(sdf);
 
     const out: {
@@ -191,6 +246,8 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
       sdf?: string;
       alternateConformerIds?: string[];
     } = { cid: input.cid, atomCount: parsed.atomCount, bondCount: parsed.bondCount };
+    // PubChem's 3D records name their own conformer, so naming it takes no list request.
+    if (parsed.conformerId) out.conformerId = parsed.conformerId;
 
     const atomCap = input.maxAtoms ?? DEFAULT_ATOM_CAP;
     const bondCap = input.maxBonds ?? DEFAULT_BOND_CAP;
@@ -216,15 +273,15 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
 
     if (input.includeAlternateConformerIds) {
       const ids = await client.getConformerIds(input.cid, ctx.signal);
-      if (ids[0]) {
-        out.conformerId = ids[0];
-        const alternates = ids.slice(1);
-        if (alternates.length > 0) out.alternateConformerIds = alternates;
-      }
+      // A named conformer is the one returned even when its record carries no ID of its own.
+      const returned = out.conformerId ?? conformerId;
+      const alternates = ids.filter((id) => id !== returned);
+      if (alternates.length > 0) out.alternateConformerIds = alternates;
     }
 
     ctx.log.info('3D structure fetched', {
       cid: input.cid,
+      conformerId: out.conformerId,
       format: input.format,
       atoms: parsed.atomCount,
       bonds: parsed.bondCount,
@@ -263,7 +320,7 @@ export const getCompound3dStructure = tool('pubchem_get_compound_3d_structure', 
     ];
 
     // Conformer IDs are PubChem identifiers an agent copies, so they render as code literals.
-    if (result.conformerId) lines.push(`Default conformer: ${literalData(result.conformerId)}`);
+    if (result.conformerId) lines.push(`Conformer: ${literalData(result.conformerId)}`);
     if (result.alternateConformerIds && result.alternateConformerIds.length > 0) {
       lines.push(
         `Alternate conformers: ${result.alternateConformerIds.map(literalData).join(', ')}`,

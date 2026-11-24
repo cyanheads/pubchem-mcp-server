@@ -7,6 +7,7 @@ import { createMockContext, runToolContract } from '@cyanheads/mcp-ts-core/testi
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getCompoundDetails } from '@/mcp-server/tools/definitions/get-compound-details.tool.js';
 import { readCommonMark, readTrailerValue } from '../../../helpers/commonmark.js';
+import { formatBlock } from '../../../helpers/read-back.js';
 
 const mockClient = {
   getProperties: vi.fn(),
@@ -234,9 +235,10 @@ describe('getCompoundDetails handler', () => {
     });
     await getCompoundDetails.handler(input, ctx);
 
+    // MolecularFormula rides along as the found/not-found discriminator.
     expect(mockClient.getProperties).toHaveBeenCalledWith(
       [2244],
-      ['XLogP'],
+      ['XLogP', 'MolecularFormula'],
       expect.any(AbortSignal),
     );
   });
@@ -366,7 +368,12 @@ describe('getCompoundDetails handler', () => {
       atcCodes: [{ code: 'N02BA01', description: 'Acetylsalicylic acid', levels: [] }],
       fdaClasses: ['Nonsteroidal Anti-inflammatory Drug'],
       fdaMechanisms: ['Cyclooxygenase Inhibitors'],
-      meshClasses: ['Anti-Inflammatory Agents, Non-Steroidal'],
+      meshClasses: [
+        {
+          name: 'Anti-Inflammatory Agents, Non-Steroidal',
+          description: 'Anti-inflammatory agents that are non-steroidal in nature.',
+        },
+      ],
     });
     const ctx = createMockContext();
     const input = getCompoundDetails.input.parse({
@@ -614,7 +621,12 @@ describe('getCompoundDetails format', () => {
             ],
             fdaClasses: ['Nonsteroidal Anti-inflammatory Drug'],
             fdaMechanisms: ['Cyclooxygenase Inhibitors'],
-            meshClasses: ['Anti-Inflammatory Agents, Non-Steroidal'],
+            meshClasses: [
+              {
+                name: 'Anti-Inflammatory Agents, Non-Steroidal',
+                description: 'Anti-inflammatory agents that are non-steroidal in nature.',
+              },
+            ],
           },
         },
       ],
@@ -624,6 +636,9 @@ describe('getCompoundDetails format', () => {
     expect(text).toContain('Nonsteroidal Anti-inflammatory Drug');
     expect(text).toContain('N02BA01');
     expect(text).toContain('Cyclooxygenase Inhibitors');
+    expect(readCommonMark(text)).toContain(
+      '⟨strong⟩Anti-Inflammatory Agents, Non-Steroidal:⟨/strong⟩ Anti-inflammatory agents that are non-steroidal in nature.',
+    );
   });
 
   it('labels CanonicalSMILES as Canonical SMILES, keeping the isomeric line beside it', () => {
@@ -799,6 +814,10 @@ const GLUCOSE: Record<string, unknown> = {
 /** The properties each getProperties call asked PubChem for. */
 const requestedProperties = () => mockClient.getProperties.mock.calls.map(([, props]) => props);
 
+/** `props` as the request PubChem receives: MolecularFormula, the found/not-found
+ * discriminator, appended unless already named. */
+const withFormula = (props: string[]) => [...props, 'MolecularFormula'];
+
 describe('getCompoundDetails reads PubChem current property names (#92)', () => {
   beforeEach(() => {
     mockClient.getProperties.mockImplementation(async (cids: number[], props: string[]) =>
@@ -825,7 +844,7 @@ describe('getCompoundDetails reads PubChem current property names (#92)', () => 
       } as never);
 
       expect(result.isError).toBeFalsy();
-      expect(requestedProperties()).toEqual([read]);
+      expect(requestedProperties()).toEqual([withFormula(read)]);
       const sc = result.structuredContent as Structured;
       expect(sc.compounds[0]!.properties).toEqual(
         Object.fromEntries(read.map((p) => [p, GLUCOSE[p]])),
@@ -846,8 +865,8 @@ describe('getCompoundDetails reads PubChem current property names (#92)', () => 
     expect(older.isError).toBeFalsy();
     expect(current).toEqual(older);
     expect(requestedProperties()).toEqual([
-      ['IsomericSMILES', 'CanonicalSMILES'],
-      ['IsomericSMILES', 'CanonicalSMILES'],
+      withFormula(['IsomericSMILES', 'CanonicalSMILES']),
+      withFormula(['IsomericSMILES', 'CanonicalSMILES']),
     ]);
   });
 
@@ -858,7 +877,7 @@ describe('getCompoundDetails reads PubChem current property names (#92)', () => 
     } as never);
 
     expect(result.isError).toBeFalsy();
-    expect(requestedProperties()).toEqual([['MolecularWeight']]);
+    expect(requestedProperties()).toEqual([withFormula(['MolecularWeight'])]);
   });
 
   it.each(['smiles', 'AbsoluteSMILES'])('still rejects %s', async (name) => {
@@ -904,7 +923,7 @@ describe('getCompoundDetails reads PubChem current property names (#92)', () => 
       } as never);
 
       expect(result.isError).toBeFalsy();
-      expect(requestedProperties()).toEqual([read]);
+      expect(requestedProperties()).toEqual([withFormula(read)]);
     },
   );
 
@@ -926,6 +945,7 @@ describe('getCompoundDetails reads PubChem current property names (#92)', () => 
 
 /** The core set `properties` defaults to, as its description lists it. */
 const CORE_SET = [
+  'Title',
   'MolecularFormula',
   'MolecularWeight',
   'IUPACName',
@@ -967,4 +987,180 @@ describe('getCompoundDetails reads an empty properties list as the default core 
       expect(readTrailerValue(text, 'Formula')).toBe('C9H8O4');
     },
   );
+});
+
+// ── A real compound lacking the requested properties is found (fold-in); Title by default (#101) ──
+
+/**
+ * Two compounds as PubChem holds them (property table, 2026-11-23), keyed by this server's
+ * property names: celecoxib, and CID 130000000, which has no Title.
+ */
+const PUBCHEM_RECORDS = new Map<number, Record<string, unknown>>([
+  [
+    2662,
+    {
+      MolecularFormula: 'C17H14F3N3O2S',
+      MolecularWeight: '381.4',
+      IsomericSMILES: 'CC1=CC=C(C=C1)C2=CC(=NN2C3=CC=C(C=C3)S(=O)(=O)N)C(F)(F)F',
+      CanonicalSMILES: 'CC1=CC=C(C=C1)C2=CC(=NN2C3=CC=C(C=C3)S(=O)(=O)N)C(F)(F)F',
+      InChIKey: 'RZEKVGVHFLEQIL-UHFFFAOYSA-N',
+      IUPACName: '4-[5-(4-methylphenyl)-3-(trifluoromethyl)pyrazol-1-yl]benzenesulfonamide',
+      XLogP: 3.4,
+      TPSA: 86.4,
+      Complexity: 577,
+      Charge: 0,
+      HBondDonorCount: 1,
+      HBondAcceptorCount: 7,
+      RotatableBondCount: 3,
+      HeavyAtomCount: 26,
+      Title: 'Celecoxib',
+    },
+  ],
+  [
+    130000000,
+    {
+      MolecularFormula: 'C10H14N2O',
+      MolecularWeight: '178.23',
+      IsomericSMILES: 'COC1=CC(=C(C=C1)N)C(C=C)N',
+      CanonicalSMILES: 'COC1=CC(=C(C=C1)N)C(C=C)N',
+      InChIKey: 'LHAZJQZQZQKHKJ-UHFFFAOYSA-N',
+      IUPACName: '2-(1-aminoprop-2-enyl)-4-methoxyaniline',
+      XLogP: 1.5,
+      TPSA: 61.3,
+      Complexity: 172,
+      Charge: 0,
+      HBondDonorCount: 2,
+      HBondAcceptorCount: 3,
+      RotatableBondCount: 3,
+      HeavyAtomCount: 13,
+    },
+  ],
+]);
+
+/** Answers getProperties as PUG REST's property table does: each row holds the CID and the
+ * requested properties the compound has, so a CID with no record (1234567890) comes back as its
+ * CID alone — and so does a real compound holding none of the requested properties. */
+function servePubChemRows() {
+  mockClient.getProperties.mockImplementation(async (cids: number[], props: string[]) =>
+    cids.map((CID) => {
+      const record = PUBCHEM_RECORDS.get(CID) ?? {};
+      return {
+        CID,
+        ...Object.fromEntries(props.flatMap((p) => (p in record ? [[p, record[p]]] : []))),
+      };
+    }),
+  );
+}
+
+describe('getCompoundDetails finds a real compound that lacks every requested property (fold-in)', () => {
+  beforeEach(servePubChemRows);
+
+  it('reports a CID PubChem has no record for as not found on both surfaces', async () => {
+    const result = await runToolContract(getCompoundDetails, {
+      cids: [1234567890],
+      properties: ['Title'],
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect((result.structuredContent as Structured).compounds).toEqual([
+      { cid: 1234567890, found: false, properties: {} },
+    ]);
+    expect(formatBlock(result)).toContain('## CID 1234567890 — not found in PubChem');
+  });
+
+  it('answers { cids: [130000000], properties: ["Title"] } as found, with neither Title nor MolecularFormula', async () => {
+    const result = await runToolContract(getCompoundDetails, {
+      cids: [130000000],
+      properties: ['Title'],
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect((result.structuredContent as Structured).compounds).toEqual([
+      { cid: 130000000, found: true, properties: {} },
+    ]);
+    const text = formatBlock(result);
+    expect(text).toContain('## CID 130000000 (found)');
+    expect(readTrailerValue(text, 'Title')).toBeUndefined();
+    expect(readTrailerValue(text, 'Formula')).toBeUndefined();
+    expect(readCommonMark(text)).toContain(
+      '⟨strong⟩Properties:⟨/strong⟩ PubChem records none of the requested properties for this compound.',
+    );
+  });
+
+  it('keeps MolecularFormula when the caller asked for it', async () => {
+    const result = await runToolContract(getCompoundDetails, {
+      cids: [130000000],
+      properties: ['Title', 'MolecularFormula'],
+    });
+
+    expect((result.structuredContent as Structured).compounds).toEqual([
+      { cid: 130000000, found: true, properties: { MolecularFormula: 'C10H14N2O' } },
+    ]);
+    expect(readTrailerValue(formatBlock(result), 'Formula')).toBe('C10H14N2O');
+  });
+
+  it('asks PubChem for MolecularFormula beside the requested properties, naming it once', async () => {
+    await runToolContract(getCompoundDetails, { cids: [2662], properties: ['Title', 'XLogP'] });
+    await runToolContract(getCompoundDetails, {
+      cids: [2662],
+      properties: ['MolecularFormula', 'Title'],
+    });
+
+    expect(requestedProperties()).toEqual([
+      ['Title', 'XLogP', 'MolecularFormula'],
+      ['MolecularFormula', 'Title'],
+    ]);
+  });
+
+  it('sorts a mixed batch into found and not found, each record holding only what was asked', async () => {
+    const result = await runToolContract(getCompoundDetails, {
+      cids: [2662, 1234567890, 130000000],
+      properties: ['Title'],
+    });
+
+    expect((result.structuredContent as Structured).compounds).toEqual([
+      { cid: 2662, found: true, properties: { Title: 'Celecoxib' } },
+      { cid: 1234567890, found: false, properties: {} },
+      { cid: 130000000, found: true, properties: {} },
+    ]);
+  });
+});
+
+describe('getCompoundDetails returns Title in its default property set (#101)', () => {
+  beforeEach(servePubChemRows);
+
+  it('answers { cids: [2662] } with Title "Celecoxib", rendered above the IUPAC name', async () => {
+    const result = await runToolContract(getCompoundDetails, { cids: [2662] });
+
+    expect(result.isError).toBeFalsy();
+    const sc = result.structuredContent as Structured;
+    expect(sc.compounds[0]!.properties.Title).toBe('Celecoxib');
+    expect(readCommonMark(formatBlock(result))).toContain(
+      '⟨strong⟩Title:⟨/strong⟩ ⟨code_inline:Celecoxib⟩\n⟨strong⟩IUPAC Name:⟨/strong⟩ ⟨code_inline:4-[5-(4-methylphenyl)-3-(trifluoromethyl)pyrazol-1-yl]benzenesulfonamide⟩',
+    );
+  });
+
+  it('leaves Title out where PubChem has none (CID 130000000), never filling it from IUPACName', async () => {
+    const result = await runToolContract(getCompoundDetails, { cids: [130000000] });
+
+    const compound = (result.structuredContent as Structured).compounds[0]!;
+    expect(compound).toMatchObject({ cid: 130000000, found: true });
+    expect(compound.properties).not.toHaveProperty('Title');
+    expect(compound.properties.IUPACName).toBe('2-(1-aminoprop-2-enyl)-4-methoxyaniline');
+    const text = formatBlock(result);
+    expect(readTrailerValue(text, 'Title')).toBeUndefined();
+    expect(readTrailerValue(text, 'IUPAC Name')).toBe('2-(1-aminoprop-2-enyl)-4-methoxyaniline');
+  });
+
+  it('returns no Title for an explicit properties list without it', async () => {
+    const result = await runToolContract(getCompoundDetails, {
+      cids: [2662],
+      properties: ['IUPACName'],
+    });
+
+    expect((result.structuredContent as Structured).compounds[0]!.properties).toEqual({
+      IUPACName: '4-[5-(4-methylphenyl)-3-(trifluoromethyl)pyrazol-1-yl]benzenesulfonamide',
+    });
+    expect(readTrailerValue(formatBlock(result), 'Title')).toBeUndefined();
+  });
 });

@@ -198,6 +198,46 @@ describe('search_compounds offset leaves its ceiling to the handler (#76)', () =
   });
 });
 
+describe('search_compounds mass inputs (#98)', () => {
+  const schema = () => advertisedInputSchema(toolByName.get('pubchem_search_compounds')!);
+  const mass = (bounds: { massMin: number; massMax: number }) =>
+    toolByName
+      .get('pubchem_search_compounds')!
+      .input.safeParse({ searchType: 'mass', massType: 'monoisotopic_mass', ...bounds });
+
+  it('advertises massType as the three PUG REST mass path segments', () => {
+    expect(at(schema(), '/properties/massType')).toMatchObject({
+      type: 'string',
+      enum: ['monoisotopic_mass', 'exact_mass', 'molecular_weight'],
+    });
+  });
+
+  it.each(['massMin', 'massMax'])('advertises %s as a number from 0', (field) => {
+    expect(at(schema(), `/properties/${field}`)).toMatchObject({ type: 'number', minimum: 0 });
+  });
+
+  it('keeps the mass fields optional, leaving their coupling to the handler', () => {
+    expect(at(schema(), '/required')).toEqual(['searchType']);
+  });
+
+  it.each([
+    { massMin: 0, massMax: 0 },
+    { massMin: 180.0633881, massMax: 180.0633881 },
+    { massMin: 551.5034, massMax: 551.5044 },
+  ])('accepts %j', (bounds) => {
+    expect(mass(bounds).success).toBe(true);
+  });
+
+  it.each([
+    { massMin: -5, massMax: 10 },
+    { massMin: 0, massMax: -0.0001 },
+    { massMin: Number.NaN, massMax: 10 },
+    { massMin: 0, massMax: Number.POSITIVE_INFINITY },
+  ])('rejects %j', (bounds) => {
+    expect(mass(bounds).success).toBe(false);
+  });
+});
+
 /** Read-side workload inputs (#70): each serves up to its per-call cap and advertises only the
  * 1000 ceiling, so a value between the two is clamped by the handler, not rejected. */
 const cappedWorkloadInputs = [
@@ -246,8 +286,9 @@ describe('compound resource CID params carry the 32-bit upper bound (#59)', () =
 });
 
 /** Fields a tool reads before its schema sees them (#91 `cids`, #92 `properties`), with the node
- * each advertised on 0.8.0. A read in front of a field changes what a call may send, never what
- * `tools/list` tells the model to send. */
+ * each advertises (0.8.0's, except the details `properties` description, which names Title since
+ * #101). A read in front of a field changes what a call may send, never what `tools/list` tells
+ * the model to send. */
 const fieldsReadBeforeTheSchema = [
   [
     'pubchem_get_compound_details',
@@ -282,7 +323,7 @@ const fieldsAdvertisedByteForByte = [
     'properties',
     {
       description:
-        'Properties to retrieve. Defaults to a core set: MolecularFormula, MolecularWeight, IUPACName, CanonicalSMILES, IsomericSMILES, InChIKey, XLogP, TPSA, HBondDonorCount, HBondAcceptorCount, RotatableBondCount, HeavyAtomCount, Charge, Complexity.',
+        "Properties to retrieve. Defaults to a core set: Title (PubChem's display name: the common name when the record has one, otherwise often the IUPAC name or a depositor ID; absent on some records), MolecularFormula, MolecularWeight, IUPACName, CanonicalSMILES, IsomericSMILES, InChIKey, XLogP, TPSA, HBondDonorCount, HBondAcceptorCount, RotatableBondCount, HeavyAtomCount, Charge, Complexity.",
       type: 'array',
       items: { type: 'string', enum: [...COMPOUND_PROPERTIES] },
     },
@@ -299,7 +340,7 @@ const fieldsAdvertisedByteForByte = [
   ],
 ] as const;
 
-describe('fields read before the schema advertise their 0.8.0 node (#91, #92)', () => {
+describe('fields read before the schema keep their advertised node (#91, #92)', () => {
   it.each(fieldsReadBeforeTheSchema)('%s %s, key order aside', (name, field, node) => {
     const schema = advertisedInputSchema(toolByName.get(name)!);
     expect(at(schema, `/properties/${field}`)).toEqual(node);

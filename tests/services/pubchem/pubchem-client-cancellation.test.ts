@@ -653,6 +653,8 @@ describe('PubChem caller cancellation (#54)', () => {
     });
   });
 
+  const fiftyOneCids = Array.from({ length: 51 }, (_, i) => i + 1);
+
   /** Every public method, including the ones that read a 404 or 400 as "no data" — a
    * cancellation must reach the caller, never an empty result. */
   const calls: Array<[string, (c: PubChemClient, s: AbortSignal) => Promise<unknown>]> = [
@@ -662,6 +664,20 @@ describe('PubChem caller cancellation (#54)', () => {
     ['searchByFormula', (c, s) => c.searchByFormula('C6H12O6', false, 21, s)],
     ['searchByStructure', (c, s) => c.searchByStructure('substructure', '2244', 'cid', 90, 21, s)],
     ['getProperties', (c, s) => c.getProperties([2244], ['MolecularFormula'], s)],
+    [
+      'getProperties (side lookup)',
+      (c, s) => c.getProperties([2244], ['Fingerprint2D'], s, { sideLookup: true }),
+    ],
+    // Past 50 CIDs the properties request goes out as a POST.
+    [
+      'getProperties (POST, 51 CIDs)',
+      (c, s) => c.getProperties(fiftyOneCids, ['MolecularFormula'], s),
+    ],
+    [
+      'getProperties (POST, 51 CIDs, side lookup)',
+      (c, s) => c.getProperties(fiftyOneCids, ['Fingerprint2D'], s, { sideLookup: true }),
+    ],
+    ['getSmilesFingerprint', (c, s) => c.getSmilesFingerprint('CCO', s)],
     ['getSynonyms', (c, s) => c.getSynonyms(2244, s)],
     ['getImage', (c, s) => c.getImage(2244, 'small', s)],
     ['getXrefs', (c, s) => c.getXrefs(2244, 'RN', s)],
@@ -672,10 +688,15 @@ describe('PubChem caller cancellation (#54)', () => {
     ['getAssaySummary', (c, s) => c.getAssaySummary(2244, s)],
     ['searchAssaysByTarget', (c, s) => c.searchAssaysByTarget('genesymbol', 'EGFR', s)],
     ['getAssayCidPage', (c, s) => c.getAssayCidPage(1000, true, 0, 20, s)],
+    [
+      'getMassRangeCidPage',
+      (c, s) => c.getMassRangeCidPage('monoisotopic_mass', 180.063, 180.064, 0, 20, s),
+    ],
     ['getEntitySummary', (c, s) => c.getEntitySummary('assay', 1, s)],
     ['getInteractions', (c, s) => c.getInteractions(2244, ['drug-drug'], 5, 0, s)],
     ['getSdf3d', (c, s) => c.getSdf3d(2244, s)],
     ['getConformerIds', (c, s) => c.getConformerIds(2244, s)],
+    ['getConformerSdf', (c, s) => c.getConformerSdf('000008C40000000B', s)],
   ];
 
   it.each(calls)('%s surfaces a mid-fetch cancellation as RequestCancelled', async (_name, run) => {
@@ -688,7 +709,81 @@ describe('PubChem caller cancellation (#54)', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(call.error).toMatchObject(cancelled);
+    // A cancellation carries no failure's reason, so no recovery written for one reaches it.
+    expect((call.error as { data?: { reason?: unknown } }).data?.reason).toBeUndefined();
     await vi.runAllTimersAsync();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+});
+
+describe('ListKey page requests (#98)', () => {
+  const PAGE_PATH = '/rest/pug/compound/listkey/lk-page/cids/JSON';
+  const isPage = (input: Parameters<typeof fetch>[0]) =>
+    new URL(String(input)).pathname === PAGE_PATH;
+  const storedList = { IdentifierList: { ListKey: 'lk-page', Size: 30 } };
+
+  /** Answers with `body` `ms` after the request is sent, unless its signal aborts first. */
+  const answerAfter = (ms: number, body: unknown, init: RequestInit | undefined) =>
+    new Promise<Response>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(jsonResponse(body)), ms);
+      rejectOnAbort(init?.signal, (reason) => {
+        clearTimeout(timer);
+        reject(reason);
+      });
+    });
+
+  /** The searches that answer with a stored list, each read through a second, page request. */
+  const pagers: Array<[string, (c: PubChemClient, s: AbortSignal) => Promise<unknown>]> = [
+    [
+      'getMassRangeCidPage',
+      (c, s) => c.getMassRangeCidPage('monoisotopic_mass', 180.063, 180.064, 0, 20, s),
+    ],
+    ['getAssayCidPage', (c, s) => c.getAssayCidPage(1000, true, 0, 20, s)],
+  ];
+
+  it.each(pagers)(
+    '%s stops a page request in flight when the caller cancels',
+    async (_name, run) => {
+      fetchMock.mockImplementation((input, init) =>
+        isPage(input) ? hangUntilAborted(input, init) : Promise.resolve(jsonResponse(storedList)),
+      );
+      const controller = new AbortController();
+
+      const call = track(run(new PubChemClient(), controller.signal));
+      await vi.advanceTimersByTimeAsync(100);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(isPage(fetchMock.mock.calls[1]![0])).toBe(true);
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(call.error).toMatchObject(cancelled);
+      await vi.runAllTimersAsync();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it.each(pagers)(
+    '%s ends a page request at the 50 s the call has, not 50 s of its own',
+    async (_name, run) => {
+      // The search answers at 25 s, the page 29 s after it is sent: each inside the 30 s
+      // attempt cap, the two past the call's 50 s.
+      fetchMock.mockImplementation((input, init) =>
+        isPage(input)
+          ? answerAfter(29_000, { IdentifierList: { CID: [1, 2, 3] } }, init)
+          : answerAfter(25_000, storedList, init),
+      );
+
+      const call = track(run(new PubChemClient(), new AbortController().signal));
+      await vi.advanceTimersByTimeAsync(49_990);
+      expect(call.settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(call.error).toMatchObject({
+        code: JsonRpcErrorCode.Timeout,
+        message: 'PubChem did not respond in time; the request timed out. Retry shortly.',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
 });

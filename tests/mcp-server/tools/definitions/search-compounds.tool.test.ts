@@ -17,6 +17,7 @@ const mockClient = {
   searchByFormula: vi.fn(),
   searchByStructure: vi.fn(),
   getProperties: vi.fn(),
+  getSmilesFingerprint: vi.fn(),
 };
 
 vi.mock('@/services/pubchem/pubchem-client.js', () => ({
@@ -428,6 +429,43 @@ describe('searchCompounds handler — bounded fast searches (#41)', () => {
     expect(enrichment.notice).toContain('Showing matches 1-2 of 4');
     expect(enrichment.nextOffset).toBe(2);
   });
+});
+
+describe('searchCompounds similarity scoring — a failure that is not PubChem’s (#97)', () => {
+  const bug = () => new TypeError("Cannot read properties of undefined (reading 'Properties')");
+
+  it.each<[string, Record<string, string>, () => void]>([
+    [
+      'the page’s fingerprint lookup',
+      { query: '2244', queryType: 'cid' },
+      () => mockClient.getProperties.mockRejectedValueOnce(bug()),
+    ],
+    [
+      'the SMILES query’s fingerprint lookup',
+      { query: 'CCO', queryType: 'smiles' },
+      () => {
+        mockClient.getProperties.mockResolvedValueOnce([]);
+        mockClient.getSmilesFingerprint.mockRejectedValueOnce(bug());
+      },
+    ],
+  ])(
+    'fails the call when %s throws outside PubChem’s errors, never returning the page unscored',
+    async (_label, query, arrange) => {
+      mockClient.searchByStructure.mockResolvedValueOnce([2244, 3672, 1983]);
+      arrange();
+
+      const result = await runToolContract(searchCompounds, {
+        searchType: 'similarity',
+        threshold: 85,
+        ...query,
+      });
+
+      expect(result.isError).toBe(true);
+      const { error } = result.structuredContent as { error: { code: number } };
+      expect(error.code).toBe(JsonRpcErrorCode.InternalError);
+      expect(result.structuredContent).not.toHaveProperty('results');
+    },
+  );
 });
 
 describe('searchCompounds format', () => {

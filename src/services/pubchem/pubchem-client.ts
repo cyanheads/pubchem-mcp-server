@@ -29,12 +29,11 @@ import {
 import type {
   ActivityValue,
   AidListResponse,
-  AssayCidListKeyResponse,
-  AssayCidPage,
   AssaySummary,
   AssaySummaryTableResponse,
   AssayTargetActivity,
   BioactivityRow,
+  CidListPage,
   CidListResponse,
   CompoundClassification,
   ConformerListResponse,
@@ -47,6 +46,7 @@ import type {
   InteractionKindPage,
   InteractionsResult,
   ListKeyResponse,
+  MassType,
   PropertyTableResponse,
   ProteinSummaryResponse,
   PugViewInformation,
@@ -54,11 +54,12 @@ import type {
   PugViewSection,
   SafetyLookup,
   SdqResponse,
+  StoredCidListResponse,
   SynonymResponse,
   TargetGroup,
   XrefResponse,
 } from './types.js';
-import { PROPERTY_NAME_MAP } from './types.js';
+import { LISTKEY_SIZE_CAP, PROPERTY_NAME_MAP } from './types.js';
 
 const isNotFound = (error: unknown): boolean =>
   error instanceof McpError && error.code === JsonRpcErrorCode.NotFound;
@@ -535,6 +536,23 @@ function parseAtcCodes(section: PugViewSection, sources: Map<number, string>): A
     }
   }
   return [...byCode.values()];
+}
+
+/** Parse PUG View's `MeSH Pharmacological Classification` section into MeSH classes.
+ *
+ * Each `Information` entry is one class: the MeSH heading in `Name`, its scope note as the
+ * value. Entries keep PubChem's order. A named entry without a value string gets
+ * `description: ""`; one without a name is skipped, since the name is what identifies the
+ * class. */
+function parseMeshClasses(section: PugViewSection): CompoundClassification['meshClasses'] {
+  return (section.Information ?? []).flatMap((info) => {
+    const name = info.Name?.trim();
+    if (!name) return [];
+    const notes = (info.Value.StringWithMarkup ?? []).flatMap((swm) =>
+      swm.String ? [swm.String] : [],
+    );
+    return [{ name, description: notes.join('\n') }];
+  });
 }
 
 /** Extract description strings paired with their PUG View ReferenceNumber so we can attribute sources. */
@@ -1096,6 +1114,24 @@ export class PubChemClient {
     );
   }
 
+  /** A property request's rows, read inside the attempt like {@link fetchJson}. A 2xx whose JSON
+   * holds no property table (a fault envelope sent with HTTP 200), or a row that is not an
+   * object, fails as an unreadable body, so it is retried like one and reaches a side lookup's
+   * caller as PubChem's failure. */
+  private fetchPropertyRows(
+    url: string,
+    init: FetchInit,
+  ): Promise<PropertyTableResponse['PropertyTable']['Properties']> {
+    return this.fetchResponse(url, init, async (response) => {
+      const data = JSON.parse(await response.text()) as Partial<PropertyTableResponse>;
+      const rows: unknown = data.PropertyTable?.Properties;
+      if (!Array.isArray(rows) || !rows.every((row) => typeof row === 'object' && row !== null)) {
+        throw new Error('the response holds no property table');
+      }
+      return rows as PropertyTableResponse['PropertyTable']['Properties'];
+    });
+  }
+
   private fetchBinary(url: string, signal: AbortSignal | undefined): Promise<ArrayBuffer> {
     return this.fetchResponse(url, { signal }, (response) => response.arrayBuffer());
   }
@@ -1291,36 +1327,62 @@ export class PubChemClient {
 
   // ── Compound Data ───────────────────────────────────────────────
 
+  /** One property row per CID PubChem has a record for, in one request. `sideLookup` runs the
+   * request as a best-effort side lookup ({@link SIDE_LOOKUP_MS}, no retry) for a caller that
+   * answers without it. */
   async getProperties(
     cids: number[],
     properties: string[],
     signal?: AbortSignal,
+    { sideLookup }: { sideLookup?: true } = {},
   ): Promise<Array<Record<string, unknown> & { CID: number }>> {
     if (cids.length === 0 || properties.length === 0) return [];
 
     const propsPath = properties.join(',');
     const cidStr = cids.join(',');
+    const reach = { signal, ...(sideLookup && { sideLookup }) };
 
     // POST for large CID lists, GET for small ones
-    const data =
+    const rows =
       cids.length > 50
-        ? await this.fetchJson<PropertyTableResponse>(
-            `${this.pugBase}/compound/cid/property/${propsPath}/JSON`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({ cid: cidStr }).toString(),
-              signal,
-            },
-          )
-        : await this.fetchJson<PropertyTableResponse>(
+        ? await this.fetchPropertyRows(`${this.pugBase}/compound/cid/property/${propsPath}/JSON`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ cid: cidStr }).toString(),
+            ...reach,
+          })
+        : await this.fetchPropertyRows(
             `${this.pugBase}/compound/cid/${cidStr}/property/${propsPath}/JSON`,
-            { signal },
+            reach,
           );
 
     // PubChem returns different field names than the request names for some properties.
     // Normalize so consumers see the names they requested.
-    return data.PropertyTable.Properties.map(normalizePropertyNames);
+    return rows.map(normalizePropertyNames);
+  }
+
+  /** The `Fingerprint2D` of the compound a SMILES describes, from one best-effort side lookup
+   * ({@link SIDE_LOOKUP_MS}, no retry), with the CID PubChem matched it to. PubChem answers a
+   * structure it has no record of with CID 0 and no fingerprint, and publishes none for such a
+   * structure elsewhere. POSTed, as {@link searchBySmiles} sends a SMILES. */
+  async getSmilesFingerprint(
+    smiles: string,
+    signal?: AbortSignal,
+  ): Promise<{ cid?: number; fingerprint?: string }> {
+    const [row] = await this.fetchPropertyRows(
+      `${this.pugBase}/compound/smiles/property/Fingerprint2D/JSON`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ smiles }).toString(),
+        signal,
+        sideLookup: true,
+      },
+    );
+    return {
+      ...(row && { cid: row.CID }),
+      ...(typeof row?.Fingerprint2D === 'string' && { fingerprint: row.Fingerprint2D }),
+    };
   }
 
   async getSynonyms(cid: number, signal?: AbortSignal): Promise<string[]> {
@@ -1600,7 +1662,7 @@ export class PubChemClient {
       // MeSH Pharmacological Classification
       const meshSection = findSection(sections, 'MeSH Pharmacological Classification');
       if (meshSection) {
-        result.meshClasses = extractStrings(meshSection);
+        result.meshClasses = parseMeshClasses(meshSection);
       }
 
       // ATC Code
@@ -1798,36 +1860,20 @@ export class PubChemClient {
     }
   }
 
-  /** One page of the compounds an assay tested (or found active), without moving the whole
-   * list: PubChem stores the list behind a ListKey and reports its exact size, then serves
-   * `count` CIDs from `offset`. A tested-CID list runs to 305,439 entries (AID 2551).
-   *
-   * Returns null when PubChem has no live assay with that AID. An assay with no CIDs of the
-   * requested kind is an empty page with total 0 — PubChem answers both with HTTP 404 and
-   * only the fault message tells them apart. No page is requested at or past the end, which
-   * PubChem answers with HTTP 500. */
-  async getAssayCidPage(
-    aid: number,
-    activeOnly: boolean,
+  /** One page of a CID list PubChem stores behind a ListKey (`list_return=listkey`): `count`
+   * CIDs from `offset`, in the list's own order, without moving the rest of it. Every search
+   * that answers with a stored list pages through here. No page is requested at or past the
+   * list's end, which PubChem answers with HTTP 500. A list PubChem stopped counting at
+   * {@link LISTKEY_SIZE_CAP} comes back `capped`: more match, but only its first `Size` entries
+   * can be paged. */
+  private async readListKeyPage(
+    list: StoredCidListResponse['IdentifierList'],
     offset: number,
     count: number,
-    signal?: AbortSignal,
-  ): Promise<AssayCidPage | null> {
-    const cidsType = activeOnly ? 'active' : 'all';
-    let list: AssayCidListKeyResponse['IdentifierList'];
-    try {
-      const data = await this.fetchJson<AssayCidListKeyResponse>(
-        `${this.pugBase}/assay/aid/${aid}/cids/JSON?cids_type=${cidsType}&list_return=listkey`,
-        { signal },
-      );
-      list = data.IdentifierList;
-    } catch (error) {
-      if (!isNotFound(error)) throw error;
-      if (faultOf(error)?.includes(NO_LIVE_AIDS_FAULT)) return null;
-      return { total: 0, cids: [] };
-    }
-
-    if (offset >= list.Size) return { total: list.Size, cids: [] };
+    signal: AbortSignal | undefined,
+  ): Promise<CidListPage> {
+    const capped = list.Size >= LISTKEY_SIZE_CAP;
+    if (offset >= list.Size) return { total: list.Size, cids: [], capped };
     const params = new URLSearchParams({
       listkey_start: String(offset),
       listkey_count: String(count),
@@ -1836,7 +1882,77 @@ export class PubChemClient {
       `${this.pugBase}/compound/listkey/${list.ListKey}/cids/JSON?${params}`,
       { signal },
     );
-    return { total: list.Size, cids: page.IdentifierList.CID };
+    return { total: list.Size, cids: page.IdentifierList.CID, capped };
+  }
+
+  /** One page of the compounds an assay tested (or found active), paged from the list PubChem
+   * stores for it (see {@link readListKeyPage}). A tested-CID list runs to 305,439 entries
+   * (AID 2551).
+   *
+   * Returns null when PubChem has no live assay with that AID. An assay with no CIDs of the
+   * requested kind is an empty page with total 0 — PubChem answers both with HTTP 404 and
+   * only the fault message tells them apart. */
+  async getAssayCidPage(
+    aid: number,
+    activeOnly: boolean,
+    offset: number,
+    count: number,
+    signal?: AbortSignal,
+  ): Promise<CidListPage | null> {
+    const cidsType = activeOnly ? 'active' : 'all';
+    let data: StoredCidListResponse;
+    try {
+      data = await this.fetchJson<StoredCidListResponse>(
+        `${this.pugBase}/assay/aid/${aid}/cids/JSON?cids_type=${cidsType}&list_return=listkey`,
+        { signal },
+      );
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+      if (faultOf(error)?.includes(NO_LIVE_AIDS_FAULT)) return null;
+      return { total: 0, cids: [], capped: false };
+    }
+    return this.readListKeyPage(data.IdentifierList, offset, count, signal);
+  }
+
+  /** One page of the compounds whose `massType` lies in the inclusive window `[min, max]`, from
+   * PUG REST's mass-range search, paged from the list PubChem stores for it (see
+   * {@link readListKeyPage}) in PubChem's order, which is not by distance from any mass. A
+   * 0.001 Da window at 180.063 holds 1,182 CIDs; a few Da near 300 reach {@link LISTKEY_SIZE_CAP}.
+   *
+   * PubChem answers an empty window, a negative bound, and an inverted window alike, with HTTP
+   * 404 "Search returned no hits", so callers validate the window first and any 404 reads as an
+   * empty page. A search PubChem cannot finish in time — HTTP 504 `PUGREST.Timeout`, or the
+   * call's budget running out while it runs, the shape a window hundreds of Da wide takes once
+   * the retry waits out a second 504 — keeps its `Timeout` code and data, reads as one message
+   * either way, and is tagged `mass_search_timeout`, whose recovery is a narrower window rather
+   * than the plain retry a generic timeout suggests. */
+  async getMassRangeCidPage(
+    massType: MassType,
+    min: number,
+    max: number,
+    offset: number,
+    count: number,
+    signal?: AbortSignal,
+  ): Promise<CidListPage> {
+    let data: StoredCidListResponse;
+    try {
+      data = await this.fetchJson<StoredCidListResponse>(
+        `${this.pugBase}/compound/${massType}/range/${min}/${max}/cids/JSON?list_return=listkey`,
+        { signal },
+      );
+    } catch (error) {
+      if (isNotFound(error)) return { total: 0, cids: [], capped: false };
+      if (error instanceof McpError && error.code === JsonRpcErrorCode.Timeout) {
+        throw new McpError(
+          error.code,
+          'PubChem did not finish the mass search in time.',
+          { ...error.data, reason: 'mass_search_timeout' },
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+    return this.readListKeyPage(data.IdentifierList, offset, count, signal);
   }
 
   // ── Entity Summaries ────────────────────────────────────────────
@@ -1886,7 +2002,8 @@ export class PubChemClient {
    * PUG View text; target entries are rolled up from the compound's assay summary, one per
    * molecular target. Each kind reads a window of `maxEntries` entries starting at `offset`
    * records into that kind's own stream; absent data for a kind contributes an empty page
-   * rather than erroring. A cancellation fails the whole call. */
+   * rather than erroring, and a CID PubChem has no record for marks the drug-food page
+   * `recordMissing`. A cancellation fails the whole call. */
   async getInteractions(
     cid: number,
     kinds: Array<'drug-drug' | 'drug-food' | 'target'>,
@@ -1915,6 +2032,7 @@ export class PubChemClient {
           totalRecords,
           recordsConsumed,
           namesUnavailable,
+          recordMissing,
         } = result.value;
         entries.push(...kindEntries);
         pages.push({
@@ -1923,6 +2041,7 @@ export class PubChemClient {
           totalRecords,
           recordsConsumed,
           ...(namesUnavailable && { namesUnavailable }),
+          ...(recordMissing && { recordMissing }),
         });
       } else if (result?.status === 'rejected') {
         const reason = result.reason;
@@ -2130,6 +2249,9 @@ export class PubChemClient {
         recordsConsumed: page.length,
       };
     } catch (error) {
+      // The one interaction request whose 404 tells a CID with no record apart from a compound
+      // without drug-food data (see isMissingRecord); both are an empty page.
+      if (isMissingRecord(error)) return { ...empty, recordMissing: true };
       if (isNotFound(error)) return empty;
       throw error;
     }
@@ -2280,6 +2402,27 @@ export class PubChemClient {
       return data.InformationList.Information[0]?.ConformerID ?? [];
     } catch (error) {
       if (isNotFound(error)) return [];
+      throw error;
+    }
+  }
+
+  /** Fetch one conformer, by its ID, as raw V2000 SDF text. PubChem answers an ID it holds no
+   * record for with 404 "No 3D records found for the given conformer(s)", both for an unused ID
+   * of a compound that has conformers and for any ID of one that has none; that 404 throws a
+   * typed not-found the calling tool's `conformer_not_found` entry describes. */
+  async getConformerSdf(conformerId: string, signal?: AbortSignal): Promise<string> {
+    try {
+      return await this.fetchText(
+        `${this.pugBase}/conformers/${encodeURIComponent(conformerId)}/SDF`,
+        signal,
+      );
+    } catch (error) {
+      if (isNotFound(error)) {
+        throw notFound(`PubChem has no 3D record for conformer ${conformerId}.`, {
+          conformerId,
+          reason: 'conformer_not_found',
+        });
+      }
       throw error;
     }
   }

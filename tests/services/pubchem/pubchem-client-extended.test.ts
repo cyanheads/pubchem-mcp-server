@@ -887,13 +887,27 @@ describe('PubChemClient.getClassification — pharmacology parsing', () => {
                   ],
                 },
                 {
+                  // PubChem's real shape: the class name in Name, its MeSH scope note as the value.
                   TOCHeading: 'MeSH Pharmacological Classification',
                   Information: [
                     {
+                      ReferenceNumber: 293,
+                      Name: 'Platelet Aggregation Inhibitors',
                       Value: {
                         StringWithMarkup: [
-                          { String: 'Anti-Inflammatory Agents, Non-Steroidal' },
-                          { String: 'Platelet Aggregation Inhibitors' },
+                          {
+                            String:
+                              'Drugs or agents which antagonize or impair any mechanism leading to blood platelet aggregation, whether during the phases of activation and shape change or following the dense-granule release reaction and stimulation of the prostaglandin-thromboxane system.',
+                          },
+                        ],
+                      },
+                    },
+                    {
+                      ReferenceNumber: 295,
+                      Name: 'Antipyretics',
+                      Value: {
+                        StringWithMarkup: [
+                          { String: 'Drugs that are used to reduce body temperature in fever.' },
                         ],
                       },
                     },
@@ -933,8 +947,17 @@ describe('PubChemClient.getClassification — pharmacology parsing', () => {
     expect(result!.fdaClasses).not.toContain('Anti-Inflammatory Agents, Non-Steroidal');
     expect(result!.fdaClasses).not.toContain('Decreased Prostaglandin Production');
     expect(result!.fdaMechanisms).not.toContain('Decreased Prostaglandin Production');
-    expect(result!.meshClasses).toContain('Anti-Inflammatory Agents, Non-Steroidal');
-    expect(result!.meshClasses).toContain('Platelet Aggregation Inhibitors');
+    expect(result!.meshClasses).toEqual([
+      {
+        name: 'Platelet Aggregation Inhibitors',
+        description:
+          'Drugs or agents which antagonize or impair any mechanism leading to blood platelet aggregation, whether during the phases of activation and shape change or following the dense-granule release reaction and stimulation of the prostaglandin-thromboxane system.',
+      },
+      {
+        name: 'Antipyretics',
+        description: 'Drugs that are used to reduce body temperature in fever.',
+      },
+    ]);
     expect(result!.atcCodes.map((a) => a.code)).toContain('N02BA01');
     expect(result!.atcCodes.map((a) => a.code)).toContain('B01AC06');
   });
@@ -998,6 +1021,149 @@ describe('PubChemClient.getClassification — pharmacology parsing', () => {
       const nSaidCount = result.fdaClasses.filter((c) => c === 'NSAID').length;
       expect(nSaidCount).toBe(1);
     }
+  });
+});
+
+// ── getClassification: MeSH (#95) ─────────────────────────────────────
+
+/**
+ * Real PUG View `MeSH Pharmacological Classification` sections for celecoxib (2662), aspirin
+ * (2244) and haloperidol (3559), as the `Pharmacology and Biochemistry` heading returns them,
+ * trimmed to the fields the parser reads: one `Information` entry per class, the class name in
+ * `Name` and its MeSH scope note as the entry's one value string.
+ */
+type MeshInformation = {
+  Name?: string;
+  ReferenceNumber?: number;
+  Value: { StringWithMarkup?: Array<{ String?: string; Markup?: unknown[] }> };
+};
+type MeshRecordFixture = {
+  Record: { Section: Array<{ Section: Array<{ Information: MeshInformation[] }> }> };
+};
+const meshFixtures = JSON.parse(
+  readFileSync(new URL('../../fixtures/pug-view-mesh.json', import.meta.url), 'utf8'),
+) as Record<string, MeshRecordFixture>;
+
+/** A deep copy of one fixture, so a test can reshape its MeSH entries without leaking. */
+function meshFixture(cid: number): MeshRecordFixture {
+  return structuredClone(meshFixtures[String(cid)]!);
+}
+
+function meshSection(record: MeshRecordFixture): { Information: MeshInformation[] } {
+  return record.Record.Section[0]!.Section[0]!;
+}
+
+async function classifyMesh(record: MeshRecordFixture, cid: number) {
+  fetchMock.mockResolvedValueOnce(jsonResponse(record));
+  return new PubChemClient().getClassification(cid);
+}
+
+describe('PubChemClient.getClassification — MeSH classes on real PUG View sections (#95)', () => {
+  it('returns celecoxib’s two MeSH classes by name with their scope notes, in PubChem’s order', async () => {
+    const result = await classifyMesh(meshFixture(2662), 2662);
+
+    expect(result!.meshClasses).toEqual([
+      {
+        name: 'Anti-Inflammatory Agents, Non-Steroidal',
+        description:
+          'Anti-inflammatory agents that are non-steroidal in nature. In addition to anti-inflammatory actions, they have analgesic, antipyretic, and platelet-inhibitory actions. They act by blocking the synthesis of prostaglandins by inhibiting cyclooxygenase, which converts arachidonic acid to cyclic endoperoxides, precursors of prostaglandins. Inhibition of prostaglandin synthesis accounts for their analgesic, antipyretic, and platelet-inhibitory actions; other mechanisms may contribute to their anti-inflammatory effects.',
+      },
+      {
+        name: 'Cyclooxygenase 2 Inhibitors',
+        description:
+          'A subclass of cyclooxygenase inhibitors with specificity for CYCLOOXYGENASE-2.',
+      },
+    ]);
+  });
+
+  it.each<[number, string[]]>([
+    [
+      2244,
+      [
+        'Anti-Inflammatory Agents, Non-Steroidal',
+        'Fibrinolytic Agents',
+        'Platelet Aggregation Inhibitors',
+        'Cyclooxygenase Inhibitors',
+        'Antipyretics',
+      ],
+    ],
+    [
+      3559,
+      ['Antiemetics', 'Antipsychotic Agents', 'Dopamine Antagonists', 'Anti-Dyskinesia Agents'],
+    ],
+  ])(
+    'names every MeSH class of CID %i in PubChem’s order, each with its own scope note',
+    async (cid, names) => {
+      const record = meshFixture(cid);
+      const notes = meshSection(record).Information.map(
+        (i) => i.Value.StringWithMarkup![0]!.String,
+      );
+
+      const result = await classifyMesh(record, cid);
+
+      expect(result!.meshClasses.map((m) => m.name)).toEqual(names);
+      expect(result!.meshClasses.map((m) => m.description)).toEqual(notes);
+    },
+  );
+
+  it('gives a named entry without a value string an empty description, and skips an unnamed one', async () => {
+    const record = meshFixture(2662);
+    const [nsaid, cox2] = meshSection(record).Information;
+    // The skipped entries carry scope notes of their own, so a class paired with the note of
+    // the entry at its index, skipped entries counted, reads text that is not its own.
+    meshSection(record).Information = [
+      { ...nsaid!, Value: {} },
+      { Name: 'Antipyretics', Value: { StringWithMarkup: [{ Markup: [] }] } },
+      { ReferenceNumber: 999, Value: { StringWithMarkup: [{ String: 'Orphan scope note.' }] } },
+      { Name: '  ', Value: { StringWithMarkup: [{ String: 'Blank-name scope note.' }] } },
+      cox2!,
+    ];
+
+    const result = await classifyMesh(record, 2662);
+
+    expect(result!.meshClasses).toEqual([
+      { name: 'Anti-Inflammatory Agents, Non-Steroidal', description: '' },
+      { name: 'Antipyretics', description: '' },
+      {
+        name: 'Cyclooxygenase 2 Inhibitors',
+        description:
+          'A subclass of cyclooxygenase inhibitors with specificity for CYCLOOXYGENASE-2.',
+      },
+    ]);
+  });
+
+  it('returns a class name PubChem pads with whitespace trimmed', async () => {
+    const record = meshFixture(2244);
+    const antipyretics = meshSection(record).Information[4]!;
+    antipyretics.Name = '  Antipyretics \t';
+
+    const result = await classifyMesh(record, 2244);
+
+    expect(result!.meshClasses[4]).toEqual({
+      name: 'Antipyretics',
+      description: 'Drugs that are used to reduce body temperature in fever.',
+    });
+  });
+
+  it('keeps every value string of an entry that carries more than one', async () => {
+    const record = meshFixture(2662);
+    const cox2 = meshSection(record).Information[1]!;
+    cox2.Value.StringWithMarkup!.push({ String: 'Second deposited string.' });
+
+    const result = await classifyMesh(record, 2662);
+
+    expect(result!.meshClasses[1]).toEqual({
+      name: 'Cyclooxygenase 2 Inhibitors',
+      description:
+        'A subclass of cyclooxygenase inhibitors with specificity for CYCLOOXYGENASE-2.\nSecond deposited string.',
+    });
+  });
+
+  it('returns null when the MeSH section holds only unnamed entries and nothing else classifies', async () => {
+    const record = meshFixture(3559);
+    for (const info of meshSection(record).Information) delete info.Name;
+
+    expect(await classifyMesh(record, 3559)).toBeNull();
   });
 });
 
@@ -1641,7 +1807,7 @@ describe('PubChemClient.getAssayCidPage (#68)', () => {
 
     const page = await new PubChemClient().getAssayCidPage(1000, true, 30, 3);
 
-    expect(page).toEqual({ total: 36, cids: [101, 102, 103] });
+    expect(page).toEqual({ total: 36, cids: [101, 102, 103], capped: false });
     const [listUrl, pageUrl] = fetchMock.mock.calls.map(([u]) => new URL(String(u)));
     expect(listUrl!.pathname).toBe('/rest/pug/assay/aid/1000/cids/JSON');
     expect(Object.fromEntries(listUrl!.searchParams)).toEqual({
@@ -1653,6 +1819,21 @@ describe('PubChemClient.getAssayCidPage (#68)', () => {
       listkey_start: '30',
       listkey_count: '3',
     });
+  });
+
+  it('sends both requests as these exact URLs and returns the page as PubChem sent it', async () => {
+    fetchMock
+      .mockResolvedValueOnce(listKey(305439))
+      .mockResolvedValueOnce(jsonResponse({ IdentifierList: { CID: [9002, 9001] } }));
+
+    const page = await new PubChemClient().getAssayCidPage(2551, false, 305437, 5);
+
+    expect(page?.total).toBe(305439);
+    expect(page?.cids).toEqual([9002, 9001]);
+    expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual([
+      'https://pubchem.ncbi.nlm.nih.gov/rest/pug/assay/aid/2551/cids/JSON?cids_type=all&list_return=listkey',
+      'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/listkey/2084619401385678753/cids/JSON?listkey_start=305437&listkey_count=5',
+    ]);
   });
 
   it('asks for every tested CID when activeOnly is false', async () => {
@@ -1670,7 +1851,7 @@ describe('PubChemClient.getAssayCidPage (#68)', () => {
 
     const page = await new PubChemClient().getAssayCidPage(1000, true, 36, 20);
 
-    expect(page).toEqual({ total: 36, cids: [] });
+    expect(page).toEqual({ total: 36, cids: [], capped: false });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -1684,6 +1865,7 @@ describe('PubChemClient.getAssayCidPage (#68)', () => {
     await expect(client.getAssayCidPage(3365, true, 0, 20)).resolves.toEqual({
       total: 0,
       cids: [],
+      capped: false,
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -1694,6 +1876,138 @@ describe('PubChemClient.getAssayCidPage (#68)', () => {
     await expect(new PubChemClient().getAssayCidPage(1000, true, 0, 20)).rejects.toBeInstanceOf(
       McpError,
     );
+  });
+});
+
+// ── Stored CID list paging (shared by getAssayCidPage and getMassRangeCidPage) ──
+
+describe('PubChemClient stored CID list paging (#98)', () => {
+  /** A stored list's envelope as the mass search returned it live (180.0630–180.0640). */
+  const stored = (size: number, key = '3628417446166353187') =>
+    jsonResponse({
+      IdentifierList: {
+        ListKey: key,
+        Size: size,
+        EntrezDB: 'pccompound',
+        EntrezWebEnv: 'MCID_6b05382e78eed39eb40e20ec',
+        EntrezQueryKey: 1,
+      },
+    });
+  const mass = (offset: number, count: number) =>
+    new PubChemClient().getMassRangeCidPage('monoisotopic_mass', 300, 303, offset, count);
+
+  it.each([
+    [999_999, false],
+    [1_000_000, true],
+  ])('reads Size %i as capped: %s', async (size, capped) => {
+    fetchMock
+      .mockResolvedValueOnce(stored(size))
+      .mockResolvedValueOnce(jsonResponse({ IdentifierList: { CID: [11, 12] } }));
+
+    await expect(mass(0, 2)).resolves.toEqual({ total: size, cids: [11, 12], capped });
+  });
+
+  it('pages a capped list to its last entry, asking for the page PubChem trims', async () => {
+    fetchMock
+      .mockResolvedValueOnce(stored(1_000_000))
+      .mockResolvedValueOnce(jsonResponse({ IdentifierList: { CID: [1781, 898] } }));
+
+    const page = await mass(999_998, 20);
+
+    expect(page).toEqual({ total: 1_000_000, cids: [1781, 898], capped: true });
+    expect(new URL(String(fetchMock.mock.calls[1]![0])).search).toBe(
+      '?listkey_start=999998&listkey_count=20',
+    );
+  });
+
+  it.each([1_000_000, 1_000_001])(
+    'sends no page request at offset %i of a capped list',
+    async (offset) => {
+      fetchMock.mockResolvedValueOnce(stored(1_000_000));
+
+      await expect(mass(offset, 20)).resolves.toEqual({
+        total: 1_000_000,
+        cids: [],
+        capped: true,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('marks an assay list PubChem stopped counting as capped too', async () => {
+    fetchMock
+      .mockResolvedValueOnce(stored(1_000_000, 'aid-list'))
+      .mockResolvedValueOnce(jsonResponse({ IdentifierList: { CID: [5] } }));
+
+    await expect(new PubChemClient().getAssayCidPage(2551, false, 0, 1)).resolves.toEqual({
+      total: 1_000_000,
+      cids: [5],
+      capped: true,
+    });
+  });
+});
+
+// ── getMassRangeCidPage ───────────────────────────────────────────────
+
+describe('PubChemClient.getMassRangeCidPage (#98)', () => {
+  const stored = (size: number) =>
+    jsonResponse({ IdentifierList: { ListKey: '2166425098524888317', Size: size } });
+  const noHits = () =>
+    jsonResponse({ Fault: { Code: 'PUGREST.NotFound', Message: 'Search returned no hits' } }, 404);
+
+  it.each(['monoisotopic_mass', 'exact_mass', 'molecular_weight'] as const)(
+    'searches the %s range, then reads the requested page of the stored list',
+    async (massType) => {
+      fetchMock
+        .mockResolvedValueOnce(stored(1182))
+        .mockResolvedValueOnce(jsonResponse({ IdentifierList: { CID: [5793, 2723872] } }));
+
+      const page = await new PubChemClient().getMassRangeCidPage(massType, 180.063, 180.064, 0, 2);
+
+      expect(page).toEqual({ total: 1182, cids: [5793, 2723872], capped: false });
+      expect(fetchMock.mock.calls.map(([u]) => String(u))).toEqual([
+        `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/${massType}/range/180.063/180.064/cids/JSON?list_return=listkey`,
+        'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/listkey/2166425098524888317/cids/JSON?listkey_start=0&listkey_count=2',
+      ]);
+    },
+  );
+
+  it('sends every digit of a bound, and an equal pair as a one-point window', async () => {
+    fetchMock
+      .mockResolvedValueOnce(stored(1111))
+      .mockResolvedValueOnce(jsonResponse({ IdentifierList: { CID: [5793] } }));
+
+    await new PubChemClient().getMassRangeCidPage(
+      'monoisotopic_mass',
+      180.0633881,
+      180.0633881,
+      0,
+      1,
+    );
+
+    expect(new URL(String(fetchMock.mock.calls[0]![0])).pathname).toBe(
+      '/rest/pug/compound/monoisotopic_mass/range/180.0633881/180.0633881/cids/JSON',
+    );
+  });
+
+  it('reads "Search returned no hits" as an empty page after the one search request', async () => {
+    fetchMock.mockResolvedValueOnce(noHits());
+
+    await expect(
+      new PubChemClient().getMassRangeCidPage('exact_mass', 1.5, 1.6, 0, 20),
+    ).resolves.toEqual({ total: 0, cids: [], capped: false });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps any other failure of the search as it is, untagged', async () => {
+    fetchMock.mockResolvedValue(textResponse('Bad Request', 400));
+
+    const error = await new PubChemClient()
+      .getMassRangeCidPage('molecular_weight', 180, 181, 0, 20)
+      .catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ code: JsonRpcErrorCode.InvalidParams, data: { status: 400 } });
+    expect((error as McpError).data).not.toHaveProperty('reason');
   });
 });
 
@@ -1746,6 +2060,109 @@ describe('PubChemClient.getProperties — property name normalization', () => {
 
     expect(rows).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── Fingerprint2D lookups (#97) ───────────────────────────────────────
+
+describe('PubChemClient Fingerprint2D lookups (#97)', () => {
+  const ASPIRIN_SMILES = 'CC(=O)OC1=CC=CC=C1C(=O)O';
+  /** Aspirin's Fingerprint2D as PUG REST serves it, from the SMILES and the CID route alike. */
+  const ASPIRIN_FINGERPRINT =
+    'AAADccBwOAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAABAAAAGgAACAAADASAmAAyDoAABgCIAiDSCAACCAAkIAAIiAEGCMgMJzaENRqCe2Cl4BEIuYeIyCCOAAAAAAAIAAAAAAAAABAAAAAAAAAAAA==';
+  const busy = () =>
+    jsonResponse(
+      { Fault: { Code: 'PUGREST.ServerBusy', Message: 'Too many requests or server too busy' } },
+      503,
+    );
+
+  it('POSTs a SMILES for its fingerprint and returns the CID PubChem matched with it', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        PropertyTable: { Properties: [{ CID: 2244, Fingerprint2D: ASPIRIN_FINGERPRINT }] },
+      }),
+    );
+
+    const result = await new PubChemClient().getSmilesFingerprint(ASPIRIN_SMILES);
+
+    expect(result).toEqual({ cid: 2244, fingerprint: ASPIRIN_FINGERPRINT });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe(
+      'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/smiles/property/Fingerprint2D/JSON',
+    );
+    expect(init?.method).toBe('POST');
+    expect(new Headers(init?.headers).get('Content-Type')).toBe(
+      'application/x-www-form-urlencoded',
+    );
+    expect(new URLSearchParams(String(init?.body)).get('smiles')).toBe(ASPIRIN_SMILES);
+  });
+
+  it('returns CID 0 and no fingerprint for a structure PubChem has no record of', async () => {
+    // PubChem's answer, as captured, for a SMILES absent from the database.
+    fetchMock.mockResolvedValueOnce(jsonResponse({ PropertyTable: { Properties: [{ CID: 0 }] } }));
+
+    expect(await new PubChemClient().getSmilesFingerprint('C1=CC=C(C=C1)C2=CC=C(C=C2)')).toEqual({
+      cid: 0,
+    });
+  });
+
+  it('runs the SMILES lookup as a side lookup: a 503 fails it after one request', async () => {
+    fetchMock.mockResolvedValue(busy());
+
+    await expect(new PubChemClient().getSmilesFingerprint(ASPIRIN_SMILES)).rejects.toMatchObject({
+      code: JsonRpcErrorCode.ServiceUnavailable,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs getProperties as a side lookup when asked: a 503 fails it after one request', async () => {
+    fetchMock.mockResolvedValue(busy());
+
+    await expect(
+      new PubChemClient().getProperties([2244, 135], ['Fingerprint2D'], undefined, {
+        sideLookup: true,
+      }),
+    ).rejects.toMatchObject({ code: JsonRpcErrorCode.ServiceUnavailable });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/2244,135/property/Fingerprint2D/JSON',
+    );
+  });
+
+  it('runs a side-lookup getProperties past 50 CIDs as a POST, still with no retry', async () => {
+    fetchMock.mockResolvedValue(busy());
+    const cids = Array.from({ length: 51 }, (_, i) => i + 1);
+
+    await expect(
+      new PubChemClient().getProperties(cids, ['Fingerprint2D'], undefined, { sideLookup: true }),
+    ).rejects.toMatchObject({ code: JsonRpcErrorCode.ServiceUnavailable });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(String(url)).toBe(
+      'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/property/Fingerprint2D/JSON',
+    );
+    expect(new URLSearchParams(String(init?.body)).get('cid')).toBe(cids.join(','));
+  });
+
+  describe('without sideLookup', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('keeps getProperties the call’s request: a 503 is retried once', async () => {
+      fetchMock.mockResolvedValue(busy());
+
+      const call = new PubChemClient()
+        .getProperties([2244], ['MolecularFormula', 'Fingerprint2D'])
+        .catch((error: unknown) => error);
+      await vi.runAllTimersAsync();
+
+      expect(await call).toMatchObject({ code: JsonRpcErrorCode.ServiceUnavailable });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
   });
 });
 

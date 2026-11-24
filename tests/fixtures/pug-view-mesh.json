@@ -1,0 +1,180 @@
+{
+  "2662": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 2662,
+      "RecordTitle": "Celecoxib",
+      "Section": [
+        {
+          "TOCHeading": "Pharmacology and Biochemistry",
+          "Section": [
+            {
+              "TOCHeading": "MeSH Pharmacological Classification",
+              "Information": [
+                {
+                  "ReferenceNumber": 175,
+                  "Name": "Anti-Inflammatory Agents, Non-Steroidal",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "Anti-inflammatory agents that are non-steroidal in nature. In addition to anti-inflammatory actions, they have analgesic, antipyretic, and platelet-inhibitory actions. They act by blocking the synthesis of prostaglandins by inhibiting cyclooxygenase, which converts arachidonic acid to cyclic endoperoxides, precursors of prostaglandins. Inhibition of prostaglandin synthesis accounts for their analgesic, antipyretic, and platelet-inhibitory actions; other mechanisms may contribute to their anti-inflammatory effects."
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 176,
+                  "Name": "Cyclooxygenase 2 Inhibitors",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "A subclass of cyclooxygenase inhibitors with specificity for CYCLOOXYGENASE-2."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "2244": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 2244,
+      "RecordTitle": "Aspirin",
+      "Section": [
+        {
+          "TOCHeading": "Pharmacology and Biochemistry",
+          "Section": [
+            {
+              "TOCHeading": "MeSH Pharmacological Classification",
+              "Information": [
+                {
+                  "ReferenceNumber": 291,
+                  "Name": "Anti-Inflammatory Agents, Non-Steroidal",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "Anti-inflammatory agents that are non-steroidal in nature. In addition to anti-inflammatory actions, they have analgesic, antipyretic, and platelet-inhibitory actions. They act by blocking the synthesis of prostaglandins by inhibiting cyclooxygenase, which converts arachidonic acid to cyclic endoperoxides, precursors of prostaglandins. Inhibition of prostaglandin synthesis accounts for their analgesic, antipyretic, and platelet-inhibitory actions; other mechanisms may contribute to their anti-inflammatory effects."
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 292,
+                  "Name": "Fibrinolytic Agents",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "Fibrinolysin or agents that convert plasminogen to FIBRINOLYSIN."
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 293,
+                  "Name": "Platelet Aggregation Inhibitors",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "Drugs or agents which antagonize or impair any mechanism leading to blood platelet aggregation, whether during the phases of activation and shape change or following the dense-granule release reaction and stimulation of the prostaglandin-thromboxane system."
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 294,
+                  "Name": "Cyclooxygenase Inhibitors",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "Compounds or agents that combine with cyclooxygenase (PROSTAGLANDIN-ENDOPEROXIDE SYNTHASES) and thereby prevent its substrate-enzyme combination with arachidonic acid and the formation of eicosanoids, prostaglandins, and thromboxanes."
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 295,
+                  "Name": "Antipyretics",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "Drugs that are used to reduce body temperature in fever."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "3559": {
+    "Record": {
+      "RecordType": "CID",
+      "RecordNumber": 3559,
+      "RecordTitle": "Haloperidol",
+      "Section": [
+        {
+          "TOCHeading": "Pharmacology and Biochemistry",
+          "Section": [
+            {
+              "TOCHeading": "MeSH Pharmacological Classification",
+              "Information": [
+                {
+                  "ReferenceNumber": 200,
+                  "Name": "Antiemetics",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "Drugs used to prevent NAUSEA or VOMITING."
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 201,
+                  "Name": "Antipsychotic Agents",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "Agents that control agitated psychotic behavior, alleviate acute psychotic states, reduce psychotic symptoms, and exert a quieting effect. They are used in SCHIZOPHRENIA; senile dementia; transient psychosis following surgery; or MYOCARDIAL INFARCTION; etc. These drugs are often referred to as neuroleptics alluding to the tendency to produce neurological side effects, but not all antipsychotics are likely to produce such effects. Many of these drugs may also be effective against nausea, emesis, and pruritus."
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 202,
+                  "Name": "Dopamine Antagonists",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "Drugs that bind to but do not activate DOPAMINE RECEPTORS, thereby blocking the actions of dopamine or exogenous agonists. Many drugs used in the treatment of psychotic disorders (ANTIPSYCHOTIC AGENTS) are dopamine antagonists, although their therapeutic effects may be due to long-term adjustments of the brain rather than to the acute effects of blocking dopamine receptors. Dopamine antagonists have been used for several other clinical purposes including as ANTIEMETICS, in the treatment of Tourette syndrome, and for hiccup. Dopamine receptor blockade is associated with NEUROLEPTIC MALIGNANT SYNDROME."
+                      }
+                    ]
+                  }
+                },
+                {
+                  "ReferenceNumber": 203,
+                  "Name": "Anti-Dyskinesia Agents",
+                  "Value": {
+                    "StringWithMarkup": [
+                      {
+                        "String": "Drugs used in the treatment of movement disorders. Most of these act centrally on dopaminergic or cholinergic systems. Among the most important clinically are those used for the treatment of Parkinson disease (ANTIPARKINSON AGENTS) and those for the tardive dyskinesias."
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

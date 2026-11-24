@@ -240,8 +240,10 @@ describe('getCompoundInteractions — empty target page (#78)', () => {
       ctx,
     );
 
+    // #96: assaysummary answers a CID with no record as it answers one without assay data, so
+    // the empty page also points at verifying the CID.
     expect(getEnrichment(ctx).notice).toBe(
-      'No target interaction data found for CID 962. None of its assays names a molecular target, or PubChem holds no assay data for it.',
+      'No target interaction data found for CID 962. None of its assays names a molecular target, or PubChem holds no assay data for it. PubChem may also have no record for this CID — verify the CID with pubchem_search_compounds.',
     );
   });
 
@@ -262,6 +264,133 @@ describe('getCompoundInteractions — empty target page (#78)', () => {
     ]);
     expect(getEnrichment(ctx).notice).toBe(
       'offset 900 is past every requested kind — the largest has 738 record(s). Pass an offset below 738.',
+    );
+  });
+});
+
+describe('getCompoundInteractions — a CID PubChem has no record for (#96)', () => {
+  const MISSING =
+    'PubChem has no record for CID 999999999 — verify the CID with pubchem_search_compounds.';
+  const MAYBE_MISSING =
+    'PubChem may also have no record for this CID — verify the CID with pubchem_search_compounds.';
+  /** The drug-food page the client returns when PUG View answers 404 `No record found`. */
+  const missingFood = {
+    kind: 'drug-food',
+    returnedCount: 0,
+    totalRecords: 0,
+    recordsConsumed: 0,
+    recordMissing: true,
+  };
+  const emptyTarget = { kind: 'target', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 };
+
+  it('says PubChem has no record in place of every kind’s no-data reading, on both surfaces', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [missingFood, emptyTarget],
+      failedKinds: [],
+    });
+
+    const result = await runToolContract(getCompoundInteractions, {
+      cid: 999999999,
+      kinds: ['drug-food', 'target'],
+    });
+    const structured = result.structuredContent as {
+      notice?: string;
+      paging: Array<Record<string, unknown>>;
+    };
+    const text = result.content
+      .map((block) => (block.type === 'text' ? block.text : ''))
+      .join('\n');
+
+    expect(result.isError).toBeFalsy();
+    expect(structured.notice).toBe(MISSING);
+    // Still a page per kind: zero records is true of a CID with no record.
+    expect(structured.paging).toEqual([
+      { kind: 'drug-food', returnedCount: 0, totalRecords: 0, truncated: false },
+      { kind: 'target', returnedCount: 0, totalRecords: 0, truncated: false },
+    ]);
+    expect(readBlockquotes(text)).toContain(MISSING);
+    expect(text).not.toContain('no deposited interaction records');
+    expect(text).not.toContain('None of its assays names a molecular target');
+  });
+
+  it('drops the kinds: ["target"] lever from a drug-food-only call', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [missingFood],
+      failedKinds: [],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 999999999, kinds: ['drug-food'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toBe(MISSING);
+  });
+
+  it('claims no missing record while another kind returned entries for the CID', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [
+        {
+          kind: 'target',
+          partner: 'PTGS2 (Gene ID 5743)',
+          source: 'PubChem BioAssay',
+          text: 'Active in 3 of 4 assays.',
+        },
+      ],
+      pages: [
+        missingFood,
+        { kind: 'target', returnedCount: 1, totalRecords: 1, recordsConsumed: 1 },
+      ],
+      failedKinds: [],
+    });
+    const ctx = createMockContext();
+    const result = await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 999999999, kinds: ['drug-food', 'target'] }),
+      ctx,
+    );
+
+    expect(result.entries).toHaveLength(1);
+    // The page reads as it did before the missing-record notice: complete, nothing to add.
+    expect(getEnrichment(ctx).notice).toBeUndefined();
+  });
+
+  it('keeps the SDQ refusal and failedKinds beside the missing record', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [missingFood],
+      failedKinds: [
+        { kind: 'drug-drug', reason: 'sdq_unavailable', message: 'refused', retryable: false },
+      ],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 999999999, kinds: ['drug-food', 'drug-drug'] }),
+      ctx,
+    );
+    const enrichment = getEnrichment(ctx);
+
+    expect(enrichment.failedKinds).toBe('drug-drug');
+    expect(enrichment.notice).toBe(
+      `Could not retrieve drug-drug interaction for CID 999999999: PubChem's SDQ service, the source of drug-drug interactions, did not answer with data. It can refuse automated requests, and repeating the call does not change that. ${MISSING}`,
+    );
+  });
+
+  it('points at verifying the CID when the drug-food request that could tell failed', async () => {
+    mockClient.getInteractions.mockResolvedValueOnce({
+      entries: [],
+      pages: [emptyTarget],
+      failedKinds: [{ kind: 'drug-food', message: 'PubChem returned HTTP 503.', retryable: true }],
+    });
+    const ctx = createMockContext();
+    await getCompoundInteractions.handler(
+      getCompoundInteractions.input.parse({ cid: 999999999, kinds: ['drug-food', 'target'] }),
+      ctx,
+    );
+
+    expect(getEnrichment(ctx).notice).toBe(
+      `Could not retrieve drug-food interaction for CID 999999999. Retry to re-attempt it. No target interaction data found for CID 999999999. None of its assays names a molecular target, or PubChem holds no assay data for it. ${MAYBE_MISSING}`,
     );
   });
 });

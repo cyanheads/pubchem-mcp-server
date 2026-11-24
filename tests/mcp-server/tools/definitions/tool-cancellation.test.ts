@@ -99,6 +99,10 @@ describe('tool handlers hand ctx.signal to PubChem (#54)', () => {
     ['pubchem_get_compound_details', () => runWith(getCompoundDetails, { cids: [2244] })],
     ['pubchem_get_compound_image', () => runWith(getCompoundImage, { cid: 2244 })],
     ['pubchem_get_compound_3d_structure', () => runWith(getCompound3dStructure, { cid: 2244 })],
+    [
+      'pubchem_get_compound_3d_structure (conformerId)',
+      () => runWith(getCompound3dStructure, { cid: 2244, conformerId: '000008C40000000B' }),
+    ],
     ['pubchem_get_compound_safety', () => runWith(getCompoundSafety, { cids: [2244] })],
     [
       'pubchem_get_compound_xrefs',
@@ -178,6 +182,29 @@ describe('tool handlers hand ctx.signal to PubChem (#54)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('fails a similarity call cancelled during its fingerprint lookups instead of returning hits unscored (#97)', async () => {
+    fetchMock.mockImplementation((input, init) =>
+      isPubChemPath(input, '/rest/pug/compound/fastsimilarity_2d/smiles/cids/JSON')
+        ? Promise.resolve(jsonResponse({ IdentifierList: { CID: [702, 1031] } }))
+        : hangUntilAborted(input, init),
+    );
+    const controller = new AbortController();
+    signal = controller.signal;
+
+    const call = track(
+      runWith(searchCompounds, { searchType: 'similarity', query: 'CCO', queryType: 'smiles' }),
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    // The search, then the page's fingerprints and the SMILES query's, both in flight.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expectCancelled(call.result);
+    await vi.runAllTimersAsync();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('fails an interactions call cancelled mid-fetch instead of reporting failed kinds', async () => {
     fetchMock.mockImplementation(hangUntilAborted);
     const controller = new AbortController();
@@ -193,6 +220,34 @@ describe('tool handlers hand ctx.signal to PubChem (#54)', () => {
     expectCancelled(call.result);
     await vi.runAllTimersAsync();
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('fails a mass search cancelled mid-search as the cancellation, never as a mass search timeout (#98)', async () => {
+    fetchMock.mockImplementation(hangUntilAborted);
+    const controller = new AbortController();
+    signal = controller.signal;
+
+    const call = track(
+      runWith(searchCompounds, {
+        searchType: 'mass',
+        massType: 'monoisotopic_mass',
+        massMin: 180.063,
+        massMax: 180.064,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expectCancelled(call.result);
+    const { error } = call.result!.structuredContent as {
+      error: { message: string; data?: { reason?: string; recovery?: unknown } };
+    };
+    expect(error.message).toBe('PubChem request cancelled by the caller.');
+    expect(error.data?.reason).toBeUndefined();
+    expect(error.data?.recovery).toBeUndefined();
+    await vi.runAllTimersAsync();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

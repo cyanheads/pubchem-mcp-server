@@ -13,8 +13,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { searchCompounds } from '@/mcp-server/tools/definitions/search-compounds.tool.js';
 import { initPubChemClient } from '@/services/pubchem/pubchem-client.js';
 import { readBlockquotes } from '../../../helpers/commonmark.js';
+import { fingerprintsByCid, readJsonFixture } from '../../../helpers/fixtures.js';
 
 const fetchMock = vi.fn<typeof fetch>();
+
+type SearchInput = z.input<typeof searchCompounds.input>;
+
+/** PubChem's `Fingerprint2D` for each of the 201 hits of a CID 2244 (aspirin) similarity search
+ * at threshold 75, as PUG REST served them (#97). */
+const ASPIRIN_T75_FINGERPRINTS = fingerprintsByCid('fingerprint2d-2244-t75.json');
+const ASPIRIN_FINGERPRINT = ASPIRIN_T75_FINGERPRINTS.get(2244)!;
+
+/** The CIDs and property names of a PUG REST property request — GET with the CIDs in the path,
+ * or POST with them in the body — or undefined for any other request. */
+function propertyRequest(
+  url: URL,
+  init: RequestInit | undefined,
+): { method: 'GET' | 'POST'; cids: number[]; names: string[] } | undefined {
+  const get = /^\/rest\/pug\/compound\/cid\/([\d,]+)\/property\/([\w,]+)\/JSON$/.exec(url.pathname);
+  if (get) {
+    return { method: 'GET', cids: get[1]!.split(',').map(Number), names: get[2]!.split(',') };
+  }
+  const post = /^\/rest\/pug\/compound\/cid\/property\/([\w,]+)\/JSON$/.exec(url.pathname);
+  if (!post) return;
+  const cids = new URLSearchParams(String(init?.body)).get('cid') ?? '';
+  return { method: 'POST', cids: cids.split(',').map(Number), names: post[1]!.split(',') };
+}
 
 function cidList(cids: number[]): Response {
   return new Response(JSON.stringify({ IdentifierList: { CID: cids } }), {
@@ -22,6 +46,9 @@ function cidList(cids: number[]): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+const fault = (status: number, code: string, message: string) =>
+  Response.json({ Fault: { Code: code, Message: message } }, { status });
 
 /** Advertised input schema, produced the way `tools/list` produces it: the framework hands
  * the SDK `input['~standard'].jsonSchema`, and the SDK calls `.input()` at draft-2020-12. */
@@ -31,7 +58,7 @@ function advertisedInputSchema(): Record<string, unknown> {
   }) as Record<string, unknown>;
 }
 
-type ErrorEnvelope = { code: number; data?: { reason?: string } };
+type ErrorEnvelope = { code: number; message: string; data?: { reason?: string } };
 
 function errorOf(result: Awaited<ReturnType<typeof runToolContract>>): ErrorEnvelope {
   expect(result.isError).toBe(true);
@@ -658,9 +685,6 @@ describe('pubchem_search_compounds assay mode (#68)', () => {
     '2000-all': [501, 501, 502, 503, 504],
   };
 
-  const fault = (status: number, code: string, message: string) =>
-    Response.json({ Fault: { Code: code, Message: message } }, { status });
-
   /** Answers the two assay-listing requests the way PubChem does: the listkey request returns
    * the key and exact Size (envelope as captured live for AID 1000), the page request serves
    * `listkey_count` CIDs from `listkey_start`, and a start at or past the end is HTTP 500. */
@@ -970,13 +994,27 @@ describe('pubchem_search_compounds offset ceiling (#76)', () => {
   /** PubChem stand-in for every mode the ceiling touches. A bounded fast search saturates —
    * it answers MaxRecords CIDs 1..MaxRecords, as a common substructure does — so the window
    * always proves more matches past it. AID 2551's ListKey serves `listkey_count` positions
-   * from `listkey_start` and answers a start past its end with HTTP 500. "aspirin" is CID 2244. */
-  const pubchem: typeof fetch = async (input) => {
+   * from `listkey_start` and answers a start past its end with HTTP 500. "aspirin" is CID 2244.
+   * A similarity page's fingerprint requests get aspirin's fingerprint for every CID. */
+  const pubchem: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
     if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov') throw new Error('unmocked fetch');
     const { pathname, searchParams } = url;
     if (/^\/rest\/pug\/compound\/fast[a-z_0-9]+\//.test(pathname)) {
       return cidList(range(1, Number(searchParams.get('MaxRecords')) + 1));
+    }
+    const fingerprints = propertyRequest(url, init);
+    if (fingerprints) {
+      return Response.json({
+        PropertyTable: {
+          Properties: fingerprints.cids.map((CID) => ({ CID, Fingerprint2D: ASPIRIN_FINGERPRINT })),
+        },
+      });
+    }
+    if (pathname === '/rest/pug/compound/smiles/property/Fingerprint2D/JSON') {
+      return Response.json({
+        PropertyTable: { Properties: [{ CID: 2244, Fingerprint2D: ASPIRIN_FINGERPRINT }] },
+      });
     }
     if (pathname === '/rest/pug/assay/aid/2551/cids/JSON') {
       return Response.json({ IdentifierList: { ListKey: 'aid2551', Size: AID_2551_SIZE } });
@@ -1027,7 +1065,6 @@ describe('pubchem_search_compounds offset ceiling (#76)', () => {
     data?: { reason?: string; recovery?: { hint?: string } };
   };
 
-  type SearchInput = z.input<typeof searchCompounds.input>;
   const quinoline = {
     searchType: 'substructure',
     query: 'c1ccc2ncccc2c1',
@@ -1150,7 +1187,16 @@ describe('pubchem_search_compounds offset ceiling (#76)', () => {
       const notice = `Showing matches 10001-10005; more exist, but PubChem reports no match count for a ${mode} search. A ${mode} search pages only to offset 10000, so pass offset=10000 with maxResults=200 to reach matches through 10200; past 10200, narrow it to fewer matches: ${narrowing}.`;
       expect(page.notice).toBe(notice);
       expect(textOf(result)).toContain(notice);
-      expect(requested()).toEqual(['window 10006']);
+      // A similarity page also asks for its fingerprints, and a SMILES query's (#97).
+      expect(requested()).toEqual(
+        mode === 'similarity'
+          ? [
+              'window 10006',
+              '/rest/pug/compound/cid/10001,10002,10003,10004,10005/property/Fingerprint2D/JSON',
+              '/rest/pug/compound/smiles/property/Fingerprint2D/JSON',
+            ]
+          : ['window 10006'],
+      );
     },
   );
 
@@ -1305,5 +1351,1000 @@ describe('pubchem_search_compounds offset ceiling (#76)', () => {
         ]),
       );
     });
+  });
+});
+
+describe('pubchem_search_compounds mass mode (#98)', () => {
+  /** The 180.0630–180.0640 monoisotopic window as PubChem lists it: 1,182 CIDs, glucose first,
+   * in PubChem's order (the first five as captured live, then synthetic). */
+  const MONO_180 = [
+    5793,
+    2723872,
+    892,
+    439312,
+    6036,
+    ...Array.from({ length: 1177 }, (_, i) => 100_000_000 + i),
+  ];
+
+  /** The first 20 of the 79 CIDs PubChem lists for monoisotopic_mass 0–10, as captured live:
+   * hydrogen (783) second, helium (23987) fourth. */
+  const MONO_0_10_HEAD = [
+    5460467, 783, 3028194, 23987, 107649, 24523, 28486, 24824, 62714, 6914554, 5362549, 1038,
+    167583, 5460653, 6857639, 166653, 6337039, 129012201, 5460631, 5460634,
+  ];
+
+  /** Every window the stub knows, by its `{massType}/{min}/{max}` path; each stored list's
+   * ListKey is its position here. A window not listed answers HTTP 404 "Search returned no
+   * hits", as PubChem answers an empty, inverted, or negative window. The 300–303 window is
+   * past PubChem's count: Size stops at 1,000,000 and the list pages that many. */
+  const WINDOWS: Array<[string, { size: number; cidAt: (i: number) => number }]> = [
+    ['monoisotopic_mass/180.063/180.064', { size: 1182, cidAt: (i) => MONO_180[i]! }],
+    ['monoisotopic_mass/180.0633881/180.0633881', { size: 1111, cidAt: (i) => MONO_180[i]! }],
+    ['exact_mass/551.5034/551.5044', { size: 2, cidAt: (i) => [6905, 59271344][i]! }],
+    ['monoisotopic_mass/551.5034/551.5044', { size: 1, cidAt: () => 59271344 }],
+    ['monoisotopic_mass/300/302', { size: 800_342, cidAt: (i) => 179_338_105 - i }],
+    ['monoisotopic_mass/300/303', { size: 1_000_000, cidAt: (i) => 132_970_840 - i }],
+    ['monoisotopic_mass/0/10', { size: 79, cidAt: (i) => MONO_0_10_HEAD[i]! }],
+  ];
+
+  const pubchemMass: typeof fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov') throw new Error('unmocked fetch');
+    const search = /^\/rest\/pug\/compound\/(\w+)\/range\/([^/]+)\/([^/]+)\/cids\/JSON$/.exec(
+      url.pathname,
+    );
+    if (search && url.searchParams.get('list_return') === 'listkey') {
+      const index = WINDOWS.findIndex(([key]) => key === search.slice(1).join('/'));
+      if (index < 0) return fault(404, 'PUGREST.NotFound', 'Search returned no hits');
+      return Response.json({
+        IdentifierList: { ListKey: String(index), Size: WINDOWS[index]![1].size },
+      });
+    }
+    const page = /^\/rest\/pug\/compound\/listkey\/(\d+)\/cids\/JSON$/.exec(url.pathname);
+    if (page) {
+      const { size, cidAt } = WINDOWS[Number(page[1])]![1];
+      const start = Number(url.searchParams.get('listkey_start'));
+      const count = Number(url.searchParams.get('listkey_count'));
+      if (start >= size) return fault(500, 'PUGREST.ServerError', 'EFetch failed');
+      const end = Math.min(start + count, size);
+      return cidList(Array.from({ length: end - start }, (_, i) => cidAt(start + i)));
+    }
+    const props = /^\/rest\/pug\/compound\/cid\/([\d,]+)\/property\/MonoisotopicMass\/JSON$/.exec(
+      url.pathname,
+    );
+    if (props) {
+      const cids = (props[1] ?? '').split(',').map(Number);
+      return Response.json({
+        PropertyTable: { Properties: cids.map((CID) => ({ CID, MonoisotopicMass: CID / 1000 })) },
+      });
+    }
+    throw new Error('unmocked fetch');
+  };
+
+  /** Request kinds the stub received, in order. */
+  const requestKinds = () =>
+    fetchMock.mock.calls.map(([input]) => {
+      const { pathname, searchParams } = new URL(String(input));
+      const search = /^\/rest\/pug\/compound\/(\w+)\/range\/([^/]+)\/([^/]+)\//.exec(pathname);
+      if (search) return `search ${search[1]} ${search[2]}-${search[3]}`;
+      if (pathname.includes('/compound/listkey/')) {
+        return `page ${searchParams.get('listkey_start')}+${searchParams.get('listkey_count')}`;
+      }
+      return 'properties';
+    });
+
+  type MassContent = {
+    results: Array<{ cid: number; properties?: Record<string, unknown> }>;
+    totalFound?: number;
+    totalFoundAtLeast?: number;
+    offset: number;
+    nextOffset?: number;
+    truncated?: boolean;
+    notice?: string;
+  };
+  const contentOf = (result: Awaited<ReturnType<typeof runToolContract>>) => {
+    expect(result.isError).toBeFalsy();
+    return result.structuredContent as MassContent;
+  };
+
+  const glucoseWindow = {
+    searchType: 'mass',
+    massType: 'monoisotopic_mass',
+    massMin: 180.063,
+    massMax: 180.064,
+  } satisfies SearchInput;
+  const cappedWindow = { ...glucoseWindow, massMin: 300, massMax: 303 } satisfies SearchInput;
+
+  const NARROW =
+    'narrow the mass window (raise massMin or lower massMax) to one with fewer than 1000000 matches';
+
+  beforeEach(() => {
+    fetchMock.mockImplementation(pubchemMass);
+  });
+
+  it('searches monoisotopic_mass 180.0630–180.0640: totalFound 1182, glucose first, on both surfaces', async () => {
+    const result = await runToolContract(searchCompounds, glucoseWindow);
+
+    const content = contentOf(result);
+    expect(content.results.map((r) => r.cid)).toEqual(MONO_180.slice(0, 20));
+    expect(content.totalFound).toBe(1182);
+    expect(content).not.toHaveProperty('totalFoundAtLeast');
+    expect(content.nextOffset).toBe(20);
+    expect(content.truncated).toBe(true);
+    expect(content.notice).toBe('Showing matches 1-20 of 1182. Pass offset=20 for the next page.');
+    expect(content).not.toHaveProperty('activeOnly');
+    expect(requestKinds()).toEqual(['search monoisotopic_mass 180.063-180.064', 'page 0+20']);
+    const text = textOf(result);
+    expect(text).toContain(`CIDs: ${MONO_180.slice(0, 20).join(', ')}`);
+    expect(text).toContain(content.notice!);
+  });
+
+  it('pages a large window past offset 10000 to its last match, with no ceiling', async () => {
+    const window = { ...glucoseWindow, massMin: 300, massMax: 302 } satisfies SearchInput;
+
+    const deep = contentOf(
+      await runToolContract(searchCompounds, { ...window, maxResults: 5, offset: 10001 }),
+    );
+    expect(deep.results.map((r) => r.cid)).toEqual(
+      [10001, 10002, 10003, 10004, 10005].map((i) => 179_338_105 - i),
+    );
+    expect(deep.totalFound).toBe(800_342);
+    expect(deep.nextOffset).toBe(10006);
+
+    const last = await runToolContract(searchCompounds, {
+      ...window,
+      maxResults: 20,
+      offset: 800_340,
+    });
+    const content = contentOf(last);
+    expect(content.results.map((r) => r.cid)).toEqual(
+      [800_340, 800_341].map((i) => 179_338_105 - i),
+    );
+    expect(content.totalFound).toBe(800_342);
+    expect(content).not.toHaveProperty('nextOffset');
+    expect(content).not.toHaveProperty('truncated');
+    expect(content).not.toHaveProperty('notice');
+    expect(requestKinds()).toEqual([
+      'search monoisotopic_mass 300-302',
+      'page 10001+5',
+      'search monoisotopic_mass 300-302',
+      'page 800340+20',
+    ]);
+  });
+
+  it('finds hexabromobenzene (CID 6905) at 551.5034–551.5044 under exact_mass, not monoisotopic_mass', async () => {
+    const window = { massMin: 551.5034, massMax: 551.5044 };
+
+    const exact = contentOf(
+      await runToolContract(searchCompounds, {
+        searchType: 'mass',
+        massType: 'exact_mass',
+        ...window,
+      }),
+    );
+    const mono = contentOf(
+      await runToolContract(searchCompounds, {
+        searchType: 'mass',
+        massType: 'monoisotopic_mass',
+        ...window,
+      }),
+    );
+
+    expect(exact.results.map((r) => r.cid)).toEqual([6905, 59271344]);
+    expect(mono.results.map((r) => r.cid)).toEqual([59271344]);
+    expect(requestKinds()).toEqual([
+      'search exact_mass 551.5034-551.5044',
+      'page 0+20',
+      'search monoisotopic_mass 551.5034-551.5044',
+      'page 0+20',
+    ]);
+  });
+
+  it('accepts massMin equal to massMax as a one-value window', async () => {
+    const result = await runToolContract(searchCompounds, {
+      ...glucoseWindow,
+      massMin: 180.0633881,
+      massMax: 180.0633881,
+    });
+
+    expect(contentOf(result).totalFound).toBe(1111);
+    expect(requestKinds()[0]).toBe('search monoisotopic_mass 180.0633881-180.0633881');
+  });
+
+  it('answers an empty window with no results, totalFound 0, and a notice naming the mass type and window', async () => {
+    const result = await runToolContract(searchCompounds, {
+      ...glucoseWindow,
+      massType: 'exact_mass',
+      massMin: 1.5,
+      massMax: 1.6,
+    });
+
+    const content = contentOf(result);
+    expect(content.results).toEqual([]);
+    expect(content.totalFound).toBe(0);
+    expect(content).not.toHaveProperty('nextOffset');
+    const notice =
+      'No compounds have exact_mass from 1.5 to 1.6. Widen the window (lower massMin or raise massMax), or check massType: exact_mass differs from monoisotopic_mass for compounds rich in Cl or Br and for molecules of about 90 or more carbons, and molecular_weight is the isotope-averaged weight.';
+    expect(content.notice).toBe(notice);
+    expect(requestKinds()).toEqual(['search exact_mass 1.5-1.6']);
+    const text = textOf(result);
+    expect(text).toContain('No results.');
+    expect(text).toContain(notice);
+  });
+
+  it('answers an offset at the end of an exact list with the past-the-end notice and no page request', async () => {
+    const content = contentOf(
+      await runToolContract(searchCompounds, { ...glucoseWindow, offset: 1182 }),
+    );
+
+    expect(content.results).toEqual([]);
+    expect(content.totalFound).toBe(1182);
+    expect(content).not.toHaveProperty('nextOffset');
+    expect(content.notice).toBe(
+      'offset 1182 is past the 1182 match(es) found. Pass an offset below 1182.',
+    );
+    expect(requestKinds()).toEqual(['search monoisotopic_mass 180.063-180.064']);
+  });
+
+  it('reports a capped window as totalFoundAtLeast 1000000, with the next offset and how to narrow', async () => {
+    const result = await runToolContract(searchCompounds, cappedWindow);
+
+    const content = contentOf(result);
+    expect(content.results.map((r) => r.cid)).toEqual(
+      Array.from({ length: 20 }, (_, i) => 132_970_840 - i),
+    );
+    expect(content.totalFoundAtLeast).toBe(1_000_000);
+    expect(content).not.toHaveProperty('totalFound');
+    expect(content.nextOffset).toBe(20);
+    expect(content.truncated).toBe(true);
+    const notice = `Showing matches 1-20 of at least 1000000; PubChem stops counting this search at 1000000 matches and pages only those. Pass offset=20 for the next page, or ${NARROW}.`;
+    expect(content.notice).toBe(notice);
+    expect(textOf(result)).toContain(notice);
+  });
+
+  it.each([
+    [999_980, 20, 'Showing matches 999981-1000000'],
+    [999_990, 20, 'Showing matches 999991-1000000'],
+  ])(
+    'serves a capped window to entry 1000000 from offset %i with no nextOffset',
+    async (offset, shown, range) => {
+      const result = await runToolContract(searchCompounds, {
+        ...cappedWindow,
+        maxResults: 20,
+        offset,
+      });
+
+      const content = contentOf(result);
+      expect(content.results).toHaveLength(1_000_000 - offset);
+      expect(content.results.at(-1)?.cid).toBe(132_970_840 - 999_999);
+      expect(content.totalFoundAtLeast).toBe(1_000_000);
+      expect(content).not.toHaveProperty('nextOffset');
+      expect(content.truncated).toBe(true);
+      const notice = `${range} of at least 1000000; PubChem stops counting this search at 1000000 matches and pages only those. No further page can be requested; ${NARROW}.`;
+      expect(content.notice).toBe(notice);
+      const text = textOf(result);
+      expect(text).toContain(notice);
+      expect(text).not.toMatch(/nextOffset/i);
+      expect(requestKinds()).toEqual([
+        'search monoisotopic_mass 300-303',
+        `page ${offset}+${shown}`,
+      ]);
+    },
+  );
+
+  it('answers an offset at the cap with the narrowing notice and no page request', async () => {
+    const result = await runToolContract(searchCompounds, {
+      ...cappedWindow,
+      offset: 1_000_000,
+    });
+
+    const content = contentOf(result);
+    expect(content.results).toEqual([]);
+    expect(content.totalFoundAtLeast).toBe(1_000_000);
+    expect(content).not.toHaveProperty('nextOffset');
+    const notice = `offset 1000000 is past the 1000000 matches PubChem pages for this search, the most it counts. Pass an offset below 1000000, or ${NARROW}.`;
+    expect(content.notice).toBe(notice);
+    expect(textOf(result)).toContain(notice);
+    expect(requestKinds()).toEqual(['search monoisotopic_mass 300-303']);
+  });
+
+  it('hydrates the page with requested properties', async () => {
+    const result = await runToolContract(searchCompounds, {
+      ...glucoseWindow,
+      maxResults: 2,
+      properties: ['MonoisotopicMass'],
+    });
+
+    expect(contentOf(result).results).toEqual([
+      { cid: 5793, properties: { MonoisotopicMass: 5.793 } },
+      { cid: 2723872, properties: { MonoisotopicMass: 2723.872 } },
+    ]);
+    expect(requestKinds()).toEqual([
+      'search monoisotopic_mass 180.063-180.064',
+      'page 0+2',
+      'properties',
+    ]);
+    expect(textOf(result)).toContain('MonoisotopicMass: 5.793');
+  });
+
+  it.each<[SearchInput, string]>([
+    [{ searchType: 'mass' }, 'massType, massMin, massMax missing'],
+    [{ searchType: 'mass', massType: 'exact_mass', massMin: 180 }, 'massMax missing'],
+    [{ searchType: 'mass', massMin: 180, massMax: 181 }, 'massType missing'],
+    [{ searchType: 'mass', massType: 'molecular_weight', massMax: 181 }, 'massMin missing'],
+  ])('rejects %j as missing_mass_args before any PubChem request', async (input, missing) => {
+    const result = await runToolContract(searchCompounds, input);
+
+    const error = errorOf(result) as ErrorEnvelope & { data?: { recovery?: { hint?: string } } };
+    expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+    expect(error.data?.reason).toBe('missing_mass_args');
+    expect(error.data?.recovery?.hint).toContain('massType ("monoisotopic_mass", "exact_mass", or');
+    const text = textOf(result);
+    expect(text).toContain(`A mass search needs massType, massMin, and massMax; ${missing}.`);
+    expect(text).toContain('massMin 180.063 and massMax 180.064');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects massMin above massMax as inverted_mass_window before any PubChem request', async () => {
+    const result = await runToolContract(searchCompounds, {
+      ...glucoseWindow,
+      massMin: 181,
+      massMax: 180,
+    });
+
+    const error = errorOf(result);
+    expect(error.code).toBe(JsonRpcErrorCode.ValidationError);
+    expect(error.data?.reason).toBe('inverted_mass_window');
+    const text = textOf(result);
+    expect(text).toContain('massMin 181 is greater than massMax 180.');
+    expect(text).toContain('Pass massMin no greater than massMax');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { massMin: -5, massMax: 10 },
+    { massMin: 0, massMax: -1 },
+    { massMin: -0.001, massMax: -0.0001 },
+  ])('rejects a negative bound %j at the schema', async (bounds) => {
+    const result = await runToolContract(searchCompounds, { ...glucoseWindow, ...bounds });
+
+    const error = errorOf(result);
+    expect(error.code).toBe(JsonRpcErrorCode.InvalidParams);
+    expect(error.data?.reason).toBe('invalid_arguments');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a window starting at 0: 79 CIDs, hydrogen and helium among the first page', async () => {
+    const content = contentOf(
+      await runToolContract(searchCompounds, { ...glucoseWindow, massMin: 0, massMax: 10 }),
+    );
+
+    expect(content.totalFound).toBe(79);
+    expect(content.results.map((r) => r.cid)).toEqual(MONO_0_10_HEAD);
+    expect(content.results.map((r) => r.cid)).toEqual(expect.arrayContaining([783, 23987]));
+    expect(content.nextOffset).toBe(20);
+    expect(requestKinds()).toEqual(['search monoisotopic_mass 0-10', 'page 0+20']);
+  });
+
+  describe('a search PubChem cannot finish in time', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('fails a 504 PUGREST.Timeout as mass_search_timeout with the narrow-the-window hint', async () => {
+      fetchMock.mockImplementation(async () => fault(504, 'PUGREST.Timeout', 'Request timed out'));
+
+      const call = runToolContract(searchCompounds, {
+        ...glucoseWindow,
+        massMin: 200,
+        massMax: 500,
+      });
+      await vi.runAllTimersAsync();
+      const result = await call;
+
+      const error = errorOf(result) as ErrorEnvelope & {
+        data?: { recovery?: { hint?: string }; status?: number };
+      };
+      expect(error.code).toBe(JsonRpcErrorCode.Timeout);
+      expect(error.data?.reason).toBe('mass_search_timeout');
+      expect(error.data?.status).toBe(504);
+      const hint =
+        'Narrow the mass window (raise massMin or lower massMax) so PubChem can finish the search, then retry.';
+      expect(error.data?.recovery?.hint).toBe(hint);
+      const text = textOf(result);
+      expect(text).toContain('PubChem did not finish the mass search in time.');
+      expect(text).toContain(hint);
+      expect(requestKinds()).toEqual([
+        'search monoisotopic_mass 200-500',
+        'search monoisotopic_mass 200-500',
+      ]);
+    });
+  });
+
+  describe('an assay list PubChem stopped counting takes the same capped path', () => {
+    const assayCid = (position: number) => 7_000_000 + position;
+    const cappedAssay: typeof fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === '/rest/pug/assay/aid/1000/cids/JSON') {
+        return Response.json({ IdentifierList: { ListKey: 'big', Size: 1_000_000 } });
+      }
+      const start = Number(url.searchParams.get('listkey_start'));
+      const count = Number(url.searchParams.get('listkey_count'));
+      const end = Math.min(start + count, 1_000_000);
+      return cidList(Array.from({ length: end - start }, (_, i) => assayCid(start + i)));
+    };
+
+    it('offers activeOnly: true as the narrower list on a page of every tested compound', async () => {
+      fetchMock.mockImplementation(cappedAssay);
+
+      const content = contentOf(
+        await runToolContract(searchCompounds, {
+          searchType: 'assay',
+          aid: 1000,
+          activeOnly: false,
+          maxResults: 2,
+        }),
+      );
+
+      expect(content.totalFoundAtLeast).toBe(1_000_000);
+      expect(content.nextOffset).toBe(2);
+      expect(content.notice).toBe(
+        'Showing matches 1-2 of at least 1000000; PubChem stops counting this search at 1000000 matches and pages only those. Pass offset=2 for the next page, or pass activeOnly: true for the shorter list of compounds the assay marked active.',
+      );
+    });
+
+    it('names no narrower list once the active list itself ends at the cap', async () => {
+      fetchMock.mockImplementation(cappedAssay);
+
+      const content = contentOf(
+        await runToolContract(searchCompounds, {
+          searchType: 'assay',
+          aid: 1000,
+          maxResults: 2,
+          offset: 999_998,
+        }),
+      );
+
+      expect(content.results.map((r) => r.cid)).toEqual([assayCid(999_998), assayCid(999_999)]);
+      expect(content).not.toHaveProperty('nextOffset');
+      expect(content.notice).toBe(
+        'Showing matches 999999-1000000 of at least 1000000; PubChem stops counting this search at 1000000 matches and pages only those. No further page can be requested.',
+      );
+    });
+  });
+
+  it('names massType, massMin, and massMax as the mass mode’s fields in the searchType description', () => {
+    const properties = advertisedInputSchema().properties as Record<
+      string,
+      { description?: string }
+    >;
+
+    expect(properties.searchType?.description).toMatch(
+      /"mass"[^.]*requires massType, massMin, and massMax/,
+    );
+    expect(advertisedInputSchema().required).toEqual(['searchType']);
+  });
+});
+
+describe('pubchem_search_compounds similarity scores (#97)', () => {
+  /** PubChem's 201 hits for CID 2244 at Threshold 75, in its order, as captured live. */
+  const HITS = readJsonFixture<{ IdentifierList: { CID: number[] } }>(
+    'fastsimilarity-2244-t75.json',
+  ).IdentifierList.CID;
+
+  /** The first 20 hits with their Tanimoto to aspirin, to three decimals, as the issue's scoring
+   * script printed them from the same fingerprints. */
+  const FIRST_20: ReadonlyArray<readonly [number, number]> = [
+    [135, 0.754],
+    [7456, 0.798],
+    [338, 0.853],
+    [2244, 1],
+    [7175, 0.8],
+    [7184, 0.8],
+    [5280343, 0.752],
+    [5280961, 0.781],
+    [5053, 0.766],
+    [54678486, 0.831],
+    [5585, 0.762],
+    [323, 0.812],
+    [4133, 0.906],
+    [4632, 0.805],
+    [8434, 0.8],
+    [10228, 0.756],
+    [15797, 0.809],
+    [5280443, 0.82],
+    [54676038, 0.833],
+    [3469, 0.813],
+  ];
+  const scored = FIRST_20.map(([cid, similarity]) => ({ cid, similarity }));
+
+  const ASPIRIN_SMILES = 'CC(=O)OC1=CC=CC=C1C(=O)O';
+  /** A structure PubChem has no record of; its search at threshold 70 found these five hits,
+   * whose fingerprints are the captured ones. */
+  const NOVEL_SMILES =
+    'C1=CC=C(C=C1)C2=CC=C(C=C2)C3=CC=C(C=C3)C4=CC=C(C=C4)OCCCCCCCCCCCCCCCCCCCCCCCC(F)(F)Cl';
+  const NOVEL_FINGERPRINTS = fingerprintsByCid('fingerprint2d-novel-smiles-hits.json');
+  const NOVEL_HITS = [40326, 637563, 5281873, 3347, 8815];
+  const FINGERPRINTS = new Map([...ASPIRIN_T75_FINGERPRINTS, ...NOVEL_FINGERPRINTS]);
+
+  /** The first page's notice, as it read before scores existed. */
+  const PAGE_1_NOTICE =
+    'Showing matches 1-20; more exist, but PubChem reports no match count for a similarity search. Pass offset=20 for the next page.';
+  const PAGE_OF_3 =
+    'Showing matches 1-3; more exist, but PubChem reports no match count for a similarity search. Pass offset=3 for the next page.';
+
+  /** CIDs whose rows the stub leaves without Fingerprint2D (property rows, and the aspirin SMILES
+   * lookup's row for 2244), CIDs it serves a damaged Fingerprint2D for, lookups it fails, and
+   * lookups it answers HTTP 200 with the given JSON in place of a property table. */
+  let withoutFingerprint: Set<number>;
+  let damaged: Map<number, string>;
+  let failing: Set<'properties' | 'smiles fingerprint'>;
+  let answeringFault: Map<'properties' | 'smiles fingerprint', unknown>;
+
+  const FAULT_ENVELOPE = { Fault: { Code: 'PUGREST.ServerBusy', Message: 'Server too busy' } };
+  const NULL_ROW_TABLE = { PropertyTable: { Properties: [null] } };
+
+  const smilesOf = (init: RequestInit | undefined) =>
+    new URLSearchParams(String(init?.body)).get('smiles');
+
+  /** PubChem stand-in: every fast search answers the captured aspirin hits (the novel SMILES its
+   * own five), up to MaxRecords; property requests answer each CID's captured fingerprint and a
+   * placeholder for any other property; a SMILES fingerprint lookup answers aspirin's, or CID 0
+   * with no properties, as PubChem answers a structure it has no record of. */
+  const pubchemSimilarity: typeof fetch = async (input, init) => {
+    const url = new URL(String(input));
+    if (url.hostname !== 'pubchem.ncbi.nlm.nih.gov') throw new Error('unmocked fetch');
+    const unavailable = () =>
+      fault(503, 'PUGREST.ServerBusy', 'Too many requests or server too busy');
+    if (url.pathname.startsWith('/rest/pug/compound/fast')) {
+      const hits = smilesOf(init) === NOVEL_SMILES ? NOVEL_HITS : HITS;
+      return cidList(hits.slice(0, Number(url.searchParams.get('MaxRecords'))));
+    }
+    const properties = propertyRequest(url, init);
+    if (properties) {
+      if (failing.has('properties')) return unavailable();
+      if (answeringFault.has('properties')) return Response.json(answeringFault.get('properties'));
+      const rows = properties.cids.map((CID) => {
+        const row: Record<string, unknown> = { CID };
+        for (const name of properties.names) {
+          const fingerprint = withoutFingerprint.has(CID)
+            ? undefined
+            : (damaged.get(CID) ?? FINGERPRINTS.get(CID));
+          if (name !== 'Fingerprint2D') row[name] = `${name} of ${CID}`;
+          else if (fingerprint !== undefined) row[name] = fingerprint;
+        }
+        return row;
+      });
+      return Response.json({ PropertyTable: { Properties: rows } });
+    }
+    if (url.pathname === '/rest/pug/compound/smiles/property/Fingerprint2D/JSON') {
+      if (failing.has('smiles fingerprint')) return unavailable();
+      if (answeringFault.has('smiles fingerprint')) {
+        return Response.json(answeringFault.get('smiles fingerprint'));
+      }
+      const row =
+        smilesOf(init) === ASPIRIN_SMILES
+          ? {
+              CID: 2244,
+              ...(!withoutFingerprint.has(2244) && { Fingerprint2D: ASPIRIN_FINGERPRINT }),
+            }
+          : { CID: 0 };
+      return Response.json({ PropertyTable: { Properties: [row] } });
+    }
+    throw new Error('unmocked fetch');
+  };
+
+  /** Each request the stub received, in order. */
+  const requests = () =>
+    fetchMock.mock.calls.map(([input, init]) => {
+      const url = new URL(String(input));
+      const search = /^\/rest\/pug\/compound\/(fast\w+)\/([^/]+)\//.exec(url.pathname);
+      if (search) return `search ${search[1]}/${search[2]}`;
+      const properties = propertyRequest(url, init);
+      if (properties) return `properties ${properties.method} ${properties.names.join(',')}`;
+      return `smiles fingerprint ${smilesOf(init)} (${init?.method})`;
+    });
+  /** The CIDs every property request asked for. */
+  const propertyCids = () =>
+    fetchMock.mock.calls.flatMap(
+      ([input, init]) => propertyRequest(new URL(String(input)), init)?.cids ?? [],
+    );
+
+  type ScoredContent = {
+    results: Array<{ cid: number; similarity?: number; properties?: Record<string, unknown> }>;
+    totalFound?: number;
+    nextOffset?: number;
+    notice?: string;
+  };
+  const contentOf = (result: Awaited<ReturnType<typeof runToolContract>>) => {
+    expect(result.isError).toBeFalsy();
+    return result.structuredContent as ScoredContent;
+  };
+
+  const aspirinT75 = {
+    searchType: 'similarity',
+    query: '2244',
+    queryType: 'cid',
+    threshold: 75,
+  } satisfies SearchInput;
+  const aspirinSmilesT75 = {
+    ...aspirinT75,
+    query: ASPIRIN_SMILES,
+    queryType: 'smiles',
+  } satisfies SearchInput;
+
+  beforeEach(() => {
+    withoutFingerprint = new Set();
+    damaged = new Map();
+    failing = new Set();
+    answeringFault = new Map();
+    fetchMock.mockImplementation(pubchemSimilarity);
+  });
+
+  it("scores aspirin's first page at threshold 75 — CID 135 0.754, CID 4133 0.906, CID 2244 1 — in PubChem's order, on both surfaces", async () => {
+    const result = await runToolContract(searchCompounds, aspirinT75);
+
+    const content = contentOf(result);
+    expect(content.results).toEqual(scored);
+    expect(content.notice).toBe(PAGE_1_NOTICE);
+    expect(requests()).toEqual(['search fastsimilarity_2d/cid', 'properties GET Fingerprint2D']);
+    expect(propertyCids()).toEqual(HITS.slice(0, 20));
+    const text = textOf(result);
+    expect(text).toContain(
+      'CIDs: 135 (similarity 0.754), 7456 (similarity 0.798), 338 (similarity 0.853), 2244 (similarity 1), 7175 (similarity 0.8),',
+    );
+    expect(text).toContain('4133 (similarity 0.906)');
+    expect(readBlockquotes(text).at(-1)).toBe(PAGE_1_NOTICE);
+  });
+
+  it("adds the query CID to the page's fingerprint request when the page lacks it, and returns no row for it", async () => {
+    const content = contentOf(
+      await runToolContract(searchCompounds, { ...aspirinT75, maxResults: 3 }),
+    );
+
+    expect(content.results).toEqual(scored.slice(0, 3));
+    expect(content.notice).toBe(PAGE_OF_3);
+    expect(requests()).toEqual(['search fastsimilarity_2d/cid', 'properties GET Fingerprint2D']);
+    expect(propertyCids()).toEqual([135, 7456, 338, 2244]);
+  });
+
+  it('scores a full 200-hit page from one POSTed request, every hit at 0.75 or above, CID 5161 at 0.958', async () => {
+    const content = contentOf(
+      await runToolContract(searchCompounds, { ...aspirinT75, maxResults: 200 }),
+    );
+
+    expect(content.results.map((r) => r.cid)).toEqual(HITS.slice(0, 200));
+    const scores = content.results.map((r) => r.similarity);
+    expect(scores.every((s) => s !== undefined && s >= 0.75 && s <= 1)).toBe(true);
+    expect(content.results[46]).toEqual({ cid: 5161, similarity: 0.958 });
+    expect(requests()).toEqual(['search fastsimilarity_2d/cid', 'properties POST Fingerprint2D']);
+    expect(propertyCids()).toEqual(HITS.slice(0, 200));
+  });
+
+  it("scores the last page of the match list, past the first, with the query's CID added", async () => {
+    const content = contentOf(
+      await runToolContract(searchCompounds, { ...aspirinT75, offset: 195, maxResults: 10 }),
+    );
+
+    expect(content.results.map((r) => r.cid)).toEqual(HITS.slice(195));
+    expect(content.results.every((r) => r.similarity !== undefined && r.similarity >= 0.75)).toBe(
+      true,
+    );
+    expect(content.totalFound).toBe(201);
+    expect(content).not.toHaveProperty('nextOffset');
+    expect(propertyCids()).toEqual([...HITS.slice(195), 2244]);
+  });
+
+  it('asks for no fingerprints when the offset runs past the matches', async () => {
+    const content = contentOf(
+      await runToolContract(searchCompounds, { ...aspirinT75, offset: 300, maxResults: 5 }),
+    );
+
+    expect(content.results).toEqual([]);
+    expect(content.notice).toBe(
+      'offset 300 is past the 201 match(es) found. Pass an offset below 201.',
+    );
+    expect(requests()).toEqual(['search fastsimilarity_2d/cid']);
+  });
+
+  it('asks for no fingerprints when a similarity search finds nothing', async () => {
+    fetchMock.mockImplementation(async () => cidList([]));
+
+    const content = contentOf(await runToolContract(searchCompounds, aspirinT75));
+
+    expect(content.results).toEqual([]);
+    expect(content.totalFound).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves properties and scores from one property request, and keeps Fingerprint2D out of properties', async () => {
+    const result = await runToolContract(searchCompounds, {
+      ...aspirinT75,
+      maxResults: 2,
+      properties: ['MolecularFormula'],
+    });
+
+    expect(contentOf(result).results).toEqual([
+      { cid: 135, similarity: 0.754, properties: { MolecularFormula: 'MolecularFormula of 135' } },
+      {
+        cid: 7456,
+        similarity: 0.798,
+        properties: { MolecularFormula: 'MolecularFormula of 7456' },
+      },
+    ]);
+    expect(requests()).toEqual([
+      'search fastsimilarity_2d/cid',
+      'properties GET MolecularFormula,Fingerprint2D',
+    ]);
+    expect(propertyCids()).toEqual([135, 7456, 2244]);
+    const text = textOf(result);
+    expect(text).toContain('**CID 135** (similarity 0.754)\n**Properties:**\nMolecularFormula: ');
+    expect(text).toContain('**CID 7456** (similarity 0.798)\n**Properties:**\n');
+    expect(text).not.toContain('Fingerprint2D');
+  });
+
+  it('scores a SMILES query for aspirin the same as the 2244 query, from its own fingerprint lookup', async () => {
+    const result = await runToolContract(searchCompounds, aspirinSmilesT75);
+
+    const content = contentOf(result);
+    expect(content.results).toEqual(scored);
+    expect(content.notice).toBe(PAGE_1_NOTICE);
+    expect(requests()).toEqual([
+      'search fastsimilarity_2d/smiles',
+      'properties GET Fingerprint2D',
+      `smiles fingerprint ${ASPIRIN_SMILES} (POST)`,
+    ]);
+    expect(propertyCids()).toEqual(HITS.slice(0, 20));
+  });
+
+  it('returns the hits of a SMILES not in PubChem unscored, with a notice saying why', async () => {
+    const result = await runToolContract(searchCompounds, {
+      searchType: 'similarity',
+      query: NOVEL_SMILES,
+      queryType: 'smiles',
+      threshold: 70,
+    });
+
+    const content = contentOf(result);
+    expect(content.results).toEqual(NOVEL_HITS.map((cid) => ({ cid })));
+    expect(content.totalFound).toBe(5);
+    const notice =
+      'The query SMILES is not a compound in PubChem, which publishes no fingerprint for a structure it has no record of, so these hits carry no similarity score.';
+    expect(content.notice).toBe(notice);
+    const text = textOf(result);
+    expect(text).toContain('CIDs: 40326, 637563, 5281873, 3347, 8815\n');
+    expect(readBlockquotes(text).at(-1)).toBe(notice);
+    expect(requests()).toEqual([
+      'search fastsimilarity_2d/smiles',
+      'properties GET Fingerprint2D',
+      `smiles fingerprint ${NOVEL_SMILES} (POST)`,
+    ]);
+  });
+
+  it('leaves similarity off a hit whose row has no Fingerprint2D, never 0, and scores the rest', async () => {
+    withoutFingerprint.add(4133);
+
+    const content = contentOf(await runToolContract(searchCompounds, aspirinT75));
+
+    expect(content.results).toEqual(scored.map((row) => (row.cid === 4133 ? { cid: 4133 } : row)));
+    expect(content.notice).toBe(PAGE_1_NOTICE);
+  });
+
+  it('scores no hit, saying so, when PubChem returns no fingerprint for the query CID', async () => {
+    withoutFingerprint.add(2244);
+
+    const content = contentOf(
+      await runToolContract(searchCompounds, { ...aspirinT75, maxResults: 3 }),
+    );
+
+    expect(content.results).toEqual([{ cid: 135 }, { cid: 7456 }, { cid: 338 }]);
+    expect(content.notice).toBe(
+      `PubChem returned no fingerprint for the query, so these hits carry no similarity score. ${PAGE_OF_3}`,
+    );
+  });
+
+  it('scores no hit, naming the missing fingerprint rather than a missing compound, when the SMILES lookup finds a CID without one', async () => {
+    withoutFingerprint.add(2244);
+
+    const content = contentOf(
+      await runToolContract(searchCompounds, { ...aspirinSmilesT75, maxResults: 3 }),
+    );
+
+    expect(content.results).toEqual([{ cid: 135 }, { cid: 7456 }, { cid: 338 }]);
+    expect(content.notice).toBe(
+      `PubChem returned no fingerprint for the query, so these hits carry no similarity score. ${PAGE_OF_3}`,
+    );
+  });
+
+  /** Aspirin's fingerprint with one character swapped for "!" and a valid one added further on:
+   * the same length, so a decoder that skips "!" reads 115 bytes with every later bit shifted. */
+  const swappedAndPadded = (value: string) =>
+    `${value.slice(0, 20)}!${value.slice(21, 60)}A${value.slice(60, -2)}`;
+
+  it.each<[string, (value: string) => string]>([
+    ['cut short', (value) => value.slice(0, 100)],
+    ['hex-encoded', (value) => Buffer.from(value, 'base64').toString('hex')],
+    ['empty', () => ''],
+    ['damaged to its own length', swappedAndPadded],
+  ])(
+    'scores no hit, saying so, when the query CID’s fingerprint is %s',
+    async (_damage, damage) => {
+      damaged.set(2244, damage(ASPIRIN_FINGERPRINT));
+
+      const content = contentOf(
+        await runToolContract(searchCompounds, { ...aspirinT75, maxResults: 3 }),
+      );
+
+      expect(content.results).toEqual([{ cid: 135 }, { cid: 7456 }, { cid: 338 }]);
+      expect(content.notice).toBe(
+        `PubChem returned no fingerprint for the query, so these hits carry no similarity score. ${PAGE_OF_3}`,
+      );
+    },
+  );
+
+  it('leaves similarity off a hit whose fingerprint is damaged to its own length, never a score from shifted bits', async () => {
+    damaged.set(135, swappedAndPadded(FINGERPRINTS.get(135) as string));
+
+    const content = contentOf(
+      await runToolContract(searchCompounds, { ...aspirinT75, maxResults: 3 }),
+    );
+
+    expect(content.results).toEqual([{ cid: 135 }, ...scored.slice(1, 3)]);
+    expect(content.notice).toBe(PAGE_OF_3);
+  });
+
+  it.each(['properties', 'smiles fingerprint'] as const)(
+    'returns the page unscored after one %s request when PubChem fails that lookup',
+    async (lookup) => {
+      failing.add(lookup);
+
+      const result = await runToolContract(searchCompounds, {
+        ...aspirinSmilesT75,
+        maxResults: 3,
+      });
+
+      const content = contentOf(result);
+      expect(content.results).toEqual([{ cid: 135 }, { cid: 7456 }, { cid: 338 }]);
+      const notice = `PubChem did not return the fingerprints to score this page against the query, so its hits carry no similarity score. Retry the call to score them. ${PAGE_OF_3}`;
+      expect(content.notice).toBe(notice);
+      expect(readBlockquotes(textOf(result)).at(-1)).toBe(notice);
+      // A side lookup is not retried: one request each.
+      expect(requests()).toEqual([
+        'search fastsimilarity_2d/smiles',
+        'properties GET Fingerprint2D',
+        `smiles fingerprint ${ASPIRIN_SMILES} (POST)`,
+      ]);
+    },
+  );
+
+  it.each([
+    ['properties', 'a fault envelope', FAULT_ENVELOPE],
+    ['smiles fingerprint', 'a fault envelope', FAULT_ENVELOPE],
+    ['properties', 'a null row', NULL_ROW_TABLE],
+    ['smiles fingerprint', 'a null row', NULL_ROW_TABLE],
+  ] as const)(
+    'returns the page unscored when PubChem answers the %s lookup HTTP 200 with %s in place of a property table',
+    async (lookup, _body, body) => {
+      answeringFault.set(lookup, body);
+
+      const result = await runToolContract(searchCompounds, {
+        ...aspirinSmilesT75,
+        maxResults: 3,
+      });
+
+      const content = contentOf(result);
+      expect(content.results).toEqual([{ cid: 135 }, { cid: 7456 }, { cid: 338 }]);
+      expect(content.notice).toBe(
+        `PubChem did not return the fingerprints to score this page against the query, so its hits carry no similarity score. Retry the call to score them. ${PAGE_OF_3}`,
+      );
+    },
+  );
+
+  describe('with properties, the shared request is the call’s', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('fails the call when PubChem fails it, after its one retry, as hydration always has', async () => {
+      failing.add('properties');
+
+      const call = runToolContract(searchCompounds, {
+        ...aspirinT75,
+        maxResults: 3,
+        properties: ['MolecularFormula'],
+      });
+      await vi.runAllTimersAsync();
+      const result = await call;
+
+      expect(errorOf(result).code).toBe(JsonRpcErrorCode.ServiceUnavailable);
+      expect(requests()).toEqual([
+        'search fastsimilarity_2d/cid',
+        'properties GET MolecularFormula,Fingerprint2D',
+        'properties GET MolecularFormula,Fingerprint2D',
+      ]);
+    });
+
+    it('fails the call as PubChem unavailable, after its one retry, when PubChem answers it HTTP 200 with no property table', async () => {
+      answeringFault.set('properties', FAULT_ENVELOPE);
+
+      const call = runToolContract(searchCompounds, {
+        ...aspirinT75,
+        maxResults: 3,
+        properties: ['MolecularFormula'],
+      });
+      await vi.runAllTimersAsync();
+      const result = await call;
+
+      const error = errorOf(result);
+      expect(error.code).toBe(JsonRpcErrorCode.ServiceUnavailable);
+      expect(error.message).toBe('PubChem sent a response that could not be read. Retry shortly.');
+      expect(requests()).toEqual([
+        'search fastsimilarity_2d/cid',
+        'properties GET MolecularFormula,Fingerprint2D',
+        'properties GET MolecularFormula,Fingerprint2D',
+      ]);
+    });
+  });
+
+  it.each<[string, SearchInput, string]>([
+    [
+      'substructure',
+      { searchType: 'substructure', query: '2244', queryType: 'cid' },
+      'search fastsubstructure/cid',
+    ],
+    [
+      'superstructure',
+      { searchType: 'superstructure', query: ASPIRIN_SMILES, queryType: 'smiles' },
+      'search fastsuperstructure/smiles',
+    ],
+    ['formula', { searchType: 'formula', formula: 'C9H8O4' }, 'search fastformula/C9H8O4'],
+  ])(
+    'a %s search carries no similarity and asks for no fingerprint',
+    async (_mode, args, search) => {
+      const plain = contentOf(await runToolContract(searchCompounds, { ...args, maxResults: 3 }));
+      expect(plain.results).toEqual([{ cid: 135 }, { cid: 7456 }, { cid: 338 }]);
+      expect(requests()).toEqual([search]);
+
+      fetchMock.mockClear();
+      const hydrated = contentOf(
+        await runToolContract(searchCompounds, {
+          ...args,
+          maxResults: 3,
+          properties: ['MolecularFormula'],
+        }),
+      );
+      expect(hydrated.results.map((r) => Object.keys(r))).toEqual([
+        ['cid', 'properties'],
+        ['cid', 'properties'],
+        ['cid', 'properties'],
+      ]);
+      expect(requests()).toEqual([search, 'properties GET MolecularFormula']);
+      expect(propertyCids()).toEqual([135, 7456, 338]);
+    },
+  );
+
+  it("says in the searchType and threshold descriptions that hits come in PubChem's order, a higher threshold narrows them, and 1 is not identity", () => {
+    const properties = advertisedInputSchema().properties as Record<
+      string,
+      { description?: string }
+    >;
+
+    expect(properties.searchType?.description).toContain(
+      '"similarity": 2D Tanimoto similarity to the query, each hit with its score — hits come in PubChem\'s order, not ranked by score, so raise threshold to narrow to closer analogs.',
+    );
+    expect(properties.threshold?.description).toContain(
+      "Hits come in PubChem's order, not ranked by score, so raising threshold is how to narrow a page to closer analogs. 100 means a fingerprint identical to the query's, not an identical compound",
+    );
+    const similarity = searchCompounds.output.shape.results.element.shape.similarity.description;
+    expect(similarity).toContain('rounded to three decimals');
+    expect(similarity).toContain(
+      "1 means a fingerprint identical to the query's, not an identical compound",
+    );
   });
 });

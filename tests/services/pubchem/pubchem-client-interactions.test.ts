@@ -340,6 +340,50 @@ describe('PubChemClient.getInteractions — SDQ answers that are not SDQ data (#
       { kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 },
     ]);
   });
+
+  /** PUG View tells a CID with no record from a compound without the heading by the 404 fault
+   * alone (`isMissingRecord`, tabled with the safety lookup); assaysummary answers both with the
+   * same fault, so only the drug-food page can carry the flag. */
+  it.each([
+    [
+      'PUG View has no record for the CID',
+      () => jsonResponse({ Fault: { Code: 'PUGVIEW.NotFound', Message: 'No record found' } }, 404),
+      { recordMissing: true },
+    ],
+    ['the 404 carries no recognizable fault', () => textResponse('Not Found', 404), {}],
+  ])(
+    'reads a drug-food 404 where %s as zero records, flagging a missing record only (#96)',
+    async (_label, respond, flag) => {
+      fetchMock.mockImplementation(async (input) =>
+        new URL(String(input)).pathname.endsWith('/assaysummary/JSON')
+          ? jsonResponse(
+              {
+                Fault: {
+                  Code: 'PUGREST.NotFound',
+                  Message: 'No assay data found for the given ID(s)',
+                },
+              },
+              404,
+            )
+          : respond(),
+      );
+
+      const { pages, failedKinds } = await new PubChemClient().getInteractions(
+        999999999,
+        ['drug-food', 'target'],
+        10,
+        0,
+      );
+
+      expect(failedKinds).toEqual([]);
+      expect(pages).toEqual([
+        { kind: 'drug-food', returnedCount: 0, totalRecords: 0, recordsConsumed: 0, ...flag },
+        { kind: 'target', returnedCount: 0, totalRecords: 0, recordsConsumed: 0 },
+      ]);
+      // Told apart from the drug-food answer itself: one request per kind, none added.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    },
+  );
 });
 
 describe('PubChemClient.getInteractions paging (#38)', () => {
@@ -914,4 +958,45 @@ describe('PubChemClient 3D structure (#15)', () => {
     expect(await client.getSdf3d(2244)).toBe('SDF-BODY');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   }, 10_000);
+
+  it('getConformerSdf fetches one conformer record by its ID (#99)', async () => {
+    fetchMock.mockResolvedValueOnce(textResponse('SDF-BODY', 200, 'chemical/x-mdl-sdfile'));
+
+    expect(await new PubChemClient().getConformerSdf('000008C40000000B')).toBe('SDF-BODY');
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://pubchem.ncbi.nlm.nih.gov/rest/pug/conformers/000008C40000000B/SDF',
+    );
+  });
+
+  it("getConformerSdf reads PubChem's conformer 404 as conformer_not_found, not no_3d_structure (#99)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      textResponse(
+        'Status: 404\nCode: PUGREST.NotFound\nMessage: No 3D records found for the given conformer(s)\n',
+        404,
+      ),
+    );
+
+    await expect(new PubChemClient().getConformerSdf('000008C4FFFFFFFE')).rejects.toMatchObject({
+      code: JsonRpcErrorCode.NotFound,
+      message: 'PubChem has no 3D record for conformer 000008C4FFFFFFFE.',
+      data: { reason: 'conformer_not_found', conformerId: '000008C4FFFFFFFE' },
+    });
+  });
+
+  it('getConformerSdf passes a failure other than 404 through untyped (#99)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      textResponse(
+        "Status: 400\nCode: PUGREST.BadRequest\nMessage: Can't parse conformer id\n",
+        400,
+      ),
+    );
+
+    const error = await new PubChemClient().getConformerSdf('XYZ').then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+
+    expect(error).toMatchObject({ data: { status: 400 } });
+    expect(error).not.toMatchObject({ data: { reason: expect.anything() } });
+  });
 });

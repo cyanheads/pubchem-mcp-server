@@ -1,19 +1,25 @@
 /**
- * @fileoverview Minimal parser for the V2000 SDF connection table (atom + bond blocks).
- * PubChem emits V2000 for 3D conformer records; the format is fixed-column and has been
- * stable since 1991, so a focused slice-based parser is more robust than a dependency.
+ * @fileoverview Minimal parser for the V2000 SDF connection table (atom + bond blocks) and the
+ * conformer ID data item. PubChem emits V2000 for 3D conformer records; the format is
+ * fixed-column and has been stable since 1991, so a focused slice-based parser is more robust
+ * than a dependency.
  * @module services/pubchem/sdf-parser
  */
 
 import type { Sdf3DStructure } from './types.js';
 
+/** The field name of the SD data item that holds a PubChem 3D record's conformer ID. */
+const CONFORMER_ID_FIELD = '<PUBCHEM_CONFORMER_ID>';
+
 /**
- * Parse the first molecule's atom and bond blocks from a V2000 SDF record.
+ * Parse the first molecule's atom and bond blocks, and its conformer ID, from a V2000 SDF record.
  *
  * Layout: three header lines, then a counts line (atom count at columns 0–3, bond count at
  * columns 3–6), then one fixed-column line per atom (x/y/z as `F10.4` at columns 0–10/10–20/
  * 20–30, element symbol at columns 31–34), then one line per bond (atom1/atom2/order as
- * three-column integers). The block is terminated by `M  END`.
+ * three-column integers). The block is terminated by `M  END`. SD data items follow it up to the
+ * record's `$$$$` line, each a header line starting `>` that names its field in angle brackets,
+ * then its value; `PUBCHEM_CONFORMER_ID`'s value is read as `conformerId`.
  *
  * Throws when the counts line is missing or unparseable — a malformed record is a hard
  * failure, not a silently-empty success.
@@ -55,5 +61,15 @@ export function parseSdfV2000(sdf: string): Sdf3DStructure {
     });
   }
 
-  return { atomCount, bondCount, atoms, bonds };
+  let conformerId: string | undefined;
+  for (let i = bondStart + bondCount; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (line.startsWith('$$$$')) break;
+    if (line.startsWith('>') && line.includes(CONFORMER_ID_FIELD)) {
+      conformerId = lines[i + 1]?.trim();
+      break;
+    }
+  }
+
+  return { atomCount, bondCount, atoms, bonds, ...(conformerId && { conformerId }) };
 }

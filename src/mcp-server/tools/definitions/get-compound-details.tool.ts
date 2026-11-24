@@ -88,7 +88,24 @@ const classificationSchema = z.object({
     ),
   fdaClasses: z.array(z.string()).describe('FDA Established Pharmacologic Classes.'),
   fdaMechanisms: z.array(z.string()).describe('FDA Mechanisms of Action.'),
-  meshClasses: z.array(z.string()).describe('MeSH pharmacological class descriptions.'),
+  meshClasses: z
+    .array(
+      z
+        .object({
+          name: z
+            .string()
+            .describe(
+              'MeSH heading of the class, e.g. "Cyclooxygenase 2 Inhibitors" — usable as a MeSH or PubMed search term.',
+            ),
+          description: z
+            .string()
+            .describe(
+              'MeSH scope note defining the class. Empty when PubChem names the class without one.',
+            ),
+        })
+        .describe('One MeSH pharmacological action class.'),
+    )
+    .describe('MeSH pharmacological action classes in the order PubChem lists them.'),
 });
 
 // ── Drug-likeness computation ──────────────────────────────────────────
@@ -175,7 +192,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       .array(propertyNameSchema)
       .optional()
       .describe(
-        'Properties to retrieve. Defaults to a core set: MolecularFormula, MolecularWeight, IUPACName, CanonicalSMILES, IsomericSMILES, InChIKey, XLogP, TPSA, HBondDonorCount, HBondAcceptorCount, RotatableBondCount, HeavyAtomCount, Charge, Complexity.',
+        "Properties to retrieve. Defaults to a core set: Title (PubChem's display name: the common name when the record has one, otherwise often the IUPAC name or a depositor ID; absent on some records), MolecularFormula, MolecularWeight, IUPACName, CanonicalSMILES, IsomericSMILES, InChIKey, XLogP, TPSA, HBondDonorCount, HBondAcceptorCount, RotatableBondCount, HeavyAtomCount, Charge, Complexity.",
       ),
     includeDescription: z
       .boolean()
@@ -252,7 +269,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
             properties: z
               .record(z.string(), z.unknown())
               .describe(
-                'Physicochemical properties keyed by name: the requested properties, or the default core set when properties is omitted or empty; drug-likeness inputs are appended automatically when includeDrugLikeness is true. A property requested under its current PubChem name is keyed by the older one: SMILES as IsomericSMILES, ConnectivitySMILES as CanonicalSMILES.',
+                'Physicochemical properties keyed by name: the requested properties, or the default core set when properties is omitted or empty; drug-likeness inputs are appended automatically when includeDrugLikeness is true. A property PubChem has no value for on this compound is left out, so a found compound can return an empty record. A property requested under its current PubChem name is keyed by the older one: SMILES as IsomericSMILES, ConnectivitySMILES as CanonicalSMILES.',
               ),
             descriptions: z
               .array(
@@ -383,8 +400,7 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
 
   async handler(input, ctx) {
     const client = getPubChemClient();
-    // An empty list reads as unset: the client sends PubChem no request without a property,
-    // so every CID would come back as not found.
+    // An empty list reads as unset: it names no property to return.
     const requestedProps = input.properties?.length ? input.properties : DEFAULT_PROPERTIES;
     // Each property named once, drug-likeness inputs included: `SMILES` and `IsomericSMILES`
     // both read as `IsomericSMILES`.
@@ -403,12 +419,22 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       ? capPageSize('maxSynonyms', input.maxSynonyms, MAX_SYNONYMS_CAP, capped)
       : input.maxSynonyms;
 
-    // Batch property fetch
-    const propertyRows = await client.getProperties(cids, props, ctx.signal);
+    /**
+     * PubChem answers a CID it has no record for with HTTP 200 and a row holding only the CID —
+     * and answers a real compound that lacks every requested property the same way (CID
+     * 130000000 has no Title). Every compound has a formula, so MolecularFormula rides along
+     * with each request as the discriminator, and is dropped from a record unless the caller
+     * asked for it. A row holding only the CID is then a CID PubChem has no record for.
+     */
+    const discriminator = 'MolecularFormula';
+    const propertyRows = await client.getProperties(
+      cids,
+      dedupeProperties([...props, discriminator]),
+      ctx.signal,
+    );
     const propsMap = new Map(propertyRows.map((r) => [r.CID, r]));
+    const keepDiscriminator = props.includes(discriminator);
 
-    // PubChem returns HTTP 200 with `{CID: x}` and no other fields for nonexistent CIDs.
-    // Treat a row with only the CID key as not-found.
     const isFound = (cid: number): boolean => {
       const row = propsMap.get(cid);
       if (!row) return false;
@@ -471,7 +497,10 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
 
     const compounds = cids.map((cid) => {
       const found = isFound(cid);
-      const { CID: _CID, ...properties } = propsMap.get(cid) ?? { CID: cid };
+      const { CID: _CID, ...properties }: Record<string, unknown> = propsMap.get(cid) ?? {
+        CID: cid,
+      };
+      if (!keepDiscriminator) delete properties[discriminator];
 
       const compound: {
         cid: number;
@@ -591,7 +620,11 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
       const lines: string[] = [];
       if (p.Title) lines.push(`**Title:** ${copyBack(p.Title)}`);
       if (p.IUPACName) lines.push(`**IUPAC Name:** ${copyBack(p.IUPACName)}`);
-      lines.push('**Properties:**');
+      lines.push(
+        Object.keys(p).length > 0
+          ? '**Properties:**'
+          : '**Properties:** PubChem records none of the requested properties for this compound.',
+      );
 
       // Key identifiers
       if (p.MolecularFormula) lines.push(`**Formula:** ${copyBack(p.MolecularFormula)}`);
@@ -684,16 +717,23 @@ export const getCompoundDetails = tool('pubchem_get_compound_details', {
         }
         /**
          * MeSH classes render in full — structuredContent carries the whole list uncapped.
-         * Each value is a multi-sentence scope note that routinely contains both "; " and
-         * ", ", so no inline separator can mark an entry boundary unambiguously. One list
-         * item per class instead: the escaper turns a line break inside a class into a hard
-         * break within its own item and escapes a list marker opening a line, so a value
-         * cannot forge an item of its own and the item boundary is unforgeable.
+         * Names carry ", " ("Anti-Inflammatory Agents, Non-Steroidal") and scope notes are
+         * multi-sentence text holding both "; " and ", ", so no inline separator can mark an
+         * entry boundary unambiguously. One list item per class instead, its name a bold label
+         * before its scope note: the escaper turns a line break into a hard break within its
+         * own item, escapes a list marker opening a line, and escapes `*`, so neither value can
+         * forge an item of its own or end the label early.
          */
         if (cls.meshClasses.length > 0) {
           lines.push('- MeSH:');
-          for (const meshClass of cls.meshClasses) {
-            lines.push(listItem(2, escapeMarkdownInline(meshClass)));
+          for (const { name, description } of cls.meshClasses) {
+            const label = escapeMarkdownInline(name);
+            lines.push(
+              listItem(
+                2,
+                description ? `**${label}:** ${escapeMarkdownInline(description)}` : `**${label}**`,
+              ),
+            );
           }
         }
         /** One list item per code, its hierarchy top-down: WHO level names carry commas
