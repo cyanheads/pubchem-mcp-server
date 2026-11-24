@@ -2,6 +2,10 @@
 
 All notable changes to this project. Each entry links to its full per-version file in [changelog/](changelog/).
 
+## [0.9.0](changelog/0.9.x/0.9.0.md) — 2026-11-24 · ⚠️ Breaking
+
+Mass-range search, per-hit Tanimoto scores on similarity search, named 3D conformers, an activity-name filter with potency sort on bioactivity, and the assay comment. Breaking: MeSH classes on compound details are now { name, description } objects.
+
 ## [0.8.1](changelog/0.8.x/0.8.1.md) — 2026-11-10
 
 Every tool's content[] now reads back through a CommonMark parse exactly as structuredContent carries it. Identifier search reads a lone query, the details and safety tools take cid, and properties accepts PubChem's SMILES and ConnectivitySMILES names.

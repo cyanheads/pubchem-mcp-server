@@ -1,6 +1,6 @@
 # pubchem-mcp-server - Directory Structure
 
-Generated on: 2026-11-24 08:17:12
+Generated on: 2026-11-24 09:23:10
 
 ```text
 pubchem-mcp-server/
@@ -32,6 +32,7 @@ pubchem-mcp-server/
 │   ├── 0.6.x/
 │   ├── 0.7.x/
 │   ├── 0.8.x/
+│   ├── 0.9.x/
 │   └── template.md
 ├── claude-plans/
 ├── docs/
@@ -209,6 +210,7 @@ pubchem-mcp-server/
 │   │   └── sdf-2244-default.sdf
 │   ├── helpers/
 │   │   ├── commonmark.ts
+│   │   ├── fixtures.ts
 │   │   └── read-back.ts
 │   ├── mcp-server/
 │   │   ├── resources/
